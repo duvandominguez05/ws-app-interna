@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>W&S Textil — App Interna</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+
+    /* HEADER */
+    header {
+      background: #1a1d27;
+      border-bottom: 2px solid #f97316;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.2rem; color: #f97316; font-weight: 700; letter-spacing: 1px; }
+    header span { font-size: 0.8rem; color: #888; }
+
+    /* NAV */
+    nav {
+      background: #1a1d27;
+      display: flex;
+      gap: 4px;
+      padding: 10px 24px;
+      border-bottom: 1px solid #2a2d3a;
+      flex-wrap: wrap;
+    }
+    nav button {
+      background: transparent;
+      border: 1px solid #2a2d3a;
+      color: #aaa;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    nav button:hover, nav button.active {
+      background: #f97316;
+      border-color: #f97316;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* MAIN */
+    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+    /* SECTION */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* CARDS RESUMEN */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .card .num { font-size: 2rem; font-weight: 700; color: #f97316; }
+    .card .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+
+    /* TABLA */
+    .tabla-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th {
+      background: #1a1d27;
+      color: #f97316;
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 2px solid #f97316;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid #1f2230;
+      vertical-align: middle;
+    }
+    tr:hover td { background: #1f2230; }
+
+    /* BADGE ESTADO */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge.corte     { background: #1e3a5f; color: #60a5fa; }
+    .badge.bordado   { background: #3b2a1a; color: #fb923c; }
+    .badge.listo     { background: #14532d; color: #4ade80; }
+    .badge.entregado { background: #1f2230; color: #888; }
+    .badge.pendiente { background: #3b1f1f; color: #f87171; }
+
+    /* FORMULARIO */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      color: #e0e0e0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: #f97316;
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+
+    .btn {
+      background: #f97316;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #ea6c10; }
+    .btn.secondary {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      color: #aaa;
+    }
+    .btn.secondary:hover { border-color: #f97316; color: #f97316; background: #1a1d27; }
+
+    h2 { font-size: 1.1rem; color: #e0e0e0; margin-bottom: 20px; font-weight: 600; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+
+    /* RENTABILIDAD */
+    .rent-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #1f2230; }
+    .rent-row .rkey { color: #888; font-size: 0.9rem; }
+    .rent-row .rval { font-weight: 600; }
+    .rent-row .rval.pos { color: #4ade80; }
+    .rent-row .rval.neg { color: #f87171; }
+    .rent-row .rval.neu { color: #f97316; }
+
+    /* HISTORIAL */
+    .search-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .search-bar input {
+      flex: 1;
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      color: #e0e0e0;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .search-bar input:focus { border-color: #f97316; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #4ade80;
+      color: #0f1117;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ W&S Textil — App Interna</h1>
+  <span id="fecha-header"></span>
+</header>
+
+<nav>
+  <button class="active" onclick="showSection('pedidos')">📋 Pedidos del día</button>
+  <button onclick="showSection('produccion')">🏭 Producción</button>
+  <button onclick="showSection('entregas')">🚚 Entregas</button>
+  <button onclick="showSection('rentabilidad')">💰 Rentabilidad</button>
+  <button onclick="showSection('clientes')">👥 Clientes</button>
+</nav>
+
+<main>
+
+  <!-- ===== PEDIDOS DEL DÍA ===== -->
+  <section id="pedidos" class="section active">
+    <div class="section-header">
+      <h2>Pedidos del día</h2>
+      <button class="btn" onclick="abrirFormPedido()">+ Nuevo pedido</button>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="num" id="cnt-total">0</div><div class="label">Total pedidos</div></div>
+      <div class="card"><div class="num" id="cnt-corte">0</div><div class="label">En corte</div></div>
+      <div class="card"><div class="num" id="cnt-bordado">0</div><div class="label">En bordado</div></div>
+      <div class="card"><div class="num" id="cnt-listo">0</div><div class="label">Listos</div></div>
+    </div>
+
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Cant.</th>
+            <th>Fecha entrega</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-pedidos"></tbody>
+      </table>
+    </div>
+
+    <!-- Formulario nuevo pedido -->
+    <div id="form-pedido" style="display:none; margin-top:28px; background:#1a1d27; border:1px solid #2a2d3a; border-radius:10px; padding:24px;">
+      <h2>Nuevo pedido</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Cliente</label>
+          <input type="text" id="p-cliente" placeholder="Nombre del cliente">
+        </div>
+        <div class="form-group">
+          <label>Producto</label>
+          <input type="text" id="p-producto" placeholder="Ej: Camisetas sublimadas">
+        </div>
+        <div class="form-group">
+          <label>Cantidad</label>
+          <input type="number" id="p-cantidad" placeholder="0" min="1">
+        </div>
+        <div class="form-group">
+          <label>Fecha de entrega</label>
+          <input type="date" id="p-fecha">
+        </div>
+        <div class="form-group">
+          <label>Valor total ($)</label>
+          <input type="number" id="p-valor" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Estado</label>
+          <select id="p-estado">
+            <option value="corte">Corte</option>
+            <option value="bordado">Bordado</option>
+            <option value="listo">Listo</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>Notas</label>
+        <textarea id="p-notas" placeholder="Observaciones del pedido..."></textarea>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" onclick="guardarPedido()">Guardar pedido</button>
+        <button class="btn secondary" onclick="document.getElementById('form-pedido').style.display='none'">Cancelar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PRODUCCIÓN ===== -->
+  <section id="produccion" class="section">
+    <div class="section-header">
+      <h2>Control de producción</h2>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="num" id="prod-corte">0</div><div class="label">Corte</div></div>
+      <div class="card"><div class="num" id="prod-bordado">0</div><div class="label">Bordado</div></div>
+      <div class="card"><div class="num" id="prod-listo">0</div><div class="label">Listo para entregar</div></div>
+      <div class="card"><div class="num" id="prod-entregado">0</div><div class="label">Entregados</div></div>
+    </div>
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Cant.</th>
+            <th>Estado</th>
+            <th>Avanzar etapa</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-produccion"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== ENTREGAS ===== -->
+  <section id="entregas" class="section">
+    <div class="section-header">
+      <h2>Control de entregas</h2>
+    </div>
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Fecha acordada</th>
+            <th>Estado</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-entregas"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== RENTABILIDAD ===== -->
+  <section id="rentabilidad" class="section">
+    <div class="section-header">
+      <h2>Rentabilidad por pedido</h2>
+    </div>
+    <div class="form-grid" style="margin-bottom:24px; background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a;">
+      <div class="form-group">
+        <label>Valor cobrado ($)</label>
+        <input type="number" id="r-cobrado" placeholder="0" oninput="calcularRent()">
+      </div>
+      <div class="form-group">
+        <label>Costo tela ($)</label>
+        <input type="number" id="r-tela" placeholder="0" oninput="calcularRent()">
+      </div>
+      <div class="form-group">
+        <label>Costo bordado/sublimado ($)</label>
+        <input type="number" id="r-bordado" placeholder="0" oninput="calcularRent()">
+      </div>
+      <div class="form-group">
+        <label>Costo confección ($)</label>
+        <input type="number" id="r-confeccion" placeholder="0" oninput="calcularRent()">
+      </div>
+      <div class="form-group">
+        <label>Otros costos ($)</label>
+        <input type="number" id="r-otros" placeholder="0" oninput="calcularRent()">
+      </div>
+    </div>
+    <div style="background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a; max-width:400px;">
+      <div class="rent-row"><span class="rkey">Total ingresos</span><span class="rval neu" id="r-res-ingreso">$0</span></div>
+      <div class="rent-row"><span class="rkey">Total costos</span><span class="rval neg" id="r-res-costo">$0</span></div>
+      <div class="rent-row"><span class="rkey">Utilidad bruta</span><span class="rval pos" id="r-res-utilidad">$0</span></div>
+      <div class="rent-row" style="border:none;"><span class="rkey">Margen</span><span class="rval pos" id="r-res-margen">0%</span></div>
+    </div>
+  </section>
+
+  <!-- ===== CLIENTES ===== -->
+  <section id="clientes" class="section">
+    <div class="section-header">
+      <h2>Historial de clientes</h2>
+      <button class="btn" onclick="abrirFormCliente()">+ Nuevo cliente</button>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." oninput="filtrarClientes()">
+    </div>
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Pedidos</th>
+            <th>Último pedido</th>
+            <th>Total facturado</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-clientes"></tbody>
+      </table>
+    </div>
+
+    <div id="form-cliente" style="display:none; margin-top:28px; background:#1a1d27; border:1px solid #2a2d3a; border-radius:10px; padding:24px;">
+      <h2>Nuevo cliente</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" id="c-nombre" placeholder="Nombre completo o empresa">
+        </div>
+        <div class="form-group">
+          <label>Teléfono / WhatsApp</label>
+          <input type="text" id="c-telefono" placeholder="3XX XXX XXXX">
+        </div>
+        <div class="form-group">
+          <label>Ciudad</label>
+          <input type="text" id="c-ciudad" placeholder="Ciudad">
+        </div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" onclick="guardarCliente()">Guardar</button>
+        <button class="btn secondary" onclick="document.getElementById('form-cliente').style.display='none'">Cancelar</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast">✓ Guardado</div>
+
+<script>
+  // ─── ESTADO ───────────────────────────────────────────────────────────────
+  let pedidos  = JSON.parse(localStorage.getItem('ws_pedidos'))  || [];
+  let clientes = JSON.parse(localStorage.getItem('ws_clientes')) || [];
+  let nextId   = parseInt(localStorage.getItem('ws_nextId'))     || 1;
+
+  // ─── FECHA HEADER ─────────────────────────────────────────────────────────
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const hoy = new Date();
+  document.getElementById('fecha-header').textContent =
+    `${dias[hoy.getDay()]} ${hoy.getDate()} ${meses[hoy.getMonth()]} ${hoy.getFullYear()}`;
+
+  // ─── NAVEGACIÓN ───────────────────────────────────────────────────────────
+  function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    event.target.classList.add('active');
+    renderAll();
+  }
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+  function renderAll() {
+    renderPedidos();
+    renderProduccion();
+    renderEntregas();
+    renderClientes();
+    actualizarCards();
+  }
+
+  const estadoLabel = {
+    corte:     '<span class="badge corte">Corte</span>',
+    bordado:   '<span class="badge bordado">Bordado</span>',
+    listo:     '<span class="badge listo">Listo</span>',
+    entregado: '<span class="badge entregado">Entregado</span>',
+    pendiente: '<span class="badge pendiente">Pendiente</span>',
+  };
+
+  function renderPedidos() {
+    const tbody = document.getElementById('tabla-pedidos');
+    if (!tbody) return;
+    tbody.innerHTML = pedidos.length === 0
+      ? '<tr><td colspan="7" style="text-align:center;color:#555;padding:30px;">Sin pedidos registrados</td></tr>'
+      : pedidos.map((p, i) => `
+        <tr>
+          <td style="color:#555">#${p.id}</td>
+          <td><strong>${p.cliente}</strong></td>
+          <td>${p.producto}</td>
+          <td>${p.cantidad}</td>
+          <td>${p.fecha || '—'}</td>
+          <td>${estadoLabel[p.estado] || p.estado}</td>
+          <td>
+            <button class="btn secondary" style="padding:5px 10px;font-size:0.75rem;" onclick="eliminarPedido(${i})">✕</button>
+          </td>
+        </tr>`).join('');
+  }
+
+  function renderProduccion() {
+    const tbody = document.getElementById('tabla-produccion');
+    if (!tbody) return;
+    const activos = pedidos.filter(p => p.estado !== 'entregado');
+    tbody.innerHTML = activos.length === 0
+      ? '<tr><td colspan="6" style="text-align:center;color:#555;padding:30px;">Sin pedidos activos</td></tr>'
+      : activos.map((p, i) => {
+          const etapas = ['corte','bordado','listo','entregado'];
+          const idx = etapas.indexOf(p.estado);
+          const siguiente = etapas[idx + 1];
+          return `
+          <tr>
+            <td style="color:#555">#${p.id}</td>
+            <td>${p.cliente}</td>
+            <td>${p.producto}</td>
+            <td>${p.cantidad}</td>
+            <td>${estadoLabel[p.estado] || p.estado}</td>
+            <td>${siguiente
+              ? `<button class="btn" style="padding:5px 14px;font-size:0.78rem;" onclick="avanzarEtapa(${pedidos.indexOf(p)})">→ ${siguiente.charAt(0).toUpperCase()+siguiente.slice(1)}</button>`
+              : '<span style="color:#555;font-size:0.8rem;">Completo</span>'
+            }</td>
+          </tr>`;
+        }).join('');
+
+    // cards producción
+    ['corte','bordado','listo','entregado'].forEach(e => {
+      const el = document.getElementById('prod-' + e);
+      if (el) el.textContent = pedidos.filter(p => p.estado === e).length;
+    });
+  }
+
+  function renderEntregas() {
+    const tbody = document.getElementById('tabla-entregas');
+    if (!tbody) return;
+    tbody.innerHTML = pedidos.length === 0
+      ? '<tr><td colspan="6" style="text-align:center;color:#555;padding:30px;">Sin pedidos</td></tr>'
+      : pedidos.map((p, i) => `
+        <tr>
+          <td style="color:#555">#${p.id}</td>
+          <td>${p.cliente}</td>
+          <td>${p.producto}</td>
+          <td>${p.fecha || '—'}</td>
+          <td>${estadoLabel[p.estado] || p.estado}</td>
+          <td>${p.estado !== 'entregado'
+            ? `<button class="btn" style="padding:5px 14px;font-size:0.78rem;" onclick="marcarEntregado(${i})">✓ Entregado</button>`
+            : '<span style="color:#4ade80;font-size:0.8rem;">✓ Listo</span>'
+          }</td>
+        </tr>`).join('');
+  }
+
+  function renderClientes() {
+    const tbody = document.getElementById('tabla-clientes');
+    if (!tbody) return;
+    const filtro = (document.getElementById('buscar-cliente')?.value || '').toLowerCase();
+    const lista = clientes.filter(c => c.nombre.toLowerCase().includes(filtro));
+    tbody.innerHTML = lista.length === 0
+      ? '<tr><td colspan="5" style="text-align:center;color:#555;padding:30px;">Sin clientes registrados</td></tr>'
+      : lista.map(c => {
+          const pedidosCliente = pedidos.filter(p => p.cliente.toLowerCase() === c.nombre.toLowerCase());
+          const total = pedidosCliente.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
+          const ultimo = pedidosCliente.length ? pedidosCliente[pedidosCliente.length - 1].fecha || '—' : '—';
+          return `<tr>
+            <td><strong>${c.nombre}</strong></td>
+            <td>${c.telefono || '—'}</td>
+            <td>${pedidosCliente.length}</td>
+            <td>${ultimo}</td>
+            <td style="color:#4ade80">$${total.toLocaleString('es-CO')}</td>
+          </tr>`;
+        }).join('');
+  }
+
+  function actualizarCards() {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('cnt-total',   pedidos.length);
+    set('cnt-corte',   pedidos.filter(p => p.estado === 'corte').length);
+    set('cnt-bordado', pedidos.filter(p => p.estado === 'bordado').length);
+    set('cnt-listo',   pedidos.filter(p => p.estado === 'listo').length);
+  }
+
+  // ─── ACCIONES ─────────────────────────────────────────────────────────────
+  function abrirFormPedido() {
+    document.getElementById('form-pedido').style.display = 'block';
+    document.getElementById('form-pedido').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function guardarPedido() {
+    const cliente  = document.getElementById('p-cliente').value.trim();
+    const producto = document.getElementById('p-producto').value.trim();
+    const cantidad = document.getElementById('p-cantidad').value;
+    if (!cliente || !producto) { alert('Completa cliente y producto'); return; }
+    pedidos.push({
+      id: nextId++,
+      cliente, producto,
+      cantidad: parseInt(cantidad) || 0,
+      fecha:    document.getElementById('p-fecha').value,
+      valor:    parseFloat(document.getElementById('p-valor').value) || 0,
+      estado:   document.getElementById('p-estado').value,
+      notas:    document.getElementById('p-notas').value,
+    });
+    guardarLS();
+    document.getElementById('form-pedido').style.display = 'none';
+    ['p-cliente','p-producto','p-cantidad','p-fecha','p-valor','p-notas'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+    toast('Pedido guardado');
+  }
+
+  function eliminarPedido(i) {
+    if (!confirm('¿Eliminar este pedido?')) return;
+    pedidos.splice(i, 1);
+    guardarLS();
+    renderAll();
+  }
+
+  function avanzarEtapa(i) {
+    const etapas = ['corte','bordado','listo','entregado'];
+    const idx = etapas.indexOf(pedidos[i].estado);
+    if (idx < etapas.length - 1) {
+      pedidos[i].estado = etapas[idx + 1];
+      guardarLS();
+      renderAll();
+      toast('Estado actualizado');
+    }
+  }
+
+  function marcarEntregado(i) {
+    pedidos[i].estado = 'entregado';
+    guardarLS();
+    renderAll();
+    toast('Marcado como entregado');
+  }
+
+  function abrirFormCliente() {
+    document.getElementById('form-cliente').style.display = 'block';
+    document.getElementById('form-cliente').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function guardarCliente() {
+    const nombre = document.getElementById('c-nombre').value.trim();
+    if (!nombre) { alert('Escribe el nombre'); return; }
+    clientes.push({
+      nombre,
+      telefono: document.getElementById('c-telefono').value.trim(),
+      ciudad:   document.getElementById('c-ciudad').value.trim(),
+    });
+    guardarLS();
+    document.getElementById('form-cliente').style.display = 'none';
+    ['c-nombre','c-telefono','c-ciudad'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+    toast('Cliente guardado');
+  }
+
+  function filtrarClientes() { renderClientes(); }
+
+  // ─── RENTABILIDAD ─────────────────────────────────────────────────────────
+  function calcularRent() {
+    const cobrado    = parseFloat(document.getElementById('r-cobrado').value)    || 0;
+    const tela       = parseFloat(document.getElementById('r-tela').value)       || 0;
+    const bordado    = parseFloat(document.getElementById('r-bordado').value)    || 0;
+    const confeccion = parseFloat(document.getElementById('r-confeccion').value) || 0;
+    const otros      = parseFloat(document.getElementById('r-otros').value)      || 0;
+    const costos     = tela + bordado + confeccion + otros;
+    const utilidad   = cobrado - costos;
+    const margen     = cobrado > 0 ? ((utilidad / cobrado) * 100).toFixed(1) : 0;
+    const fmt = n => '$' + n.toLocaleString('es-CO');
+    document.getElementById('r-res-ingreso').textContent  = fmt(cobrado);
+    document.getElementById('r-res-costo').textContent    = fmt(costos);
+    document.getElementById('r-res-utilidad').textContent = fmt(utilidad);
+    document.getElementById('r-res-margen').textContent   = margen + '%';
+    document.getElementById('r-res-utilidad').className   = 'rval ' + (utilidad >= 0 ? 'pos' : 'neg');
+  }
+
+  // ─── UTILS ────────────────────────────────────────────────────────────────
+  function guardarLS() {
+    localStorage.setItem('ws_pedidos',  JSON.stringify(pedidos));
+    localStorage.setItem('ws_clientes', JSON.stringify(clientes));
+    localStorage.setItem('ws_nextId',   nextId);
+  }
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = '✓ ' + msg;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 2500);
+  }
+
+  // ─── INIT ─────────────────────────────────────────────────────────────────
+  renderAll();
+</script>
+</body>
+</html>

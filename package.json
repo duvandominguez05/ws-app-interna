@@ -1,0 +1,12 @@
+{
+  "name": "ws-app-interna",
+  "version": "1.0.0",
+  "description": "App interna W&S Textil",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
