@@ -1702,8 +1702,13 @@
       <div class="section-heading">
         <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
         Arreglos activos
+<<<<<<< HEAD
+      </div>
+      <div id="debug-arreglos" style="font-size:0.72rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;margin-bottom:14px;color:var(--text-muted);font-family:monospace;"></div>
+=======
         <button onclick="resetearArreglosCorruptos()" title="Limpiar datos corruptos" style="margin-left:auto;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;padding:3px 10px;border-radius:5px;cursor:pointer;font-size:0.68rem;">Limpiar datos</button>
       </div>
+>>>>>>> 8abb09e114f1a86031191d30d90058a2141b1e06
       <div id="lista-arreglos"></div>
     </section>
 
@@ -2503,6 +2508,63 @@ function updateDate() {
    ARREGLOS
 ════════════════════════════════════════════════════════════════ */
 function renderArreglos() {
+<<<<<<< HEAD
+  const cont  = document.getElementById('lista-arreglos');
+  const debug = document.getElementById('debug-arreglos');
+  if (!cont) return;
+
+  // Panel debug: muestra TODOS los pedidos con su valor de arreglo exacto
+  if (debug) {
+    const rows = pedidos.map(p =>
+      `#${p.id} estado=${p.estado} arreglo=${JSON.stringify(p.arreglo)}`
+    ).join('<br>');
+    debug.innerHTML = `<strong style="color:var(--text);">DEBUG pedidos (${pedidos.length} total):</strong><br>${rows || '— ninguno —'}<br><br><button onclick="forzarLimpiezaArreglos()" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:0.72rem;">Limpiar datos corruptos</button>`;
+  }
+
+  // Filtro: cualquier pedido con arreglo que sea string no vacío, o 'pendiente'
+  const lista = pedidos.filter(p => {
+    if (p.arreglo === null || p.arreglo === undefined || p.arreglo === false || p.arreglo === '') return false;
+    if (p.estado === 'enviado-final') return false;
+    return true;
+  });
+
+  if (!lista.length) {
+    cont.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);font-size:0.82rem;">Sin arreglos activos</div>`;
+    return;
+  }
+
+  cont.innerHTML = lista.map(p => {
+    const itemsTxt  = p.items && p.items.length ? p.items.map(i => esc(String(i.prenda || ''))).join(', ') : '—';
+    const fechaHtml = p.fechaEntrega ? `<span>📅 ${fmtFecha(p.fechaEntrega)}</span>` : '';
+    const descActual = (p.arreglo === 'pendiente') ? '' : esc(String(p.arreglo || ''));
+    return `
+    <div class="bandeja-card" style="border-color:rgba(239,68,68,0.4);background:linear-gradient(135deg,rgba(239,68,68,0.07),var(--card-bg));margin-bottom:12px;">
+      <div class="bandeja-card-top">
+        <div class="bandeja-phone">${esc(String(p.telefono || '—'))}</div>
+        <div class="bandeja-id">#${p.id}</div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">${itemsTxt}</div>
+      <div class="bandeja-meta" style="margin-bottom:10px;">
+        <span>${esc(String(p.vendedora || '—'))}</span>
+        ${fechaHtml}
+      </div>
+      <div style="font-size:0.7rem;color:#fca5a5;margin-bottom:5px;font-weight:600;letter-spacing:0.8px;">⚠ ¿Qué hay que arreglar?</div>
+      <input id="arreglo-edit-${p.id}" class="arreglo-input" type="text" value="${descActual}" placeholder="Escribe el arreglo aquí..." style="margin-bottom:8px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-success btn-xs" onclick="arregloLlego(${p.id})">✓ Llegó — a costura</button>
+        <button class="btn btn-xs" onclick="actualizarArreglo(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.72rem;padding:4px 10px;border-radius:5px;cursor:pointer;">Guardar</button>
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+function forzarLimpiezaArreglos() {
+  pedidos.forEach(p => {
+    if (p.arreglo !== null && p.arreglo !== undefined) {
+      const v = p.arreglo;
+      if (v === false || v === '' || v === 0 || v === 'false') {
+=======
   const cont = document.getElementById('lista-arreglos');
   if (!cont) return;
   const lista = pedidos.filter(p => p.arreglo !== undefined && p.arreglo !== null && p.arreglo !== false && p.arreglo !== '' && p.estado !== 'enviado-final');
@@ -2546,13 +2608,18 @@ function resetearArreglosCorruptos() {
   pedidos.forEach(p => {
     if (p.arreglo !== null && p.arreglo !== undefined) {
       if (typeof p.arreglo !== 'string' || p.arreglo === '' || p.arreglo === 'false') {
+>>>>>>> 8abb09e114f1a86031191d30d90058a2141b1e06
         p.arreglo = null;
       }
     }
   });
   guardar();
   render();
+<<<<<<< HEAD
+  toast('Datos limpiados — vuelve a marcar el arreglo desde Calidad', 'success');
+=======
   toast('Datos de arreglos limpiados', 'success');
+>>>>>>> 8abb09e114f1a86031191d30d90058a2141b1e06
 }
 
 function actualizarArreglo(id) {
