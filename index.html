@@ -1823,8 +1823,12 @@ function showSection(id, navEl) {
   document.getElementById('header-icon').textContent      = info.icon || '';
   document.getElementById('header-title-text').textContent = info.title || '';
 
-  closeSidebar(); // cerrar sidebar en móvil al navegar
+  closeSidebar();
   render();
+
+  // Re-render específico para garantizar que el contenido aparece tras activar la sección
+  if (id === 'arreglos') renderArreglos();
+  if (id === 'envios')   renderEnvios();
 }
 
 function toggleSidebar() {
