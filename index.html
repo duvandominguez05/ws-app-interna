@@ -401,6 +401,13 @@
       transition: var(--transition);
     }
 
+    .metric-card-sm {
+      padding: 12px 14px;
+    }
+    .metric-card-sm .metric-value { font-size: 1.6rem; margin-bottom: 2px; }
+    .metric-card-sm .metric-label { margin-bottom: 4px; }
+    .metric-card-sm .metric-icon  { font-size: 1.2rem; top: 10px; right: 10px; }
+
     .metric-card::before {
       content: '';
       position: absolute;
@@ -1257,39 +1264,12 @@
     <!-- ─── VISTA GENERAL ──────────────────────────────────────── -->
     <section id="vista-general" class="section-content active section-bg">
 
-      <div class="metrics-grid">
-        <div class="metric-card" style="--metric-color: #c4b5fd;">
-          <div class="metric-label">Total activos</div>
-          <div class="metric-value" id="m-total">0</div>
-          <div class="metric-sub">pedidos en sistema</div>
-          <div class="metric-icon">📦</div>
-        </div>
-        <div class="metric-card" style="--metric-color: #fdba74;">
-          <div class="metric-label">En producción</div>
-          <div class="metric-value" id="m-produccion">0</div>
-          <div class="metric-sub">impresión → costura</div>
-          <div class="metric-icon">🏭</div>
-        </div>
-        <div class="metric-card" style="--metric-color: #4ade80;">
-          <div class="metric-label">Listos</div>
-          <div class="metric-value" id="m-listos">0</div>
-          <div class="metric-sub">para entregar</div>
-          <div class="metric-icon">✅</div>
-        </div>
-        <div class="metric-card" style="--metric-color: #67e8f9;">
-          <div class="metric-label">En diseño</div>
-          <div class="metric-value" id="m-diseno">0</div>
-          <div class="metric-sub">pendientes de diseño</div>
-          <div class="metric-icon">🎨</div>
-        </div>
-      </div>
-
       <div class="section-heading">
         <span class="dot"></span>
-        Últimos pedidos
+        Pedidos en tiempo real
       </div>
 
-      <div class="table-wrap">
+      <div class="table-wrap" style="margin-bottom:20px;">
         <table>
           <thead>
             <tr>
@@ -1304,6 +1284,34 @@
           <tbody id="tabla-recientes"></tbody>
         </table>
       </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card metric-card-sm" style="--metric-color: #c4b5fd;">
+          <div class="metric-label">Total activos</div>
+          <div class="metric-value" id="m-total">0</div>
+          <div class="metric-sub">en sistema</div>
+          <div class="metric-icon">📦</div>
+        </div>
+        <div class="metric-card metric-card-sm" style="--metric-color: #fdba74;">
+          <div class="metric-label">En producción</div>
+          <div class="metric-value" id="m-produccion">0</div>
+          <div class="metric-sub">impresión → costura</div>
+          <div class="metric-icon">🏭</div>
+        </div>
+        <div class="metric-card metric-card-sm" style="--metric-color: #4ade80;">
+          <div class="metric-label">Listos</div>
+          <div class="metric-value" id="m-listos">0</div>
+          <div class="metric-sub">para entregar</div>
+          <div class="metric-icon">✅</div>
+        </div>
+        <div class="metric-card metric-card-sm" style="--metric-color: #67e8f9;">
+          <div class="metric-label">En diseño</div>
+          <div class="metric-value" id="m-diseno">0</div>
+          <div class="metric-sub">pendientes</div>
+          <div class="metric-icon">🎨</div>
+        </div>
+      </div>
+
     </section>
 
     <!-- ─── BANDEJA ────────────────────────────────────────────── -->
@@ -1540,6 +1548,7 @@ const PRENDAS = ['Camiseta','Uniforme completo','Pantalón','Chaqueta','Buso','S
 const TELAS   = ['Normal','Antifluido','Dry Fit','Camuflada','Colmena','Cuadros'];
 
 const SIGUIENTE = {
+  'bandeja':          'hacer-diseno',
   'hacer-diseno':     'confirmado',
   'confirmado':       'enviado-calandra',
   'enviado-calandra': 'llego-impresion',
@@ -1683,7 +1692,8 @@ function renderBadges() {
 /* ─── Tabla recientes ────────────────────────────────────────── */
 function renderTablaRecientes() {
   const tbody = document.getElementById('tabla-recientes');
-  const recientes = [...pedidos].reverse().slice(0, 10);
+  // Más antiguo primero (orden natural del array), excluye enviados
+  const recientes = pedidos.filter(p => p.estado !== 'enviado-final');
 
   if (!recientes.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;">Sin pedidos aún</td></tr>`;
