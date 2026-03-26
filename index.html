@@ -1086,16 +1086,95 @@
       display: inline-block;
       margin-right: 5px;
     }
+
+    /* ─── HAMBURGER BUTTON ─────────────────────────────────────────── */
+    .btn-hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      background: rgba(124,58,237,0.12);
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 8px;
+      cursor: pointer;
+      color: #c4b5fd;
+      flex-shrink: 0;
+      transition: var(--transition);
+    }
+    .btn-hamburger:hover {
+      background: rgba(124,58,237,0.25);
+      box-shadow: 0 0 14px rgba(124,58,237,0.4);
+    }
+
+    /* ─── OVERLAY (toca para cerrar sidebar en móvil) ─────────────── */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 19;
+      backdrop-filter: blur(2px);
+    }
+    .sidebar-overlay.open { display: block; }
+
+    /* ─── RESPONSIVE ───────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .btn-hamburger { display: flex; }
+
+      .sidebar {
+        position: fixed;
+        top: 0; left: 0;
+        height: 100vh;
+        z-index: 20;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .main-header {
+        padding: 0 14px;
+      }
+
+      /* Ocultar el botón "Nuevo pedido" del header en móvil (ya está en sidebar) */
+      .header-actions .btn-orange { display: none; }
+
+      .header-date { font-size: 0.72rem; }
+
+      .section-content { padding: 14px 12px; }
+
+      .metrics-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .bandeja-cols {
+        grid-template-columns: 1fr !important;
+      }
+
+      .kanban-board {
+        grid-template-columns: repeat(2, minmax(200px, 1fr)) !important;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .metrics-grid { grid-template-columns: 1fr 1fr; }
+      .kanban-board { grid-template-columns: 1fr !important; }
+    }
   </style>
 </head>
 <body>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
 <div class="app-layout">
 
   <!-- ═══════════════════════════════════════════════════════════
        SIDEBAR
   ════════════════════════════════════════════════════════════ -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="logo-text">
         <span class="bolt">⚡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
@@ -1156,6 +1235,13 @@
     <!-- HEADER -->
     <header class="main-header">
       <div class="header-title">
+        <button class="btn-hamburger" onclick="toggleSidebar()" aria-label="Menú">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <span class="section-icon" id="header-icon">📊</span>
         <span id="header-title-text">Vista general</span>
       </div>
@@ -1328,7 +1414,7 @@
     <div class="modal-header">
       <div class="modal-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2h11"/></svg>
-        Completar pedido
+        <span id="modal-completar-titulo">Completar pedido</span>
       </div>
       <button class="modal-close" onclick="closeModal('modal-completar')">✕</button>
     </div>
@@ -1367,7 +1453,7 @@
       <button class="btn btn-glass" onclick="closeModal('modal-completar')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarCompletar()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/></svg>
-        Pasar a diseño
+        <span id="btn-completar-label">Confirmar pedido</span>
       </button>
     </div>
   </div>
@@ -1527,7 +1613,26 @@ function showSection(id, navEl) {
   document.getElementById('header-icon').textContent      = info.icon || '';
   document.getElementById('header-title-text').textContent = info.title || '';
 
+  closeSidebar(); // cerrar sidebar en móvil al navegar
   render();
+}
+
+function toggleSidebar() {
+  const sidebar  = document.getElementById('sidebar');
+  const overlay  = document.getElementById('sidebarOverlay');
+  const isOpen   = sidebar.classList.contains('open');
+  if (isOpen) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+  } else {
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+  }
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1607,17 +1712,18 @@ function renderTablaRecientes() {
 
 /* ─── Bandeja ────────────────────────────────────────────────── */
 function renderBandeja() {
-  const cotizaciones = pedidos.filter(p => p.estado === 'bandeja' && p.tipoBandeja === 'cotizar');
-  const pedidosConf  = pedidos.filter(p => p.estado === 'bandeja' && p.tipoBandeja === 'pedido');
+  const cotizaciones = pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja');
+  // Pedidos confirmados: visible desde que se confirman hasta que se entregan (todo excepto enviado-final)
+  const pedidosConf  = pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final');
 
   document.getElementById('count-cotizar').textContent = cotizaciones.length;
   document.getElementById('count-pedido').textContent  = pedidosConf.length;
 
-  document.getElementById('lista-cotizar').innerHTML = renderBandejaCards(cotizaciones);
-  document.getElementById('lista-pedido').innerHTML  = renderBandejaCards(pedidosConf);
+  document.getElementById('lista-cotizar').innerHTML = renderBandejaCotizaciones(cotizaciones);
+  document.getElementById('lista-pedido').innerHTML  = renderBandejaPedidos(pedidosConf);
 }
 
-function renderBandejaCards(arr) {
+function renderBandejaCotizaciones(arr) {
   if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
   return arr.map(p => `
     <div class="bandeja-card">
@@ -1636,15 +1742,74 @@ function renderBandejaCards(arr) {
         </span>
       </div>
       <div class="bandeja-actions">
-        <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">
-          Completar →
-        </button>
+        <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">Completar →</button>
         <button class="btn btn-danger btn-sm" onclick="eliminarPedido(${p.id})">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         </button>
       </div>
     </div>
   `).join('');
+}
+
+// Colores de etapa para el badge en la tarjeta de bandeja
+const ETAPA_COLOR = {
+  'bandeja':           '#64748b',
+  'hacer-diseno':      '#a78bfa',
+  'confirmado':        '#06b6d4',
+  'enviado-calandra':  '#f97316',
+  'llego-impresion':   '#f97316',
+  'corte':             '#eab308',
+  'calidad':           '#ef4444',
+  'costura':           '#10b981',
+  'listo':             '#10b981',
+};
+
+function renderBandejaPedidos(arr) {
+  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
+  return arr.map(p => {
+    const etiqueta  = ESTADO_LABELS[p.estado] || p.estado;
+    const color     = ETAPA_COLOR[p.estado] || '#64748b';
+    const siguiente = SIGUIENTE[p.estado];
+    const btnLabel  = getBandejaBotonLabel(p.estado);
+
+    const itemsTxt = p.items && p.items.length
+      ? p.items.map(i => `${esc(i.prenda)}`).join(', ')
+      : 'Sin prendas';
+
+    const fechaHtml = p.fechaEntrega
+      ? `<span>📅 ${esc(p.fechaEntrega)}</span>`
+      : '';
+
+    const accionBtn = siguiente
+      ? `<button class="btn btn-sm" onclick="avanzarDesdeBandeja(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.75rem;padding:5px 10px;border-radius:6px;cursor:pointer;">${btnLabel}</button>`
+      : `<span style="font-size:0.72rem;color:var(--green);font-weight:600;">✓ Entregado</span>`;
+
+    return `
+    <div class="bandeja-card">
+      <div class="bandeja-card-top">
+        <div class="bandeja-phone">${esc(p.telefono)}</div>
+        <div class="bandeja-id">#${p.id}</div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">${itemsTxt}</div>
+      <div class="bandeja-meta">
+        <span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          ${esc(p.vendedora || '—')}
+        </span>
+        ${fechaHtml}
+      </div>
+      <div style="margin-bottom:8px;">
+        <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}55;">● ${etiqueta}</span>
+      </div>
+      <div class="bandeja-actions">
+        ${accionBtn}
+        <button class="btn btn-danger btn-sm" onclick="eliminarPedido(${p.id})">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+  }).join('');
 }
 
 /* ─── Kanban ─────────────────────────────────────────────────── */
@@ -1820,6 +1985,10 @@ function openModalCompletar(id) {
   if (!p) return;
   modalCompletarId = id;
 
+  // Ajustar título según tipo
+  const titulo = document.getElementById('modal-completar-titulo');
+  if (titulo) titulo.textContent = p.tipoBandeja === 'cotizar' ? 'Confirmar cotización' : 'Completar pedido';
+
   document.getElementById('comp-telefono').value = p.telefono || '';
   document.getElementById('comp-vendedora').value = p.vendedora || '';
   document.getElementById('comp-fecha').value = p.fechaEntrega || '';
@@ -1870,12 +2039,43 @@ function guardarCompletar() {
   p.fechaEntrega = fecha;
   p.notas        = notas;
   p.items        = items;
-  p.estado       = 'hacer-diseno';
+
+  // Cotización completada → se convierte en pedido confirmado
+  // Estado pasa a 'hacer-diseno' y tipoBandeja a 'pedido'
+  // A partir de aquí aparece en la columna "Pedidos confirmados" con su etapa visible
+  p.tipoBandeja = 'pedido';
+  p.estado      = 'hacer-diseno';
 
   guardar();
   closeModal('modal-completar');
   render();
-  toast(`#${p.id} pasó a Hacer diseño`, 'success');
+  toast(`#${p.id} confirmado — en cola de diseño`, 'success');
+}
+
+function avanzarDesdeBandeja(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const sig = SIGUIENTE[p.estado];
+  if (!sig) return;
+  p.estado = sig;
+  guardar();
+  render();
+  toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
+}
+
+function getBandejaBotonLabel(estado) {
+  const labels = {
+    'bandeja':           '→ Iniciar diseño',
+    'hacer-diseno':      '→ Diseño listo',
+    'confirmado':        '→ Enviar a calandra',
+    'enviado-calandra':  '→ Llegó impresión',
+    'llego-impresion':   '→ Corte',
+    'corte':             '→ Calidad',
+    'calidad':           '→ Costura',
+    'costura':           '→ Listo',
+    'listo':             '→ Entregar / Enviar',
+  };
+  return labels[estado] || '→ Siguiente';
 }
 
 /* ════════════════════════════════════════════════════════════════
