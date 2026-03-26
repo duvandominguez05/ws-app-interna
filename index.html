@@ -432,19 +432,19 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Producto</label>
-        <input type="text" id="m-producto" placeholder="Ej: 20 camisetas sublimadas">
-      </div>
-      <div class="form-group">
-        <label>Valor total ($)</label>
-        <input type="number" id="m-valor" placeholder="0">
-      </div>
-      <div class="form-group">
         <label>Fecha entrega</label>
         <input type="date" id="m-fecha">
       </div>
     </div>
-    <div class="form-group" style="margin-bottom:0">
+
+    <!-- ÍTEMS -->
+    <div style="margin: 16px 0 8px;">
+      <label style="font-size:0.8rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Prendas del pedido</label>
+    </div>
+    <div id="items-lista" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+    <button class="btn secondary" onclick="agregarItem()" type="button" style="width:100%;margin-bottom:16px;">+ Agregar prenda</button>
+
+    <div class="form-group">
       <label>Notas</label>
       <textarea id="m-notas" placeholder="Observaciones..."></textarea>
     </div>
@@ -567,7 +567,7 @@
             <div class="kanban-card" style="${bloqueado ? 'border-color:#f87171;' : ''}">
               <div class="kc-num">#${p.id}</div>
               <div class="kc-cliente">${p.telefono}</div>
-              <div class="kc-producto">${p.producto || '—'}</div>
+              <div class="kc-producto">${p.items ? p.items.map(it => `${it.prenda} · ${it.tela}`).join('<br>') : (p.producto || '—')}</div>
               <div class="kc-vendedor">👩 ${p.vendedora || '—'}</div>
               ${bloqueado ? `<div style="color:#f87171;font-size:0.78rem;margin-bottom:8px;">⏳ ${p.arreglo}</div>` : ''}
               <div class="kc-actions" style="flex-direction:column;align-items:stretch;">
@@ -679,6 +679,10 @@
 
   // ─── MODAL ────────────────────────────────────────────────────────────────
   function abrirModal() {
+    tempItems = [];
+    renderItems();
+    ['m-telefono','m-fecha','m-notas'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-vendedora').selectedIndex = 0;
     document.getElementById('modal-overlay').classList.add('open');
   }
   function cerrarModal() {
@@ -688,32 +692,65 @@
     if (e.target === document.getElementById('modal-overlay')) cerrarModal();
   });
 
+  // ─── ÍTEMS ────────────────────────────────────────────────────────────────
+  const PRENDAS = ['Camiseta','Uniforme completo','Pantalón','Chaqueta','Buso','Sudadera','Portero acolchado buso','Portero acolchado pantalón','Camiseta adicional'];
+  const TELAS   = ['Normal','Antifluido','Dry Fit','Camuflada','Colmena','Cuadros'];
+
+  let tempItems = [];
+
+  function agregarItem() {
+    tempItems.push({ prenda: '', tela: '', cantidad: '' });
+    renderItems();
+  }
+
+  function quitarItem(i) {
+    tempItems.splice(i, 1);
+    renderItems();
+  }
+
+  function renderItems() {
+    const lista = document.getElementById('items-lista');
+    if (!lista) return;
+    if (tempItems.length === 0) {
+      lista.innerHTML = '<div style="color:#555;font-size:0.85rem;padding:8px 0;">Sin prendas — agrega al menos una</div>';
+      return;
+    }
+    lista.innerHTML = tempItems.map((item, i) => `
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;background:#0f1117;padding:10px;border-radius:8px;border:1px solid #2a2d3a;">
+        <select onchange="tempItems[${i}].prenda=this.value" style="background:#1a1d27;border:1px solid #2a2d3a;color:#e0e0e0;padding:8px;border-radius:6px;font-size:0.85rem;">
+          <option value="">Prenda...</option>
+          ${PRENDAS.map(p => `<option value="${p}" ${item.prenda===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+        <select onchange="tempItems[${i}].tela=this.value" style="background:#1a1d27;border:1px solid #2a2d3a;color:#e0e0e0;padding:8px;border-radius:6px;font-size:0.85rem;">
+          <option value="">Tela...</option>
+          ${TELAS.map(t => `<option value="${t}" ${item.tela===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <button class="btn danger" onclick="quitarItem(${i})" style="padding:8px 10px;">✕</button>
+      </div>
+    `).join('');
+  }
+
   function guardarPedido() {
     const telefono  = document.getElementById('m-telefono').value.trim();
     const vendedora = document.getElementById('m-vendedora').value;
-    const tipo      = document.getElementById('m-tipo').value;
-    if (!telefono) { alert('Escribe el número de WhatsApp'); return; }
+    if (!telefono)  { alert('Escribe el número de WhatsApp'); return; }
     if (!vendedora) { alert('Selecciona la vendedora'); return; }
-
-    // tipo define el estado inicial
-    const estadoInicial = 'para-consignar';
+    if (tempItems.length === 0) { alert('Agrega al menos una prenda'); return; }
+    if (tempItems.some(it => !it.prenda || !it.tela)) { alert('Selecciona prenda y tela en cada ítem'); return; }
 
     pedidos.push({
       id:        nextId++,
       telefono,
       vendedora,
-      producto:  document.getElementById('m-producto').value.trim(),
-      valor:     parseFloat(document.getElementById('m-valor').value) || 0,
+      items:     [...tempItems],
       fecha:     document.getElementById('m-fecha').value,
       notas:     document.getElementById('m-notas').value.trim(),
-      estado:    estadoInicial,
+      estado:    'para-consignar',
       creado:    new Date().toISOString(),
     });
 
     guardarLS();
     cerrarModal();
-    ['m-telefono','m-producto','m-valor','m-fecha','m-notas'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('m-vendedora').selectedIndex = 0;
     renderAll();
     toast('Pedido creado');
   }
