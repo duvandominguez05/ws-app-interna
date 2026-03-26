@@ -53,7 +53,7 @@
     }
 
     /* MAIN */
-    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
     /* SECTION */
     .section { display: none; }
@@ -62,27 +62,89 @@
     /* CARDS RESUMEN */
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
       margin-bottom: 28px;
     }
     .card {
       background: #1a1d27;
       border: 1px solid #2a2d3a;
       border-radius: 10px;
-      padding: 20px;
+      padding: 18px;
       text-align: center;
+      transition: border-color 0.2s;
     }
+    .card:hover { border-color: #f97316; }
     .card .num { font-size: 2rem; font-weight: 700; color: #f97316; }
-    .card .label { font-size: 0.8rem; color: #888; margin-top: 4px; }
+    .card .label { font-size: 0.78rem; color: #888; margin-top: 4px; }
+
+    /* KANBAN */
+    .kanban {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .kanban-col {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .kanban-col-header {
+      padding: 12px 16px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kanban-col-header .cnt {
+      background: #0f1117;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.75rem;
+    }
+    .kanban-cards { padding: 10px; min-height: 80px; display: flex; flex-direction: column; gap: 8px; }
+    .kanban-card {
+      background: #0f1117;
+      border: 1px solid #2a2d3a;
+      border-radius: 8px;
+      padding: 12px;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .kanban-card:hover { border-color: #f97316; transform: translateY(-1px); }
+    .kanban-card .kc-num { font-size: 0.72rem; color: #555; margin-bottom: 4px; }
+    .kanban-card .kc-cliente { font-weight: 600; font-size: 0.9rem; margin-bottom: 2px; }
+    .kanban-card .kc-producto { font-size: 0.78rem; color: #aaa; margin-bottom: 8px; }
+    .kanban-card .kc-vendedor { font-size: 0.72rem; color: #f97316; margin-bottom: 8px; }
+    .kanban-card .kc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* COLORES COLUMNAS DISEÑO */
+    .col-hacer-diseno .kanban-col-header    { background: #1e2a4a; color: #60a5fa; }
+    .col-enviado-cliente .kanban-col-header { background: #2a1e4a; color: #a78bfa; }
+    .col-para-consignar .kanban-col-header  { background: #3b2a1a; color: #fb923c; }
+    .col-consignado .kanban-col-header      { background: #14532d; color: #4ade80; }
+
+    /* COLORES COLUMNAS PRODUCCIÓN */
+    .col-aprobado .kanban-col-header        { background: #14532d; color: #4ade80; }
+    .col-enviado-calandra .kanban-col-header { background: #1e3a5f; color: #60a5fa; }
+    .col-llego-impresion .kanban-col-header { background: #2a1e4a; color: #a78bfa; }
+    .col-corte .kanban-col-header           { background: #3b1f1f; color: #f87171; }
+    .col-calidad .kanban-col-header         { background: #3b2a1a; color: #fb923c; }
+    .col-costura .kanban-col-header         { background: #1a3b2a; color: #34d399; }
+
+    /* COLORES COLUMNAS VENTAS */
+    .col-ventas .kanban-col-header          { background: #1e3a5f; color: #60a5fa; }
+    .col-arreglos .kanban-col-header        { background: #3b1f1f; color: #f87171; }
+    .col-listo .kanban-col-header           { background: #14532d; color: #4ade80; }
+    .col-enviado-cliente2 .kanban-col-header { background: #1f2230; color: #888; }
 
     /* TABLA */
     .tabla-wrap { overflow-x: auto; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     th {
       background: #1a1d27;
       color: #f97316;
@@ -93,14 +155,10 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    td {
-      padding: 11px 14px;
-      border-bottom: 1px solid #1f2230;
-      vertical-align: middle;
-    }
+    td { padding: 11px 14px; border-bottom: 1px solid #1f2230; vertical-align: middle; }
     tr:hover td { background: #1f2230; }
 
-    /* BADGE ESTADO */
+    /* BADGE */
     .badge {
       display: inline-block;
       padding: 3px 10px;
@@ -108,11 +166,6 @@
       font-size: 0.75rem;
       font-weight: 600;
     }
-    .badge.corte     { background: #1e3a5f; color: #60a5fa; }
-    .badge.bordado   { background: #3b2a1a; color: #fb923c; }
-    .badge.listo     { background: #14532d; color: #4ade80; }
-    .badge.entregado { background: #1f2230; color: #888; }
-    .badge.pendiente { background: #3b1f1f; color: #f87171; }
 
     /* FORMULARIO */
     .form-grid {
@@ -132,21 +185,20 @@
       font-size: 0.9rem;
       outline: none;
     }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-      border-color: #f97316;
-    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #f97316; }
     .form-group textarea { resize: vertical; min-height: 80px; }
 
     .btn {
       background: #f97316;
       color: #fff;
       border: none;
-      padding: 10px 24px;
+      padding: 8px 16px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 0.82rem;
       font-weight: 600;
       transition: background 0.2s;
+      white-space: nowrap;
     }
     .btn:hover { background: #ea6c10; }
     .btn.secondary {
@@ -154,7 +206,9 @@
       border: 1px solid #2a2d3a;
       color: #aaa;
     }
-    .btn.secondary:hover { border-color: #f97316; color: #f97316; background: #1a1d27; }
+    .btn.secondary:hover { border-color: #f97316; color: #f97316; }
+    .btn.danger { background: #3b1f1f; color: #f87171; border: 1px solid #5a2a2a; }
+    .btn.danger:hover { background: #5a1f1f; }
 
     h2 { font-size: 1.1rem; color: #e0e0e0; margin-bottom: 20px; font-weight: 600; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
@@ -167,12 +221,8 @@
     .rent-row .rval.neg { color: #f87171; }
     .rent-row .rval.neu { color: #f97316; }
 
-    /* HISTORIAL */
-    .search-bar {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
+    /* SEARCH */
+    .search-bar { display: flex; gap: 10px; margin-bottom: 20px; }
     .search-bar input {
       flex: 1;
       background: #1a1d27;
@@ -185,10 +235,31 @@
     }
     .search-bar input:focus { border-color: #f97316; }
 
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 { margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+    /* TOAST */
     .toast {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 24px; right: 24px;
       background: #4ade80;
       color: #0f1117;
       padding: 12px 20px;
@@ -197,157 +268,95 @@
       font-size: 0.9rem;
       display: none;
       z-index: 999;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    /* EMPTY */
+    .empty { text-align: center; color: #555; padding: 30px; font-size: 0.9rem; }
+
+    @media (max-width: 600px) {
+      main { padding: 12px; }
+      .kanban { grid-template-columns: 1fr; }
+      nav { padding: 8px 12px; }
+      nav button { padding: 6px 10px; font-size: 0.78rem; }
     }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>⚡ W&S Textil — App Interna</h1>
+  <h1>⚡ W&S Textil</h1>
   <span id="fecha-header"></span>
 </header>
 
 <nav>
-  <button class="active" onclick="showSection('pedidos')">📋 Pedidos del día</button>
-  <button onclick="showSection('produccion')">🏭 Producción</button>
-  <button onclick="showSection('entregas')">🚚 Entregas</button>
-  <button onclick="showSection('rentabilidad')">💰 Rentabilidad</button>
-  <button onclick="showSection('clientes')">👥 Clientes</button>
+  <button class="active" onclick="showSection('diseno', this)">🎨 Diseño</button>
+  <button onclick="showSection('produccion', this)">🏭 Producción</button>
+  <button onclick="showSection('ventas', this)">📦 Ventas</button>
+  <button onclick="showSection('rentabilidad', this)">💰 Rentabilidad</button>
+  <button onclick="showSection('clientes', this)">👥 Clientes</button>
 </nav>
 
 <main>
 
-  <!-- ===== PEDIDOS DEL DÍA ===== -->
-  <section id="pedidos" class="section active">
+  <!-- ===== DISEÑO ===== -->
+  <section id="diseno" class="section active">
     <div class="section-header">
-      <h2>Pedidos del día</h2>
-      <button class="btn" onclick="abrirFormPedido()">+ Nuevo pedido</button>
+      <h2>🎨 Diseño</h2>
+      <button class="btn" onclick="abrirModal()">+ Nuevo pedido</button>
     </div>
 
     <div class="cards">
-      <div class="card"><div class="num" id="cnt-total">0</div><div class="label">Total pedidos</div></div>
-      <div class="card"><div class="num" id="cnt-corte">0</div><div class="label">En corte</div></div>
-      <div class="card"><div class="num" id="cnt-bordado">0</div><div class="label">En bordado</div></div>
-      <div class="card"><div class="num" id="cnt-listo">0</div><div class="label">Listos</div></div>
+      <div class="card"><div class="num" id="d-cnt-hacer">0</div><div class="label">Hacer diseño</div></div>
+      <div class="card"><div class="num" id="d-cnt-enviado">0</div><div class="label">Enviado al cliente</div></div>
+      <div class="card"><div class="num" id="d-cnt-consignar">0</div><div class="label">Para consignar</div></div>
+      <div class="card"><div class="num" id="d-cnt-consignado">0</div><div class="label">Consignado</div></div>
     </div>
 
-    <div class="tabla-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Cliente</th>
-            <th>Producto</th>
-            <th>Cant.</th>
-            <th>Fecha entrega</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="tabla-pedidos"></tbody>
-      </table>
-    </div>
-
-    <!-- Formulario nuevo pedido -->
-    <div id="form-pedido" style="display:none; margin-top:28px; background:#1a1d27; border:1px solid #2a2d3a; border-radius:10px; padding:24px;">
-      <h2>Nuevo pedido</h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Cliente</label>
-          <input type="text" id="p-cliente" placeholder="Nombre del cliente">
-        </div>
-        <div class="form-group">
-          <label>Producto</label>
-          <input type="text" id="p-producto" placeholder="Ej: Camisetas sublimadas">
-        </div>
-        <div class="form-group">
-          <label>Cantidad</label>
-          <input type="number" id="p-cantidad" placeholder="0" min="1">
-        </div>
-        <div class="form-group">
-          <label>Fecha de entrega</label>
-          <input type="date" id="p-fecha">
-        </div>
-        <div class="form-group">
-          <label>Valor total ($)</label>
-          <input type="number" id="p-valor" placeholder="0">
-        </div>
-        <div class="form-group">
-          <label>Estado</label>
-          <select id="p-estado">
-            <option value="corte">Corte</option>
-            <option value="bordado">Bordado</option>
-            <option value="listo">Listo</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:16px;">
-        <label>Notas</label>
-        <textarea id="p-notas" placeholder="Observaciones del pedido..."></textarea>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn" onclick="guardarPedido()">Guardar pedido</button>
-        <button class="btn secondary" onclick="document.getElementById('form-pedido').style.display='none'">Cancelar</button>
-      </div>
-    </div>
+    <div class="kanban" id="kanban-diseno"></div>
   </section>
 
   <!-- ===== PRODUCCIÓN ===== -->
   <section id="produccion" class="section">
     <div class="section-header">
-      <h2>Control de producción</h2>
+      <h2>🏭 Producción</h2>
     </div>
+
     <div class="cards">
-      <div class="card"><div class="num" id="prod-corte">0</div><div class="label">Corte</div></div>
-      <div class="card"><div class="num" id="prod-bordado">0</div><div class="label">Bordado</div></div>
-      <div class="card"><div class="num" id="prod-listo">0</div><div class="label">Listo para entregar</div></div>
-      <div class="card"><div class="num" id="prod-entregado">0</div><div class="label">Entregados</div></div>
+      <div class="card"><div class="num" id="p-cnt-aprobado">0</div><div class="label">Aprobados</div></div>
+      <div class="card"><div class="num" id="p-cnt-calandra">0</div><div class="label">En calandra</div></div>
+      <div class="card"><div class="num" id="p-cnt-impresion">0</div><div class="label">Llegó impresión</div></div>
+      <div class="card"><div class="num" id="p-cnt-corte">0</div><div class="label">Corte</div></div>
+      <div class="card"><div class="num" id="p-cnt-calidad">0</div><div class="label">Calidad</div></div>
+      <div class="card"><div class="num" id="p-cnt-costura">0</div><div class="label">Costura</div></div>
     </div>
-    <div class="tabla-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Cliente</th>
-            <th>Producto</th>
-            <th>Cant.</th>
-            <th>Estado</th>
-            <th>Avanzar etapa</th>
-          </tr>
-        </thead>
-        <tbody id="tabla-produccion"></tbody>
-      </table>
-    </div>
+
+    <div class="kanban" id="kanban-produccion"></div>
   </section>
 
-  <!-- ===== ENTREGAS ===== -->
-  <section id="entregas" class="section">
+  <!-- ===== VENTAS / ENTREGAS ===== -->
+  <section id="ventas" class="section">
     <div class="section-header">
-      <h2>Control de entregas</h2>
+      <h2>📦 Ventas y Entregas</h2>
     </div>
-    <div class="tabla-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Cliente</th>
-            <th>Producto</th>
-            <th>Fecha acordada</th>
-            <th>Estado</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody id="tabla-entregas"></tbody>
-      </table>
+
+    <div class="cards">
+      <div class="card"><div class="num" id="v-cnt-listo">0</div><div class="label">Listos</div></div>
+      <div class="card"><div class="num" id="v-cnt-arreglos">0</div><div class="label">Arreglos</div></div>
+      <div class="card"><div class="num" id="v-cnt-enviado">0</div><div class="label">Enviados</div></div>
     </div>
+
+    <div class="kanban" id="kanban-ventas"></div>
   </section>
 
   <!-- ===== RENTABILIDAD ===== -->
   <section id="rentabilidad" class="section">
-    <div class="section-header">
-      <h2>Rentabilidad por pedido</h2>
-    </div>
-    <div class="form-grid" style="margin-bottom:24px; background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a;">
+    <div class="section-header"><h2>💰 Rentabilidad por pedido</h2></div>
+    <div class="form-grid" style="background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a; margin-bottom:24px;">
       <div class="form-group">
         <label>Valor cobrado ($)</label>
         <input type="number" id="r-cobrado" placeholder="0" oninput="calcularRent()">
@@ -357,7 +366,7 @@
         <input type="number" id="r-tela" placeholder="0" oninput="calcularRent()">
       </div>
       <div class="form-group">
-        <label>Costo bordado/sublimado ($)</label>
+        <label>Costo sublimado/calandra ($)</label>
         <input type="number" id="r-bordado" placeholder="0" oninput="calcularRent()">
       </div>
       <div class="form-group">
@@ -380,264 +389,308 @@
   <!-- ===== CLIENTES ===== -->
   <section id="clientes" class="section">
     <div class="section-header">
-      <h2>Historial de clientes</h2>
-      <button class="btn" onclick="abrirFormCliente()">+ Nuevo cliente</button>
+      <h2>👥 Clientes</h2>
     </div>
     <div class="search-bar">
-      <input type="text" id="buscar-cliente" placeholder="Buscar cliente..." oninput="filtrarClientes()">
+      <input type="text" id="buscar-cliente" placeholder="Buscar por número o nombre..." oninput="renderClientes()">
     </div>
     <div class="tabla-wrap">
       <table>
         <thead>
           <tr>
-            <th>Cliente</th>
-            <th>Teléfono</th>
+            <th>Número WA</th>
+            <th>Nombre</th>
+            <th>Vendedora</th>
             <th>Pedidos</th>
-            <th>Último pedido</th>
-            <th>Total facturado</th>
+            <th>Estado actual</th>
           </tr>
         </thead>
         <tbody id="tabla-clientes"></tbody>
       </table>
     </div>
-
-    <div id="form-cliente" style="display:none; margin-top:28px; background:#1a1d27; border:1px solid #2a2d3a; border-radius:10px; padding:24px;">
-      <h2>Nuevo cliente</h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Nombre</label>
-          <input type="text" id="c-nombre" placeholder="Nombre completo o empresa">
-        </div>
-        <div class="form-group">
-          <label>Teléfono / WhatsApp</label>
-          <input type="text" id="c-telefono" placeholder="3XX XXX XXXX">
-        </div>
-        <div class="form-group">
-          <label>Ciudad</label>
-          <input type="text" id="c-ciudad" placeholder="Ciudad">
-        </div>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn" onclick="guardarCliente()">Guardar</button>
-        <button class="btn secondary" onclick="document.getElementById('form-cliente').style.display='none'">Cancelar</button>
-      </div>
-    </div>
   </section>
 
 </main>
 
-<div class="toast" id="toast">✓ Guardado</div>
+<!-- MODAL NUEVO PEDIDO -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h2>Nuevo pedido</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Número WhatsApp cliente</label>
+        <input type="text" id="m-telefono" placeholder="3XXXXXXXXX">
+      </div>
+      <div class="form-group">
+        <label>Vendedora</label>
+        <select id="m-vendedora">
+          <option value="">Seleccionar</option>
+          <option value="Betty">Betty</option>
+          <option value="Ney">Ney</option>
+          <option value="Graciela">Graciela</option>
+          <option value="Wendy">Wendy</option>
+          <option value="Paola">Paola</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo</label>
+        <select id="m-tipo">
+          <option value="consignar">Para consignar</option>
+          <option value="consignado">Ya consignó</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Producto</label>
+        <input type="text" id="m-producto" placeholder="Ej: 20 camisetas sublimadas">
+      </div>
+      <div class="form-group">
+        <label>Valor total ($)</label>
+        <input type="number" id="m-valor" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>Fecha entrega</label>
+        <input type="date" id="m-fecha">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label>Notas</label>
+      <textarea id="m-notas" placeholder="Observaciones..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="guardarPedido()">Guardar</button>
+      <button class="btn secondary" onclick="cerrarModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
   // ─── ESTADO ───────────────────────────────────────────────────────────────
-  let pedidos  = JSON.parse(localStorage.getItem('ws_pedidos'))  || [];
-  let clientes = JSON.parse(localStorage.getItem('ws_clientes')) || [];
-  let nextId   = parseInt(localStorage.getItem('ws_nextId'))     || 1;
+  let pedidos = JSON.parse(localStorage.getItem('ws_pedidos2')) || [];
+  let nextId  = parseInt(localStorage.getItem('ws_nextId2'))    || 1;
 
-  // ─── FECHA HEADER ─────────────────────────────────────────────────────────
-  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  // Etapas del flujo completo
+  const ETAPAS = [
+    'hacer-diseno',
+    'enviado-cliente',
+    'para-consignar',
+    'consignado',
+    'aprobado',
+    'enviado-calandra',
+    'llego-impresion',
+    'corte',
+    'calidad',
+    'costura',
+    'listo',
+    'arreglos',
+    'enviado-final',
+  ];
+
+  const ETAPA_LABEL = {
+    'hacer-diseno':     'Hacer diseño',
+    'enviado-cliente':  'Enviado al cliente',
+    'para-consignar':   'Para consignar',
+    'consignado':       'Consignado',
+    'aprobado':         'Aprobado',
+    'enviado-calandra': 'Enviado a calandra',
+    'llego-impresion':  'Llegó de impresión',
+    'corte':            'Corte de tela',
+    'calidad':          'Control calidad',
+    'costura':          'Costura',
+    'listo':            'Listo',
+    'arreglos':         'Arreglos',
+    'enviado-final':    'Enviado al cliente',
+  };
+
+  // ─── FECHA ────────────────────────────────────────────────────────────────
+  const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const hoy = new Date();
+  const hoy   = new Date();
   document.getElementById('fecha-header').textContent =
     `${dias[hoy.getDay()]} ${hoy.getDate()} ${meses[hoy.getMonth()]} ${hoy.getFullYear()}`;
 
-  // ─── NAVEGACIÓN ───────────────────────────────────────────────────────────
-  function showSection(id) {
+  // ─── NAV ──────────────────────────────────────────────────────────────────
+  function showSection(id, btn) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    event.target.classList.add('active');
+    btn.classList.add('active');
     renderAll();
+  }
+
+  // ─── KANBAN DISEÑO ────────────────────────────────────────────────────────
+  const COLS_DISENO = [
+    { id: 'hacer-diseno',    css: 'col-hacer-diseno',    label: '✏️ Hacer diseño' },
+    { id: 'enviado-cliente', css: 'col-enviado-cliente', label: '📤 Enviado al cliente' },
+    { id: 'para-consignar',  css: 'col-para-consignar',  label: '💳 Para consignar' },
+    { id: 'consignado',      css: 'col-consignado',      label: '✅ Consignado' },
+  ];
+
+  const COLS_PROD = [
+    { id: 'aprobado',         css: 'col-aprobado',        label: '✅ Aprobado' },
+    { id: 'enviado-calandra', css: 'col-enviado-calandra',label: '📤 Enviado a calandra' },
+    { id: 'llego-impresion',  css: 'col-llego-impresion', label: '🖨️ Llegó de impresión' },
+    { id: 'corte',            css: 'col-corte',           label: '✂️ Corte de tela' },
+    { id: 'calidad',          css: 'col-calidad',         label: '🔍 Control calidad' },
+    { id: 'costura',          css: 'col-costura',         label: '🧵 Costura' },
+  ];
+
+  const COLS_VENTAS = [
+    { id: 'listo',         css: 'col-listo',          label: '🎉 Listo' },
+    { id: 'arreglos',      css: 'col-arreglos',        label: '🔧 Arreglos' },
+    { id: 'enviado-final', css: 'col-enviado-cliente2',label: '🚚 Enviado al cliente' },
+  ];
+
+  function renderKanban(containerId, cols) {
+    const wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = cols.map(col => {
+      const items = pedidos.filter(p => p.estado === col.id);
+      const cards = items.length === 0
+        ? `<div class="empty">Sin pedidos</div>`
+        : items.map(p => {
+            const idx     = ETAPAS.indexOf(p.estado);
+            const sigEtapa = ETAPAS[idx + 1];
+            const sigLabel = sigEtapa ? ETAPA_LABEL[sigEtapa] : null;
+            const pi = pedidos.indexOf(p);
+            return `
+            <div class="kanban-card">
+              <div class="kc-num">#${p.id}</div>
+              <div class="kc-cliente">${p.telefono}</div>
+              <div class="kc-producto">${p.producto || '—'}</div>
+              <div class="kc-vendedor">👩 ${p.vendedora || '—'}</div>
+              <div class="kc-actions">
+                ${sigLabel ? `<button class="btn" onclick="avanzar(${pi})">→ ${sigLabel}</button>` : '<span style="color:#4ade80;font-size:0.78rem;">✓ Completo</span>'}
+                <button class="btn danger" onclick="eliminar(${pi})">✕</button>
+              </div>
+            </div>`;
+          }).join('');
+      return `
+      <div class="kanban-col ${col.css}">
+        <div class="kanban-col-header">
+          <span>${col.label}</span>
+          <span class="cnt">${items.length}</span>
+        </div>
+        <div class="kanban-cards">${cards}</div>
+      </div>`;
+    }).join('');
   }
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   function renderAll() {
-    renderPedidos();
-    renderProduccion();
-    renderEntregas();
+    renderKanban('kanban-diseno',    COLS_DISENO);
+    renderKanban('kanban-produccion', COLS_PROD);
+    renderKanban('kanban-ventas',    COLS_VENTAS);
     renderClientes();
     actualizarCards();
   }
 
-  const estadoLabel = {
-    corte:     '<span class="badge corte">Corte</span>',
-    bordado:   '<span class="badge bordado">Bordado</span>',
-    listo:     '<span class="badge listo">Listo</span>',
-    entregado: '<span class="badge entregado">Entregado</span>',
-    pendiente: '<span class="badge pendiente">Pendiente</span>',
-  };
-
-  function renderPedidos() {
-    const tbody = document.getElementById('tabla-pedidos');
-    if (!tbody) return;
-    tbody.innerHTML = pedidos.length === 0
-      ? '<tr><td colspan="7" style="text-align:center;color:#555;padding:30px;">Sin pedidos registrados</td></tr>'
-      : pedidos.map((p, i) => `
-        <tr>
-          <td style="color:#555">#${p.id}</td>
-          <td><strong>${p.cliente}</strong></td>
-          <td>${p.producto}</td>
-          <td>${p.cantidad}</td>
-          <td>${p.fecha || '—'}</td>
-          <td>${estadoLabel[p.estado] || p.estado}</td>
-          <td>
-            <button class="btn secondary" style="padding:5px 10px;font-size:0.75rem;" onclick="eliminarPedido(${i})">✕</button>
-          </td>
-        </tr>`).join('');
-  }
-
-  function renderProduccion() {
-    const tbody = document.getElementById('tabla-produccion');
-    if (!tbody) return;
-    const activos = pedidos.filter(p => p.estado !== 'entregado');
-    tbody.innerHTML = activos.length === 0
-      ? '<tr><td colspan="6" style="text-align:center;color:#555;padding:30px;">Sin pedidos activos</td></tr>'
-      : activos.map((p, i) => {
-          const etapas = ['corte','bordado','listo','entregado'];
-          const idx = etapas.indexOf(p.estado);
-          const siguiente = etapas[idx + 1];
-          return `
-          <tr>
-            <td style="color:#555">#${p.id}</td>
-            <td>${p.cliente}</td>
-            <td>${p.producto}</td>
-            <td>${p.cantidad}</td>
-            <td>${estadoLabel[p.estado] || p.estado}</td>
-            <td>${siguiente
-              ? `<button class="btn" style="padding:5px 14px;font-size:0.78rem;" onclick="avanzarEtapa(${pedidos.indexOf(p)})">→ ${siguiente.charAt(0).toUpperCase()+siguiente.slice(1)}</button>`
-              : '<span style="color:#555;font-size:0.8rem;">Completo</span>'
-            }</td>
-          </tr>`;
-        }).join('');
-
-    // cards producción
-    ['corte','bordado','listo','entregado'].forEach(e => {
-      const el = document.getElementById('prod-' + e);
-      if (el) el.textContent = pedidos.filter(p => p.estado === e).length;
-    });
-  }
-
-  function renderEntregas() {
-    const tbody = document.getElementById('tabla-entregas');
-    if (!tbody) return;
-    tbody.innerHTML = pedidos.length === 0
-      ? '<tr><td colspan="6" style="text-align:center;color:#555;padding:30px;">Sin pedidos</td></tr>'
-      : pedidos.map((p, i) => `
-        <tr>
-          <td style="color:#555">#${p.id}</td>
-          <td>${p.cliente}</td>
-          <td>${p.producto}</td>
-          <td>${p.fecha || '—'}</td>
-          <td>${estadoLabel[p.estado] || p.estado}</td>
-          <td>${p.estado !== 'entregado'
-            ? `<button class="btn" style="padding:5px 14px;font-size:0.78rem;" onclick="marcarEntregado(${i})">✓ Entregado</button>`
-            : '<span style="color:#4ade80;font-size:0.8rem;">✓ Listo</span>'
-          }</td>
-        </tr>`).join('');
+  function actualizarCards() {
+    const cnt = e => pedidos.filter(p => p.estado === e).length;
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    // diseño
+    set('d-cnt-hacer',     cnt('hacer-diseno'));
+    set('d-cnt-enviado',   cnt('enviado-cliente'));
+    set('d-cnt-consignar', cnt('para-consignar'));
+    set('d-cnt-consignado',cnt('consignado'));
+    // producción
+    set('p-cnt-aprobado',  cnt('aprobado'));
+    set('p-cnt-calandra',  cnt('enviado-calandra'));
+    set('p-cnt-impresion', cnt('llego-impresion'));
+    set('p-cnt-corte',     cnt('corte'));
+    set('p-cnt-calidad',   cnt('calidad'));
+    set('p-cnt-costura',   cnt('costura'));
+    // ventas
+    set('v-cnt-listo',     cnt('listo'));
+    set('v-cnt-arreglos',  cnt('arreglos'));
+    set('v-cnt-enviado',   cnt('enviado-final'));
   }
 
   function renderClientes() {
-    const tbody = document.getElementById('tabla-clientes');
+    const tbody  = document.getElementById('tabla-clientes');
     if (!tbody) return;
     const filtro = (document.getElementById('buscar-cliente')?.value || '').toLowerCase();
-    const lista = clientes.filter(c => c.nombre.toLowerCase().includes(filtro));
+    // agrupar por teléfono
+    const map = {};
+    pedidos.forEach(p => {
+      if (!map[p.telefono]) map[p.telefono] = [];
+      map[p.telefono].push(p);
+    });
+    const lista = Object.entries(map).filter(([tel]) => tel.toLowerCase().includes(filtro));
     tbody.innerHTML = lista.length === 0
-      ? '<tr><td colspan="5" style="text-align:center;color:#555;padding:30px;">Sin clientes registrados</td></tr>'
-      : lista.map(c => {
-          const pedidosCliente = pedidos.filter(p => p.cliente.toLowerCase() === c.nombre.toLowerCase());
-          const total = pedidosCliente.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
-          const ultimo = pedidosCliente.length ? pedidosCliente[pedidosCliente.length - 1].fecha || '—' : '—';
+      ? `<tr><td colspan="5" class="empty">Sin clientes</td></tr>`
+      : lista.map(([tel, ps]) => {
+          const ultimo = ps[ps.length - 1];
           return `<tr>
-            <td><strong>${c.nombre}</strong></td>
-            <td>${c.telefono || '—'}</td>
-            <td>${pedidosCliente.length}</td>
-            <td>${ultimo}</td>
-            <td style="color:#4ade80">$${total.toLocaleString('es-CO')}</td>
+            <td><strong>${tel}</strong></td>
+            <td>${ultimo.nombre || '—'}</td>
+            <td style="color:#f97316">${ultimo.vendedora || '—'}</td>
+            <td>${ps.length}</td>
+            <td>${ETAPA_LABEL[ultimo.estado] || ultimo.estado}</td>
           </tr>`;
         }).join('');
   }
 
-  function actualizarCards() {
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    set('cnt-total',   pedidos.length);
-    set('cnt-corte',   pedidos.filter(p => p.estado === 'corte').length);
-    set('cnt-bordado', pedidos.filter(p => p.estado === 'bordado').length);
-    set('cnt-listo',   pedidos.filter(p => p.estado === 'listo').length);
-  }
-
   // ─── ACCIONES ─────────────────────────────────────────────────────────────
-  function abrirFormPedido() {
-    document.getElementById('form-pedido').style.display = 'block';
-    document.getElementById('form-pedido').scrollIntoView({ behavior: 'smooth' });
+  function avanzar(i) {
+    const idx = ETAPAS.indexOf(pedidos[i].estado);
+    if (idx < ETAPAS.length - 1) {
+      pedidos[i].estado = ETAPAS[idx + 1];
+      guardarLS();
+      renderAll();
+      toast('Movido a: ' + ETAPA_LABEL[pedidos[i].estado]);
+    }
   }
 
-  function guardarPedido() {
-    const cliente  = document.getElementById('p-cliente').value.trim();
-    const producto = document.getElementById('p-producto').value.trim();
-    const cantidad = document.getElementById('p-cantidad').value;
-    if (!cliente || !producto) { alert('Completa cliente y producto'); return; }
-    pedidos.push({
-      id: nextId++,
-      cliente, producto,
-      cantidad: parseInt(cantidad) || 0,
-      fecha:    document.getElementById('p-fecha').value,
-      valor:    parseFloat(document.getElementById('p-valor').value) || 0,
-      estado:   document.getElementById('p-estado').value,
-      notas:    document.getElementById('p-notas').value,
-    });
-    guardarLS();
-    document.getElementById('form-pedido').style.display = 'none';
-    ['p-cliente','p-producto','p-cantidad','p-fecha','p-valor','p-notas'].forEach(id => document.getElementById(id).value = '');
-    renderAll();
-    toast('Pedido guardado');
-  }
-
-  function eliminarPedido(i) {
+  function eliminar(i) {
     if (!confirm('¿Eliminar este pedido?')) return;
     pedidos.splice(i, 1);
     guardarLS();
     renderAll();
+    toast('Pedido eliminado');
   }
 
-  function avanzarEtapa(i) {
-    const etapas = ['corte','bordado','listo','entregado'];
-    const idx = etapas.indexOf(pedidos[i].estado);
-    if (idx < etapas.length - 1) {
-      pedidos[i].estado = etapas[idx + 1];
-      guardarLS();
-      renderAll();
-      toast('Estado actualizado');
-    }
+  // ─── MODAL ────────────────────────────────────────────────────────────────
+  function abrirModal() {
+    document.getElementById('modal-overlay').classList.add('open');
   }
-
-  function marcarEntregado(i) {
-    pedidos[i].estado = 'entregado';
-    guardarLS();
-    renderAll();
-    toast('Marcado como entregado');
+  function cerrarModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
   }
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-overlay')) cerrarModal();
+  });
 
-  function abrirFormCliente() {
-    document.getElementById('form-cliente').style.display = 'block';
-    document.getElementById('form-cliente').scrollIntoView({ behavior: 'smooth' });
-  }
+  function guardarPedido() {
+    const telefono  = document.getElementById('m-telefono').value.trim();
+    const vendedora = document.getElementById('m-vendedora').value;
+    const tipo      = document.getElementById('m-tipo').value;
+    if (!telefono) { alert('Escribe el número de WhatsApp'); return; }
+    if (!vendedora) { alert('Selecciona la vendedora'); return; }
 
-  function guardarCliente() {
-    const nombre = document.getElementById('c-nombre').value.trim();
-    if (!nombre) { alert('Escribe el nombre'); return; }
-    clientes.push({
-      nombre,
-      telefono: document.getElementById('c-telefono').value.trim(),
-      ciudad:   document.getElementById('c-ciudad').value.trim(),
+    // tipo define el estado inicial
+    const estadoInicial = tipo === 'consignado' ? 'enviado-cliente' : 'hacer-diseno';
+
+    pedidos.push({
+      id:        nextId++,
+      telefono,
+      vendedora,
+      producto:  document.getElementById('m-producto').value.trim(),
+      valor:     parseFloat(document.getElementById('m-valor').value) || 0,
+      fecha:     document.getElementById('m-fecha').value,
+      notas:     document.getElementById('m-notas').value.trim(),
+      estado:    estadoInicial,
+      creado:    new Date().toISOString(),
     });
-    guardarLS();
-    document.getElementById('form-cliente').style.display = 'none';
-    ['c-nombre','c-telefono','c-ciudad'].forEach(id => document.getElementById(id).value = '');
-    renderAll();
-    toast('Cliente guardado');
-  }
 
-  function filtrarClientes() { renderClientes(); }
+    guardarLS();
+    cerrarModal();
+    ['m-telefono','m-producto','m-valor','m-fecha','m-notas'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-vendedora').value = '';
+    renderAll();
+    toast('Pedido creado');
+  }
 
   // ─── RENTABILIDAD ─────────────────────────────────────────────────────────
   function calcularRent() {
@@ -659,9 +712,8 @@
 
   // ─── UTILS ────────────────────────────────────────────────────────────────
   function guardarLS() {
-    localStorage.setItem('ws_pedidos',  JSON.stringify(pedidos));
-    localStorage.setItem('ws_clientes', JSON.stringify(clientes));
-    localStorage.setItem('ws_nextId',   nextId);
+    localStorage.setItem('ws_pedidos2', JSON.stringify(pedidos));
+    localStorage.setItem('ws_nextId2',  nextId);
   }
 
   function toast(msg) {
