@@ -467,6 +467,149 @@
       box-shadow: 0 0 6px var(--accent);
     }
 
+    /* ─── TIMELINE PEDIDOS ─────────────────────────────────────────────── */
+    .pedidos-lista {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .pedido-row {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      transition: var(--transition);
+    }
+    .pedido-row:hover {
+      border-color: rgba(124,58,237,0.3);
+      box-shadow: 0 0 20px rgba(124,58,237,0.07);
+    }
+
+    .pedido-row-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .pedido-row-id {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 700;
+      min-width: 28px;
+    }
+
+    .pedido-row-nombre {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .pedido-row-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .pedido-row-fecha {
+      font-size: 0.72rem;
+      color: #fb923c;
+      font-weight: 600;
+    }
+
+    /* ── Timeline bar ── */
+    .timeline-bar {
+      display: flex;
+      align-items: center;
+      position: relative;
+      gap: 0;
+    }
+
+    .tl-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      position: relative;
+    }
+
+    /* línea entre pasos */
+    .tl-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 9px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      z-index: 0;
+    }
+    .tl-step.done:not(:last-child)::after,
+    .tl-step.active:not(:last-child)::after {
+      background: linear-gradient(90deg, rgba(124,58,237,0.6), rgba(255,255,255,0.08));
+    }
+    .tl-step.done:not(:last-child)::after {
+      background: linear-gradient(90deg, rgba(124,58,237,0.7), rgba(124,58,237,0.4));
+    }
+
+    .tl-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.12);
+      background: var(--card-bg);
+      z-index: 1;
+      position: relative;
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+
+    .tl-step.done .tl-dot {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 8px rgba(124,58,237,0.6);
+    }
+
+    .tl-step.active .tl-dot {
+      background: transparent;
+      border-color: #f97316;
+      box-shadow: 0 0 10px rgba(249,115,22,0.8), 0 0 20px rgba(249,115,22,0.3);
+      animation: pulseDot 1.5s ease-in-out infinite;
+    }
+    .tl-step.active .tl-dot::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      background: #f97316;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { box-shadow: 0 0 10px rgba(249,115,22,0.8), 0 0 20px rgba(249,115,22,0.3); }
+      50%       { box-shadow: 0 0 16px rgba(249,115,22,1),   0 0 32px rgba(249,115,22,0.5); }
+    }
+
+    .tl-label {
+      font-size: 0.58rem;
+      color: var(--text-muted);
+      margin-top: 5px;
+      text-align: center;
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+    }
+    .tl-step.done  .tl-label { color: #a78bfa; }
+    .tl-step.active .tl-label { color: #fb923c; font-weight: 700; }
+
+    @media (max-width: 600px) {
+      .tl-label { display: none; }
+      .tl-dot   { width: 14px; height: 14px; }
+    }
+
     /* ─── TABLE ────────────────────────────────────────────────────────── */
     .table-wrap {
       background: var(--card-bg);
@@ -1224,6 +1367,22 @@
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
+      <div class="nav-item" onclick="showSection('arreglos', this)">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </span>
+        <span>Arreglos</span>
+        <span class="nav-badge" id="badge-arreglos">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('envios', this)">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        </span>
+        <span>Envíos</span>
+        <span class="nav-badge" id="badge-envios">0</span>
+      </div>
+
     </nav>
 
     <div class="sidebar-footer">
@@ -1269,21 +1428,7 @@
         Pedidos en tiempo real
       </div>
 
-      <div class="table-wrap" style="margin-bottom:20px;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Teléfono</th>
-              <th>Vendedora</th>
-              <th>Prendas</th>
-              <th>Estado</th>
-              <th>Fecha entrega</th>
-            </tr>
-          </thead>
-          <tbody id="tabla-recientes"></tbody>
-        </table>
-      </div>
+      <div class="pedidos-lista" id="tabla-recientes"></div>
 
       <div class="metrics-grid">
         <div class="metric-card metric-card-sm" style="--metric-color: #c4b5fd;">
@@ -1537,6 +1682,31 @@
   </div>
 </div>
 
+    <!-- ─── ARREGLOS ────────────────────────────────────────────── -->
+    <section id="arreglos" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
+        Arreglos
+      </div>
+      <div style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text-muted);font-size:0.85rem;">
+        Sección en construcción — cuéntame qué quieres ver aquí
+      </div>
+    </section>
+
+    <!-- ─── ENVÍOS ─────────────────────────────────────────────── -->
+    <section id="envios" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
+        Envíos
+      </div>
+      <div style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text-muted);font-size:0.85rem;">
+        Sección en construcción — cuéntame qué quieres ver aquí
+      </div>
+    </section>
+
+  </div><!-- /main-area -->
+</div><!-- /app-layout -->
+
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toasts"></div>
 
@@ -1609,6 +1779,8 @@ const HEADER_INFO = {
   'bandeja':       { icon: '📥', title: 'Bandeja de entrada' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
+  'arreglos':      { icon: '🔧', title: 'Arreglos' },
+  'envios':        { icon: '🚀', title: 'Envíos' },
 };
 
 function showSection(id, navEl) {
@@ -1682,40 +1854,68 @@ function renderBadges() {
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
   const prod     = pedidos.filter(p => ['llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length;
   const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
+  const arreglos = pedidos.filter(p => p.arreglo).length;
+  const envios   = pedidos.filter(p => p.estado === 'listo').length;
 
-  document.getElementById('badge-general').textContent = total;
-  document.getElementById('badge-bandeja').textContent = bandeja;
-  document.getElementById('badge-diseno').textContent  = diseno;
-  document.getElementById('badge-prod').textContent    = prod;
+  document.getElementById('badge-general').textContent  = total;
+  document.getElementById('badge-bandeja').textContent  = bandeja;
+  document.getElementById('badge-diseno').textContent   = diseno;
+  document.getElementById('badge-prod').textContent     = prod;
+  document.getElementById('badge-arreglos').textContent = arreglos;
+  document.getElementById('badge-envios').textContent   = envios;
 }
 
 /* ─── Tabla recientes ────────────────────────────────────────── */
-function renderTablaRecientes() {
-  const tbody = document.getElementById('tabla-recientes');
-  // Más antiguo primero (orden natural del array), excluye enviados
-  const recientes = pedidos.filter(p => p.estado !== 'enviado-final');
+const TL_ETAPAS = [
+  { key: 'bandeja',          label: 'Bandeja'    },
+  { key: 'hacer-diseno',     label: 'Diseño'     },
+  { key: 'confirmado',       label: 'Confirmado' },
+  { key: 'enviado-calandra', label: 'Calandra'   },
+  { key: 'llego-impresion',  label: 'Impresión'  },
+  { key: 'corte',            label: 'Corte'      },
+  { key: 'calidad',          label: 'Calidad'    },
+  { key: 'costura',          label: 'Costura'    },
+  { key: 'listo',            label: 'Listo'      },
+];
 
-  if (!recientes.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;">Sin pedidos aún</td></tr>`;
+const TL_ORDER = TL_ETAPAS.map(e => e.key);
+
+function renderTablaRecientes() {
+  const cont = document.getElementById('tabla-recientes');
+  const lista = pedidos.filter(p => p.estado !== 'enviado-final');
+
+  if (!lista.length) {
+    cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin pedidos aún</div>`;
     return;
   }
 
-  tbody.innerHTML = recientes.map(p => {
-    const items = p.items && p.items.length
-      ? p.items.map(i => `${i.prenda}`).join(', ')
-      : '—';
-    const badgeCls = ESTADO_BADGE[p.estado] || 'badge-bandeja';
-    const label    = ESTADO_LABELS[p.estado] || p.estado;
-    const fecha    = p.fechaEntrega || '—';
+  const activeIdx = TL_ORDER.indexOf.bind(TL_ORDER);
+
+  cont.innerHTML = lista.map(p => {
+    const items    = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
+    const fecha    = p.fechaEntrega ? `📅 ${esc(p.fechaEntrega)}` : '';
+    const curIdx   = TL_ORDER.indexOf(p.estado);
+
+    const steps = TL_ETAPAS.map((etapa, i) => {
+      let cls = '';
+      if (i < curIdx)  cls = 'done';
+      if (i === curIdx) cls = 'active';
+      return `<div class="tl-step ${cls}"><div class="tl-dot"></div><div class="tl-label">${etapa.label}</div></div>`;
+    }).join('');
+
     return `
-      <tr>
-        <td style="color:var(--text-muted);font-size:0.75rem;">#${p.id}</td>
-        <td style="font-weight:700;">${esc(p.telefono)}</td>
-        <td style="color:var(--accent);font-size:0.8rem;">${esc(p.vendedora)}</td>
-        <td style="color:var(--text-muted);font-size:0.78rem;">${esc(items)}</td>
-        <td><span class="badge ${badgeCls}">${label}</span></td>
-        <td style="color:#fb923c;font-size:0.78rem;">${esc(fecha)}</td>
-      </tr>
+      <div class="pedido-row">
+        <div class="pedido-row-top">
+          <div class="pedido-row-id">#${p.id}</div>
+          <div class="pedido-row-nombre">${esc(p.telefono)}</div>
+          <div class="pedido-row-meta">
+            <span>${esc(p.vendedora || '—')}</span>
+            <span style="color:var(--text-muted);font-size:0.68rem;">${items}</span>
+          </div>
+          ${fecha ? `<div class="pedido-row-fecha">${fecha}</div>` : ''}
+        </div>
+        <div class="timeline-bar">${steps}</div>
+      </div>
     `;
   }).join('');
 }
@@ -1753,9 +1953,6 @@ function renderBandejaCotizaciones(arr) {
       </div>
       <div class="bandeja-actions">
         <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">Completar →</button>
-        <button class="btn btn-danger btn-sm" onclick="eliminarPedido(${p.id})">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
       </div>
     </div>
   `).join('');
@@ -1813,9 +2010,6 @@ function renderBandejaPedidos(arr) {
       </div>
       <div class="bandeja-actions">
         ${accionBtn}
-        <button class="btn btn-danger btn-sm" onclick="eliminarPedido(${p.id})">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
       </div>
     </div>
   `;
@@ -1861,9 +2055,6 @@ function renderKanbanCard(p) {
         <div class="arreglo-tag">⚠ Arreglo: ${esc(p.arreglo)}</div>
         <div class="kanban-card-actions">
           <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">✓ Llegó faltante</button>
-          <button class="btn btn-danger btn-xs" onclick="eliminarPedido(${p.id})">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-          </button>
         </div>
       `;
     } else {
@@ -1874,9 +2065,6 @@ function renderKanbanCard(p) {
           <button class="btn btn-danger btn-xs" onclick="registrarArreglo(${p.id})" style="background:rgba(234,179,8,0.15);color:#fde047;border-color:rgba(234,179,8,0.3);">
             ⚠ Arreglo
           </button>
-          <button class="btn btn-danger btn-xs" onclick="eliminarPedido(${p.id})">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-          </button>
         </div>
       `;
     }
@@ -1885,20 +2073,10 @@ function renderKanbanCard(p) {
     actionsHtml = `
       <div class="kanban-card-actions">
         <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">${btnLabel}</button>
-        <button class="btn btn-danger btn-xs" onclick="eliminarPedido(${p.id})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-        </button>
       </div>
     `;
   } else {
-    actionsHtml = `
-      <div class="kanban-card-actions">
-        <button class="btn btn-danger btn-xs" onclick="eliminarPedido(${p.id})">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
-          Eliminar
-        </button>
-      </div>
-    `;
+    actionsHtml = '';
   }
 
   return `
@@ -1980,8 +2158,14 @@ function llegoFaltante(id) {
 }
 
 function eliminarPedido(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  if (p.estado !== 'enviado-final') {
+    toast(`#${id} solo se puede eliminar cuando esté enviado`, 'info');
+    return;
+  }
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
-  pedidos = pedidos.filter(p => p.id !== id);
+  pedidos = pedidos.filter(x => x.id !== id);
   guardar();
   render();
   toast(`Pedido #${id} eliminado`, 'info');
