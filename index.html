@@ -607,7 +607,22 @@
 
     @media (max-width: 600px) {
       .tl-label { display: none; }
-      .tl-dot   { width: 14px; height: 14px; }
+      .tl-step.active .tl-label {
+        display: block;
+        position: absolute;
+        top: 18px;
+        white-space: nowrap;
+        font-size: 0.6rem;
+        font-weight: 700;
+        color: #fb923c;
+        background: rgba(249,115,22,0.12);
+        border: 1px solid rgba(249,115,22,0.3);
+        border-radius: 4px;
+        padding: 1px 5px;
+        z-index: 2;
+      }
+      .tl-dot   { width: 12px; height: 12px; }
+      .tl-step:not(:last-child)::after { top: 5px; }
     }
 
     /* ─── TABLE ────────────────────────────────────────────────────────── */
@@ -1762,6 +1777,24 @@ let tipoNuevo = 'cotizar';
 /* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
 ════════════════════════════════════════════════════════════════ */
+function getMesActual() {
+  const n = new Date();
+  return `${n.getFullYear()}-${n.getMonth()}`;
+}
+
+function limpiarEnviadosDelMesPasado() {
+  const mesGuardado = localStorage.getItem('ws_mes') || getMesActual();
+  const mesActual   = getMesActual();
+  if (mesGuardado !== mesActual) {
+    // Nuevo mes: borrar todos los pedidos en enviado-final
+    pedidos = pedidos.filter(p => p.estado !== 'enviado-final');
+    localStorage.setItem('ws_mes', mesActual);
+    guardar();
+  } else {
+    localStorage.setItem('ws_mes', mesActual);
+  }
+}
+
 function guardar() {
   localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
   localStorage.setItem('ws_nextId3', String(nextId));
@@ -1890,7 +1923,7 @@ function renderTablaRecientes() {
 
   cont.innerHTML = lista.map(p => {
     const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
-    const fecha  = p.fechaEntrega ? `📅 ${esc(p.fechaEntrega)}` : '';
+    const fecha  = p.fechaEntrega ? `📅 ${fmtFecha(p.fechaEntrega)}` : '';
     // Para el timeline, si el pedido tiene arreglo registrado tratamos la etapa 'arreglo'
     // como activa cuando está en calidad (esperando que llegue), o done cuando ya pasó de calidad
     const curIdx = TL_ORDER.indexOf(p.estado);
@@ -1996,7 +2029,7 @@ function renderBandejaPedidos(arr) {
       : 'Sin prendas';
 
     const fechaHtml = p.fechaEntrega
-      ? `<span>📅 ${esc(p.fechaEntrega)}</span>`
+      ? `<span>📅 ${fmtFecha(p.fechaEntrega)}</span>`
       : '';
 
     return `
@@ -2045,7 +2078,7 @@ function renderKanbanCard(p) {
     : '<span style="opacity:.5">Sin prendas</span>';
 
   const fechaHtml = p.fechaEntrega
-    ? `<div class="kanban-card-date">📅 ${esc(p.fechaEntrega)}</div>`
+    ? `<div class="kanban-card-date">📅 ${fmtFecha(p.fechaEntrega)}</div>`
     : '';
 
   const notasHtml = p.notas
@@ -2148,6 +2181,9 @@ function registrarArreglo(id) {
   guardar();
   render();
   toast(`Arreglo registrado en #${id}`, 'info');
+  // Navegar a la sección Arreglos
+  const navArreglos = document.querySelector('.nav-item[onclick*="arreglos"]');
+  showSection('arreglos', navArreglos);
 }
 
 function llegoFaltante(id) {
@@ -2354,6 +2390,8 @@ function guardarNuevo() {
       const sels = row.querySelectorAll('select');
       return { prenda: sels[0].value, tela: sels[1].value };
     });
+    // Pedido directo entra confirmado, va directo a diseño
+    pedido.estado = 'hacer-diseno';
   }
 
   pedidos.push(pedido);
@@ -2407,6 +2445,18 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Formatea "YYYY-MM-DD" → "Lun 26/03"
+function fmtFecha(iso) {
+  if (!iso) return '';
+  // Parsear sin desfase de zona horaria
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const dd = String(d).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  return `${dias[date.getDay()]} ${dd}/${mm}`;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -2546,6 +2596,7 @@ function registrarEnvio(id) {
 /* ════════════════════════════════════════════════════════════════
    INIT
 ════════════════════════════════════════════════════════════════ */
+limpiarEnviadosDelMesPasado();
 updateDate();
 render();
 </script>
