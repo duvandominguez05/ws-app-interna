@@ -1,0 +1,21 @@
+{
+  "name": "W&S Textil — App Interna",
+  "short_name": "W&S Textil",
+  "description": "App interna de producción W&S Textil",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#f97316",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
