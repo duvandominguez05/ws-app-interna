@@ -1889,7 +1889,7 @@ function renderBadges() {
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
   const prod     = pedidos.filter(p => ['llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length;
   const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  const arreglos = pedidos.filter(p => p.arreglo && p.estado !== 'enviado-final').length;
+  const arreglos = pedidos.filter(p => p.arreglo !== undefined && p.arreglo !== null && p.estado !== 'enviado-final').length;
   const envios   = pedidos.filter(p => p.estado === 'listo').length;
 
   document.getElementById('badge-general').textContent  = total;
@@ -2127,7 +2127,7 @@ function renderKanbanCard(p) {
 
   if (p.estado === 'calidad') {
     if (p.arreglo) {
-      const descArreglo = (p.arreglo === '...') ? 'Pendiente de descripción' : esc(p.arreglo);
+      const descArreglo = (p.arreglo === '...' || p.arreglo === 'pendiente') ? 'Pendiente de descripción' : esc(p.arreglo);
       actionsHtml = `
         <div class="arreglo-tag">⚠ ${descArreglo}</div>
         <div class="kanban-card-actions">
@@ -2209,7 +2209,7 @@ function avanzarNormal(id) {
 function registrarArreglo(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
-  p.arreglo = '...';  // placeholder — se edita en sección Arreglos
+  p.arreglo = 'pendiente';
   guardar();
   toast(`Pedido #${id} enviado a Arreglos`, 'info');
   const navArreglos = document.querySelector('.nav-item[onclick*="arreglos"]');
@@ -2504,7 +2504,7 @@ function updateDate() {
 function renderArreglos() {
   const cont = document.getElementById('lista-arreglos');
   if (!cont) return;
-  const lista = pedidos.filter(p => p.arreglo && p.estado !== 'enviado-final');
+  const lista = pedidos.filter(p => p.arreglo !== undefined && p.arreglo !== null && p.estado !== 'enviado-final');
   if (!lista.length) {
     cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);font-size:0.82rem;">Sin arreglos activos</div>`;
     return;
@@ -2512,7 +2512,7 @@ function renderArreglos() {
   cont.innerHTML = lista.map(p => {
     const itemsTxt = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
     const fechaHtml = p.fechaEntrega ? `<span>📅 ${fmtFecha(p.fechaEntrega)}</span>` : '';
-    const descActual = (p.arreglo === '...') ? '' : esc(p.arreglo);
+    const descActual = (p.arreglo === '...' || p.arreglo === 'pendiente') ? '' : esc(p.arreglo);
     return `
     <div class="bandeja-card" style="border-color:rgba(239,68,68,0.4);background:linear-gradient(135deg,rgba(239,68,68,0.07),var(--card-bg));margin-bottom:12px;">
       <div class="bandeja-card-top">
