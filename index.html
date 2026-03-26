@@ -319,9 +319,6 @@
   <button class="active" onclick="showSection('bandeja', this)">📥 Bandeja</button>
   <button onclick="showSection('diseno', this)">🎨 Diseño</button>
   <button onclick="showSection('produccion', this)">🏭 Producción</button>
-  <button onclick="showSection('ventas', this)">📦 Ventas</button>
-  <button onclick="showSection('rentabilidad', this)">💰 Rentabilidad</button>
-  <button onclick="showSection('clientes', this)">👥 Clientes</button>
 </nav>
 
 <main>
@@ -368,81 +365,11 @@
       <div class="card"><div class="num" id="p-cnt-corte">0</div><div class="label">Corte</div></div>
       <div class="card"><div class="num" id="p-cnt-calidad">0</div><div class="label">Calidad</div></div>
       <div class="card"><div class="num" id="p-cnt-costura">0</div><div class="label">Costura</div></div>
+      <div class="card"><div class="num" id="p-cnt-listo">0</div><div class="label">Listos</div></div>
+      <div class="card"><div class="num" id="p-cnt-enviado">0</div><div class="label">Enviados</div></div>
     </div>
 
     <div class="kanban" id="kanban-produccion"></div>
-  </section>
-
-  <!-- ===== VENTAS / ENTREGAS ===== -->
-  <section id="ventas" class="section">
-    <div class="section-header">
-      <h2>📦 Ventas y Entregas</h2>
-    </div>
-
-    <div class="cards">
-      <div class="card"><div class="num" id="v-cnt-listo">0</div><div class="label">Listos</div></div>
-      <div class="card"><div class="num" id="v-cnt-arreglos">0</div><div class="label">Arreglos</div></div>
-      <div class="card"><div class="num" id="v-cnt-enviado">0</div><div class="label">Enviados</div></div>
-    </div>
-
-    <div class="kanban" id="kanban-ventas"></div>
-  </section>
-
-  <!-- ===== RENTABILIDAD ===== -->
-  <section id="rentabilidad" class="section">
-    <div class="section-header"><h2>💰 Rentabilidad por pedido</h2></div>
-    <div class="form-grid" style="background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a; margin-bottom:24px;">
-      <div class="form-group">
-        <label>Valor cobrado ($)</label>
-        <input type="number" id="r-cobrado" placeholder="0" oninput="calcularRent()">
-      </div>
-      <div class="form-group">
-        <label>Costo tela ($)</label>
-        <input type="number" id="r-tela" placeholder="0" oninput="calcularRent()">
-      </div>
-      <div class="form-group">
-        <label>Costo sublimado/calandra ($)</label>
-        <input type="number" id="r-bordado" placeholder="0" oninput="calcularRent()">
-      </div>
-      <div class="form-group">
-        <label>Costo confección ($)</label>
-        <input type="number" id="r-confeccion" placeholder="0" oninput="calcularRent()">
-      </div>
-      <div class="form-group">
-        <label>Otros costos ($)</label>
-        <input type="number" id="r-otros" placeholder="0" oninput="calcularRent()">
-      </div>
-    </div>
-    <div style="background:#1a1d27; padding:20px; border-radius:10px; border:1px solid #2a2d3a; max-width:400px;">
-      <div class="rent-row"><span class="rkey">Total ingresos</span><span class="rval neu" id="r-res-ingreso">$0</span></div>
-      <div class="rent-row"><span class="rkey">Total costos</span><span class="rval neg" id="r-res-costo">$0</span></div>
-      <div class="rent-row"><span class="rkey">Utilidad bruta</span><span class="rval pos" id="r-res-utilidad">$0</span></div>
-      <div class="rent-row" style="border:none;"><span class="rkey">Margen</span><span class="rval pos" id="r-res-margen">0%</span></div>
-    </div>
-  </section>
-
-  <!-- ===== CLIENTES ===== -->
-  <section id="clientes" class="section">
-    <div class="section-header">
-      <h2>👥 Clientes</h2>
-    </div>
-    <div class="search-bar">
-      <input type="text" id="buscar-cliente" placeholder="Buscar por número o nombre..." oninput="renderClientes()">
-    </div>
-    <div class="tabla-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Número WA</th>
-            <th>Nombre</th>
-            <th>Vendedora</th>
-            <th>Pedidos</th>
-            <th>Estado actual</th>
-          </tr>
-        </thead>
-        <tbody id="tabla-clientes"></tbody>
-      </table>
-    </div>
   </section>
 
 </main>
@@ -470,30 +397,32 @@
         </div>
         <div class="form-group">
           <label>Tipo</label>
-          <select id="m-tipobandeja">
+          <select id="m-tipobandeja" onchange="onTipoChange()">
             <option value="cotizar">🎨 Cotización (necesita diseño)</option>
             <option value="pedido">✅ Pedido confirmado</option>
           </select>
         </div>
       </div>
     </div>
-    <div class="form-grid" id="modal-fecha-row">
-      <div class="form-group">
-        <label>Fecha entrega</label>
-        <input type="date" id="m-fecha">
+    <div id="modal-pedido-extra">
+      <div class="form-grid" id="modal-fecha-row">
+        <div class="form-group">
+          <label>Fecha entrega</label>
+          <input type="date" id="m-fecha">
+        </div>
       </div>
-    </div>
 
-    <!-- ÍTEMS -->
-    <div style="margin: 16px 0 8px;">
-      <label style="font-size:0.8rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Prendas del pedido</label>
-    </div>
-    <div id="items-lista" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
-    <button class="btn secondary" onclick="agregarItem()" type="button" style="width:100%;margin-bottom:16px;">+ Agregar prenda</button>
+      <!-- ÍTEMS -->
+      <div style="margin: 16px 0 8px;">
+        <label style="font-size:0.8rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Prendas del pedido</label>
+      </div>
+      <div id="items-lista" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+      <button class="btn secondary" onclick="agregarItem()" type="button" style="width:100%;margin-bottom:16px;">+ Agregar prenda</button>
 
-    <div class="form-group">
-      <label>Notas</label>
-      <textarea id="m-notas" placeholder="Observaciones..."></textarea>
+      <div class="form-group">
+        <label>Notas</label>
+        <textarea id="m-notas" placeholder="Observaciones..."></textarea>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="guardarPedido()">Guardar</button>
@@ -509,21 +438,22 @@
   let pedidos = JSON.parse(localStorage.getItem('ws_pedidos2')) || [];
   let nextId  = parseInt(localStorage.getItem('ws_nextId2'))    || 1;
 
-  // Etapas del flujo completo
-  const ETAPAS = [
-    'para-consignar',
-    'hacer-diseno',
-    'consignado',
-    'aprobado',
-    'enviado-calandra',
-    'llego-impresion',
-    'corte',
-    'calidad',
-    'costura',
-    'listo',
-    'arreglos',
-    'enviado-final',
-  ];
+  // Siguiente etapa por estado (dos flujos convergen en 'aprobado')
+  const SIGUIENTE = {
+    'para-consignar':   'consignado',
+    'consignado':       'hacer-diseno',
+    'hacer-diseno':     'aprobado',
+    'aprobado':         'enviado-calandra',
+    'enviado-calandra': 'llego-impresion',
+    'llego-impresion':  'corte',
+    'corte':            'calidad',
+    'calidad':          'costura',
+    'costura':          'listo',
+    'listo':            'enviado-final',
+  };
+
+  // Para compatibilidad con indexOf en renderKanban
+  const ETAPAS = ['bandeja','para-consignar','consignado','hacer-diseno','aprobado','enviado-calandra','llego-impresion','corte','calidad','costura','listo','enviado-final'];
 
   const ETAPA_LABEL = {
     'para-consignar':   'Para consignar',
@@ -570,12 +500,8 @@
     { id: 'corte',            css: 'col-corte',           label: '✂️ Corte de tela' },
     { id: 'calidad',          css: 'col-calidad',         label: '🔍 Control calidad' },
     { id: 'costura',          css: 'col-costura',         label: '🧵 Costura' },
-  ];
-
-  const COLS_VENTAS = [
-    { id: 'listo',         css: 'col-listo',          label: '🎉 Listo' },
-    { id: 'arreglos',      css: 'col-arreglos',        label: '🔧 Arreglos' },
-    { id: 'enviado-final', css: 'col-enviado-cliente2',label: '🚚 Enviado al cliente' },
+    { id: 'listo',            css: 'col-listo',           label: '🎉 Listo' },
+    { id: 'enviado-final',    css: 'col-enviado-cliente2',label: '🚚 Enviado al cliente' },
   ];
 
   function renderKanban(containerId, cols) {
@@ -586,8 +512,7 @@
       const cards = items.length === 0
         ? `<div class="empty">Sin pedidos</div>`
         : items.map(p => {
-            const idx      = ETAPAS.indexOf(p.estado);
-            const sigEtapa = ETAPAS[idx + 1];
+            const sigEtapa = SIGUIENTE[p.estado];
             const sigLabel = sigEtapa ? ETAPA_LABEL[sigEtapa] : null;
             const pi       = pedidos.indexOf(p);
             const bloqueado = p.estado === 'calidad' && p.arreglo;
@@ -694,8 +619,6 @@
     renderBandeja();
     renderKanban('kanban-diseno',    COLS_DISENO);
     renderKanban('kanban-produccion', COLS_PROD);
-    renderKanban('kanban-ventas',    COLS_VENTAS);
-    renderClientes();
     actualizarCards();
   }
 
@@ -718,45 +641,19 @@
     set('p-cnt-corte',     cnt('corte'));
     set('p-cnt-calidad',   cnt('calidad'));
     set('p-cnt-costura',   cnt('costura'));
-    // ventas
-    set('v-cnt-listo',     cnt('listo'));
-    set('v-cnt-arreglos',  cnt('arreglos'));
-    set('v-cnt-enviado',   cnt('enviado-final'));
-  }
-
-  function renderClientes() {
-    const tbody  = document.getElementById('tabla-clientes');
-    if (!tbody) return;
-    const filtro = (document.getElementById('buscar-cliente')?.value || '').toLowerCase();
-    // agrupar por teléfono
-    const map = {};
-    pedidos.forEach(p => {
-      if (!map[p.telefono]) map[p.telefono] = [];
-      map[p.telefono].push(p);
-    });
-    const lista = Object.entries(map).filter(([tel]) => tel.toLowerCase().includes(filtro));
-    tbody.innerHTML = lista.length === 0
-      ? `<tr><td colspan="5" class="empty">Sin clientes</td></tr>`
-      : lista.map(([tel, ps]) => {
-          const ultimo = ps[ps.length - 1];
-          return `<tr>
-            <td><strong>${tel}</strong></td>
-            <td>${ultimo.nombre || '—'}</td>
-            <td style="color:#f97316">${ultimo.vendedora || '—'}</td>
-            <td>${ps.length}</td>
-            <td>${ETAPA_LABEL[ultimo.estado] || ultimo.estado}</td>
-          </tr>`;
-        }).join('');
+    // producción — listo y enviado
+    set('p-cnt-listo',     cnt('listo'));
+    set('p-cnt-enviado',   cnt('enviado-final'));
   }
 
   // ─── ACCIONES ─────────────────────────────────────────────────────────────
   function avanzar(i) {
-    const idx = ETAPAS.indexOf(pedidos[i].estado);
-    if (idx < ETAPAS.length - 1) {
-      pedidos[i].estado = ETAPAS[idx + 1];
+    const sig = SIGUIENTE[pedidos[i].estado];
+    if (sig) {
+      pedidos[i].estado = sig;
       guardarLS();
       renderAll();
-      toast('Movido a: ' + ETAPA_LABEL[pedidos[i].estado]);
+      toast('Movido a: ' + ETAPA_LABEL[sig]);
     }
   }
 
@@ -769,6 +666,12 @@
   }
 
   // ─── MODAL ────────────────────────────────────────────────────────────────
+  function onTipoChange() {
+    const tipo = document.getElementById('m-tipobandeja').value;
+    const extra = document.getElementById('modal-pedido-extra');
+    if (extra) extra.style.display = tipo === 'cotizar' ? 'none' : '';
+  }
+
   function abrirModal() {
     completandoIdx = null;
     tempItems = [];
@@ -778,6 +681,7 @@
     document.getElementById('m-tipobandeja').selectedIndex = 0;
     document.getElementById('modal-campos-nuevos').style.display = '';
     document.getElementById('modal-overlay').classList.add('open');
+    onTipoChange(); // aplicar visibilidad inicial
   }
   function cerrarModal() {
     document.getElementById('modal-overlay').classList.remove('open');
@@ -827,13 +731,17 @@
   function guardarPedido() {
     const telefono  = document.getElementById('m-telefono').value.trim();
     const vendedora = document.getElementById('m-vendedora').value;
+    const tipoBandeja = document.getElementById('m-tipobandeja').value;
     if (!telefono)  { alert('Escribe el número de WhatsApp'); return; }
     if (!vendedora) { alert('Selecciona la vendedora'); return; }
-    if (tempItems.length === 0) { alert('Agrega al menos una prenda'); return; }
-    if (tempItems.some(it => !it.prenda || !it.tela)) { alert('Selecciona prenda y tela en cada ítem'); return; }
 
-    const tipoBandeja = document.getElementById('m-tipobandeja').value;
+    // Solo validar ítems si es pedido confirmado (no cotización)
+    if (tipoBandeja !== 'cotizar') {
+      if (tempItems.length === 0) { alert('Agrega al menos una prenda'); return; }
+      if (tempItems.some(it => !it.prenda || !it.tela)) { alert('Selecciona prenda y tela en cada ítem'); return; }
+    }
 
+    let msg;
     if (completandoIdx !== null) {
       // Completando pedido desde bandeja
       const p = pedidos[completandoIdx];
@@ -841,6 +749,7 @@
       p.fecha  = document.getElementById('m-fecha').value;
       p.notas  = document.getElementById('m-notas').value.trim();
       p.estado = p.tipoBandeja === 'cotizar' ? 'hacer-diseno' : 'para-consignar';
+      msg = 'Pedido completado';
       completandoIdx = null;
     } else {
       // Nuevo pedido manual
@@ -849,36 +758,19 @@
         telefono,
         vendedora,
         tipoBandeja,
-        items:       [...tempItems],
-        fecha:       document.getElementById('m-fecha').value,
-        notas:       document.getElementById('m-notas').value.trim(),
-        estado:      'bandeja',
+        items:       tipoBandeja !== 'cotizar' ? [...tempItems] : [],
+        fecha:       tipoBandeja !== 'cotizar' ? document.getElementById('m-fecha').value : '',
+        notas:       tipoBandeja !== 'cotizar' ? document.getElementById('m-notas').value.trim() : '',
+        estado:      tipoBandeja === 'cotizar' ? 'hacer-diseno' : 'bandeja',
         creado:      new Date().toISOString(),
       });
+      msg = tipoBandeja === 'cotizar' ? 'Cotización creada → Diseño' : 'Pedido creado en bandeja';
     }
 
     guardarLS();
     cerrarModal();
     renderAll();
-    toast(completandoIdx !== null ? 'Pedido completado' : 'Pedido creado');
-  }
-
-  // ─── RENTABILIDAD ─────────────────────────────────────────────────────────
-  function calcularRent() {
-    const cobrado    = parseFloat(document.getElementById('r-cobrado').value)    || 0;
-    const tela       = parseFloat(document.getElementById('r-tela').value)       || 0;
-    const bordado    = parseFloat(document.getElementById('r-bordado').value)    || 0;
-    const confeccion = parseFloat(document.getElementById('r-confeccion').value) || 0;
-    const otros      = parseFloat(document.getElementById('r-otros').value)      || 0;
-    const costos     = tela + bordado + confeccion + otros;
-    const utilidad   = cobrado - costos;
-    const margen     = cobrado > 0 ? ((utilidad / cobrado) * 100).toFixed(1) : 0;
-    const fmt = n => '$' + n.toLocaleString('es-CO');
-    document.getElementById('r-res-ingreso').textContent  = fmt(cobrado);
-    document.getElementById('r-res-costo').textContent    = fmt(costos);
-    document.getElementById('r-res-utilidad').textContent = fmt(utilidad);
-    document.getElementById('r-res-margen').textContent   = margen + '%';
-    document.getElementById('r-res-utilidad').className   = 'rval ' + (utilidad >= 0 ? 'pos' : 'neg');
+    toast(msg);
   }
 
   // ─── UTILS ────────────────────────────────────────────────────────────────
