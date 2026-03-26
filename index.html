@@ -278,6 +278,28 @@
     /* EMPTY */
     .empty { text-align: center; color: #555; padding: 30px; font-size: 0.9rem; }
 
+    /* BANDEJA */
+    .bandeja-card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3a;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .bandeja-card.tipo-cotizar { border-left: 4px solid #a78bfa; }
+    .bandeja-card.tipo-pedido  { border-left: 4px solid #4ade80; }
+    .bandeja-card .b-info { flex: 1; min-width: 160px; }
+    .bandeja-card .b-num  { font-size: 0.72rem; color: #555; margin-bottom: 2px; }
+    .bandeja-card .b-tel  { font-weight: 700; font-size: 1rem; margin-bottom: 2px; }
+    .bandeja-card .b-meta { font-size: 0.8rem; color: #aaa; }
+    .bandeja-card .b-tipo { font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .tipo-cotizar .b-tipo { background: #2a1e4a; color: #a78bfa; }
+    .tipo-pedido  .b-tipo { background: #14532d; color: #4ade80; }
+
     @media (max-width: 600px) {
       main { padding: 12px; }
       .kanban { grid-template-columns: 1fr; }
@@ -294,7 +316,8 @@
 </header>
 
 <nav>
-  <button class="active" onclick="showSection('diseno', this)">🎨 Diseño</button>
+  <button class="active" onclick="showSection('bandeja', this)">📥 Bandeja</button>
+  <button onclick="showSection('diseno', this)">🎨 Diseño</button>
   <button onclick="showSection('produccion', this)">🏭 Producción</button>
   <button onclick="showSection('ventas', this)">📦 Ventas</button>
   <button onclick="showSection('rentabilidad', this)">💰 Rentabilidad</button>
@@ -303,11 +326,24 @@
 
 <main>
 
+  <!-- ===== BANDEJA DE ENTRADA ===== -->
+  <section id="bandeja" class="section active">
+    <div class="section-header">
+      <h2>📥 Bandeja de entrada</h2>
+      <button class="btn" onclick="abrirModal()">+ Nuevo pedido</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="num" id="b-cnt-total">0</div><div class="label">Sin completar</div></div>
+      <div class="card"><div class="num" id="b-cnt-cotizar">0</div><div class="label">Cotizaciones</div></div>
+      <div class="card"><div class="num" id="b-cnt-pedido">0</div><div class="label">Pedidos confirmados</div></div>
+    </div>
+    <div id="bandeja-lista" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </section>
+
   <!-- ===== DISEÑO ===== -->
-  <section id="diseno" class="section active">
+  <section id="diseno" class="section">
     <div class="section-header">
       <h2>🎨 Diseño</h2>
-      <button class="btn" onclick="abrirModal()">+ Nuevo pedido</button>
     </div>
 
     <div class="cards">
@@ -414,23 +450,34 @@
 <!-- MODAL NUEVO PEDIDO -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <h2>Nuevo pedido</h2>
-    <div class="form-grid">
-      <div class="form-group">
-        <label>Número WhatsApp cliente</label>
-        <input type="text" id="m-telefono" placeholder="3XXXXXXXXX">
+    <h2 id="modal-titulo">Nuevo pedido</h2>
+    <div id="modal-campos-nuevos">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Número WhatsApp cliente</label>
+          <input type="text" id="m-telefono" placeholder="3XXXXXXXXX">
+        </div>
+        <div class="form-group">
+          <label>Vendedora</label>
+          <select id="m-vendedora">
+            <option value="">Seleccionar</option>
+            <option value="Betty">Betty</option>
+            <option value="Ney">Ney</option>
+            <option value="Graciela">Graciela</option>
+            <option value="Wendy">Wendy</option>
+            <option value="Paola">Paola</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="m-tipobandeja">
+            <option value="cotizar">🎨 Cotización (necesita diseño)</option>
+            <option value="pedido">✅ Pedido confirmado</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Vendedora</label>
-        <select id="m-vendedora">
-          <option value="">Seleccionar</option>
-          <option value="Betty">Betty</option>
-          <option value="Ney">Ney</option>
-          <option value="Graciela">Graciela</option>
-          <option value="Wendy">Wendy</option>
-          <option value="Paola">Paola</option>
-        </select>
-      </div>
+    </div>
+    <div class="form-grid" id="modal-fecha-row">
       <div class="form-group">
         <label>Fecha entrega</label>
         <input type="date" id="m-fecha">
@@ -603,8 +650,48 @@
     toast('Faltante recibido → pasó a Costura');
   }
 
+  // ─── BANDEJA ──────────────────────────────────────────────────────────────
+  function renderBandeja() {
+    const lista = document.getElementById('bandeja-lista');
+    if (!lista) return;
+    const pendientes = pedidos.filter(p => p.estado === 'bandeja');
+    if (pendientes.length === 0) {
+      lista.innerHTML = '<div class="empty" style="padding:40px;">Sin pedidos nuevos</div>';
+      return;
+    }
+    lista.innerHTML = pendientes.map(p => {
+      const pi = pedidos.indexOf(p);
+      const esCotizar = p.tipoBandeja === 'cotizar';
+      return `
+      <div class="bandeja-card tipo-${p.tipoBandeja || 'pedido'}">
+        <div class="b-info">
+          <div class="b-num">#${p.id} · ${p.creado ? new Date(p.creado).toLocaleDateString('es-CO') : ''}</div>
+          <div class="b-tel">📱 ${p.telefono}</div>
+          <div class="b-meta">👩 ${p.vendedora || '—'}</div>
+        </div>
+        <span class="b-tipo">${esCotizar ? '🎨 Cotización' : '✅ Pedido confirmado'}</span>
+        <button class="btn" onclick="abrirCompletar(${pi})">Completar</button>
+        <button class="btn danger" onclick="eliminar(${pi})">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  let completandoIdx = null;
+
+  function abrirCompletar(i) {
+    completandoIdx = i;
+    tempItems = pedidos[i].items ? [...pedidos[i].items] : [];
+    renderItems();
+    document.getElementById('m-fecha').value = pedidos[i].fecha || '';
+    document.getElementById('m-notas').value = pedidos[i].notas || '';
+    // Ocultar campos que ya vienen del bot
+    document.getElementById('modal-campos-nuevos').style.display = 'none';
+    document.getElementById('modal-overlay').classList.add('open');
+  }
+
   // ─── RENDER ───────────────────────────────────────────────────────────────
   function renderAll() {
+    renderBandeja();
     renderKanban('kanban-diseno',    COLS_DISENO);
     renderKanban('kanban-produccion', COLS_PROD);
     renderKanban('kanban-ventas',    COLS_VENTAS);
@@ -615,9 +702,13 @@
   function actualizarCards() {
     const cnt = e => pedidos.filter(p => p.estado === e).length;
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    // bandeja
+    const bPendientes = pedidos.filter(p => p.estado === 'bandeja');
+    set('b-cnt-total',   bPendientes.length);
+    set('b-cnt-cotizar', bPendientes.filter(p => p.tipoBandeja === 'cotizar').length);
+    set('b-cnt-pedido',  bPendientes.filter(p => p.tipoBandeja === 'pedido').length);
     // diseño
     set('d-cnt-hacer',     cnt('hacer-diseno'));
-    set('d-cnt-enviado',   cnt('enviado-cliente'));
     set('d-cnt-consignar', cnt('para-consignar'));
     set('d-cnt-consignado',cnt('consignado'));
     // producción
@@ -679,10 +770,13 @@
 
   // ─── MODAL ────────────────────────────────────────────────────────────────
   function abrirModal() {
+    completandoIdx = null;
     tempItems = [];
     renderItems();
     ['m-telefono','m-fecha','m-notas'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('m-vendedora').selectedIndex = 0;
+    document.getElementById('m-tipobandeja').selectedIndex = 0;
+    document.getElementById('modal-campos-nuevos').style.display = '';
     document.getElementById('modal-overlay').classList.add('open');
   }
   function cerrarModal() {
@@ -738,21 +832,35 @@
     if (tempItems.length === 0) { alert('Agrega al menos una prenda'); return; }
     if (tempItems.some(it => !it.prenda || !it.tela)) { alert('Selecciona prenda y tela en cada ítem'); return; }
 
-    pedidos.push({
-      id:        nextId++,
-      telefono,
-      vendedora,
-      items:     [...tempItems],
-      fecha:     document.getElementById('m-fecha').value,
-      notas:     document.getElementById('m-notas').value.trim(),
-      estado:    'para-consignar',
-      creado:    new Date().toISOString(),
-    });
+    const tipoBandeja = document.getElementById('m-tipobandeja').value;
+
+    if (completandoIdx !== null) {
+      // Completando pedido desde bandeja
+      const p = pedidos[completandoIdx];
+      p.items  = [...tempItems];
+      p.fecha  = document.getElementById('m-fecha').value;
+      p.notas  = document.getElementById('m-notas').value.trim();
+      p.estado = p.tipoBandeja === 'cotizar' ? 'hacer-diseno' : 'para-consignar';
+      completandoIdx = null;
+    } else {
+      // Nuevo pedido manual
+      pedidos.push({
+        id:          nextId++,
+        telefono,
+        vendedora,
+        tipoBandeja,
+        items:       [...tempItems],
+        fecha:       document.getElementById('m-fecha').value,
+        notas:       document.getElementById('m-notas').value.trim(),
+        estado:      'bandeja',
+        creado:      new Date().toISOString(),
+      });
+    }
 
     guardarLS();
     cerrarModal();
     renderAll();
-    toast('Pedido creado');
+    toast(completandoIdx !== null ? 'Pedido completado' : 'Pedido creado');
   }
 
   // ─── RENTABILIDAD ─────────────────────────────────────────────────────────
