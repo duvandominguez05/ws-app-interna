@@ -311,10 +311,9 @@
     </div>
 
     <div class="cards">
-      <div class="card"><div class="num" id="d-cnt-hacer">0</div><div class="label">Hacer diseño</div></div>
-      <div class="card"><div class="num" id="d-cnt-enviado">0</div><div class="label">Enviado al cliente</div></div>
       <div class="card"><div class="num" id="d-cnt-consignar">0</div><div class="label">Para consignar</div></div>
-      <div class="card"><div class="num" id="d-cnt-consignado">0</div><div class="label">Consignado</div></div>
+      <div class="card"><div class="num" id="d-cnt-hacer">0</div><div class="label">Hacer diseño</div></div>
+      <div class="card"><div class="num" id="d-cnt-consignado">0</div><div class="label">Confirmado</div></div>
     </div>
 
     <div class="kanban" id="kanban-diseno"></div>
@@ -433,13 +432,6 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Tipo</label>
-        <select id="m-tipo">
-          <option value="consignar">Para consignar</option>
-          <option value="consignado">Ya consignó</option>
-        </select>
-      </div>
-      <div class="form-group">
         <label>Producto</label>
         <input type="text" id="m-producto" placeholder="Ej: 20 camisetas sublimadas">
       </div>
@@ -472,9 +464,8 @@
 
   // Etapas del flujo completo
   const ETAPAS = [
-    'hacer-diseno',
-    'enviado-cliente',
     'para-consignar',
+    'hacer-diseno',
     'consignado',
     'aprobado',
     'enviado-calandra',
@@ -488,10 +479,9 @@
   ];
 
   const ETAPA_LABEL = {
-    'hacer-diseno':     'Hacer diseño',
-    'enviado-cliente':  'Enviado al cliente',
     'para-consignar':   'Para consignar',
-    'consignado':       'Consignado',
+    'hacer-diseno':     'Hacer diseño',
+    'consignado':       'Confirmado',
     'aprobado':         'Aprobado',
     'enviado-calandra': 'Enviado a calandra',
     'llego-impresion':  'Llegó de impresión',
@@ -521,10 +511,9 @@
 
   // ─── KANBAN DISEÑO ────────────────────────────────────────────────────────
   const COLS_DISENO = [
-    { id: 'hacer-diseno',    css: 'col-hacer-diseno',    label: '✏️ Hacer diseño' },
-    { id: 'enviado-cliente', css: 'col-enviado-cliente', label: '📤 Enviado al cliente' },
     { id: 'para-consignar',  css: 'col-para-consignar',  label: '💳 Para consignar' },
-    { id: 'consignado',      css: 'col-consignado',      label: '✅ Consignado' },
+    { id: 'hacer-diseno',    css: 'col-hacer-diseno',    label: '✏️ Hacer diseño' },
+    { id: 'consignado',      css: 'col-consignado',      label: '✅ Confirmado' },
   ];
 
   const COLS_PROD = [
@@ -670,7 +659,7 @@
     if (!vendedora) { alert('Selecciona la vendedora'); return; }
 
     // tipo define el estado inicial
-    const estadoInicial = tipo === 'consignado' ? 'enviado-cliente' : 'hacer-diseno';
+    const estadoInicial = 'para-consignar';
 
     pedidos.push({
       id:        nextId++,
@@ -687,7 +676,7 @@
     guardarLS();
     cerrarModal();
     ['m-telefono','m-producto','m-valor','m-fecha','m-notas'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('m-vendedora').value = '';
+    document.getElementById('m-vendedora').selectedIndex = 0;
     renderAll();
     toast('Pedido creado');
   }
