@@ -539,19 +539,40 @@
       const cards = items.length === 0
         ? `<div class="empty">Sin pedidos</div>`
         : items.map(p => {
-            const idx     = ETAPAS.indexOf(p.estado);
+            const idx      = ETAPAS.indexOf(p.estado);
             const sigEtapa = ETAPAS[idx + 1];
             const sigLabel = sigEtapa ? ETAPA_LABEL[sigEtapa] : null;
-            const pi = pedidos.indexOf(p);
+            const pi       = pedidos.indexOf(p);
+            const bloqueado = p.estado === 'calidad' && p.arreglo;
+
+            // Botones según estado
+            let acciones = '';
+            if (p.estado === 'calidad') {
+              if (p.arreglo) {
+                // Tiene arreglo pendiente → solo botón "Llegó faltante"
+                acciones = `<button class="btn" style="background:#f97316" onclick="llegoFaltante(${pi})">✓ Llegó faltante</button>`;
+              } else {
+                // Sin arreglo → campo para registrar arreglo + botón avanzar
+                acciones = `
+                  <input type="text" placeholder="Registrar arreglo..." style="background:#0f1117;border:1px solid #2a2d3a;color:#e0e0e0;padding:6px 10px;border-radius:6px;font-size:0.8rem;width:100%;margin-bottom:6px;" onchange="registrarArreglo(${pi}, this.value)">
+                  <button class="btn" onclick="avanzar(${pi})">→ Costura</button>`;
+              }
+            } else {
+              acciones = sigLabel
+                ? `<button class="btn" onclick="avanzar(${pi})">→ ${sigLabel}</button>`
+                : '<span style="color:#4ade80;font-size:0.78rem;">✓ Completo</span>';
+            }
+
             return `
-            <div class="kanban-card">
+            <div class="kanban-card" style="${bloqueado ? 'border-color:#f87171;' : ''}">
               <div class="kc-num">#${p.id}</div>
               <div class="kc-cliente">${p.telefono}</div>
               <div class="kc-producto">${p.producto || '—'}</div>
               <div class="kc-vendedor">👩 ${p.vendedora || '—'}</div>
-              <div class="kc-actions">
-                ${sigLabel ? `<button class="btn" onclick="avanzar(${pi})">→ ${sigLabel}</button>` : '<span style="color:#4ade80;font-size:0.78rem;">✓ Completo</span>'}
-                <button class="btn danger" onclick="eliminar(${pi})">✕</button>
+              ${bloqueado ? `<div style="color:#f87171;font-size:0.78rem;margin-bottom:8px;">⏳ ${p.arreglo}</div>` : ''}
+              <div class="kc-actions" style="flex-direction:column;align-items:stretch;">
+                ${acciones}
+                <button class="btn danger" onclick="eliminar(${pi})" style="margin-top:6px;">✕</button>
               </div>
             </div>`;
           }).join('');
@@ -564,6 +585,22 @@
         <div class="kanban-cards">${cards}</div>
       </div>`;
     }).join('');
+  }
+
+  function registrarArreglo(i, texto) {
+    if (!texto.trim()) return;
+    pedidos[i].arreglo = texto.trim();
+    guardarLS();
+    renderAll();
+    toast('Arreglo registrado — pedido bloqueado');
+  }
+
+  function llegoFaltante(i) {
+    pedidos[i].arreglo = null;
+    pedidos[i].estado  = 'costura';
+    guardarLS();
+    renderAll();
+    toast('Faltante recibido → pasó a Costura');
   }
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
