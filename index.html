@@ -2078,6 +2078,10 @@ function renderKanbanCard(p) {
     ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-style:italic;">"${esc(p.notas)}"</div>`
     : '';
 
+  const arregloInfoHtml = (p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'calidad')
+    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">⚠ Arreglo: ${esc(p.arreglo)}</div>`
+    : '';
+
   let actionsHtml = '';
 
   if (p.estado === 'calidad') {
@@ -2101,14 +2105,9 @@ function renderKanbanCard(p) {
     }
   } else if (p.estado === 'listo') {
     actionsHtml = `
-      <div style="margin-bottom:6px;">
-        <select id="metodo-${p.id}" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;">
-          <option value="">— Método de envío —</option>
-          ${METODOS_ENVIO.map(m => `<option>${esc(m)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="kanban-card-actions">
-        <button class="btn btn-success btn-xs" onclick="registrarEnvio(${p.id})" style="width:100%;justify-content:center;">✓ Confirmar envío</button>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">¿Cómo se envía?</div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;">
+        ${METODOS_ENVIO.map(m => `<button onclick="registrarEnvioDirecto(${p.id},'${esc(m)}')" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--text);font-size:0.72rem;padding:5px 8px;cursor:pointer;text-align:left;">${esc(m)}</button>`).join('')}
       </div>
     `;
   } else if (siguiente) {
@@ -2133,6 +2132,7 @@ function renderKanbanCard(p) {
       </div>
       ${fechaHtml}
       ${notasHtml}
+      ${arregloInfoHtml}
       ${actionsHtml}
     </div>
   `;
@@ -2502,6 +2502,16 @@ function registrarEnvio(id) {
   const sel = document.getElementById(`metodo-${id}`);
   const metodo = sel ? sel.value : '';
   if (!metodo) { toast('Selecciona el método de envío', 'error'); return; }
+  p.metodoEnvio = metodo;
+  p.estado      = 'enviado-final';
+  guardar();
+  render();
+  toast(`#${id} enviado — ${metodo}`, 'success');
+}
+
+function registrarEnvioDirecto(id, metodo) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
   p.metodoEnvio = metodo;
   p.estado      = 'enviado-final';
   guardar();
