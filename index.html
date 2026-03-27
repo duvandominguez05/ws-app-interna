@@ -2887,6 +2887,84 @@ function renderKanban(estado) {
   col.innerHTML = items.map(p => renderKanbanCard(p)).join('');
 }
 
+function renderKanbanCardDiseno(p) {
+  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '—';
+  const disenadorTxt = p.disenadorAsignado || '';
+
+  const disenadorHtml = disenadorTxt
+    ? `<div style="font-size:0.78rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">🎨 ${esc(disenadorTxt)}</div>`
+    : `<div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">🎨 Sin asignar</div>`;
+
+  const notasHtml = p.notas
+    ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;font-style:italic;">📝 ${esc(p.notas)}</div>`
+    : '';
+
+  let actionHtml = '';
+  if (p.estado === 'hacer-diseno') {
+    if (!disenadorTxt) {
+      const opts = DISENADORES.map(d => `<option value="${d}">${d}</option>`).join('');
+      actionHtml = `
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="sel-dis-${p.id}" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;">
+            <option value="">Seleccionar...</option>${opts}
+          </select>
+          <button onclick="tomarPedidoDiseno(${p.id})" style="background:rgba(124,58,237,0.25);border:1px solid rgba(124,58,237,0.5);color:#c4b5fd;border-radius:6px;padding:5px 10px;font-size:0.75rem;cursor:pointer;white-space:nowrap;">Tomar</button>
+        </div>`;
+    } else {
+      actionHtml = `
+        <div style="display:flex;gap:6px;">
+          <button onclick="marcarDisenoListo(${p.id})" style="flex:1;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#4ade80;border-radius:6px;padding:6px;font-size:0.78rem;cursor:pointer;font-weight:600;">✓ Listo</button>
+          <button onclick="liberarPedidoDiseno(${p.id})" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:6px 10px;font-size:0.75rem;cursor:pointer;" title="Liberar pedido">✕</button>
+        </div>`;
+    }
+  }
+
+  return `
+    <div class="kanban-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:0.7rem;color:var(--text-muted);">#${p.id}</div>
+      </div>
+      <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">📅 ${fechaTxt} &nbsp; 👤 ${esc(p.vendedora || '—')}</div>
+      ${notasHtml}
+      ${disenadorHtml}
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function tomarPedidoDiseno(id) {
+  const sel = document.getElementById(`sel-dis-${id}`);
+  const nombre = sel ? sel.value : '';
+  if (!nombre) { toast('Selecciona un diseñador', 'error'); return; }
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.disenadorAsignado = nombre;
+  guardar();
+  render();
+  toast(`${nombre} tomó el pedido #${id}`, 'ok');
+}
+
+function marcarDisenoListo(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.estado = 'confirmado';
+  guardar();
+  render();
+  toast(`Pedido #${id} marcado como listo`, 'ok');
+}
+
+function liberarPedidoDiseno(id) {
+  if (!confirm('¿Liberar este pedido para que otro diseñador lo tome?')) return;
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.disenadorAsignado = '';
+  guardar();
+  render();
+  toast(`Pedido #${id} liberado`, 'info');
+}
+
 function renderKanbanCard(p) {
   const siguiente = SIGUIENTE[p.estado];
   const itemsTxt = p.items && p.items.length
