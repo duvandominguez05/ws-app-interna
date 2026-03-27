@@ -2433,6 +2433,8 @@ let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
 let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
+let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
+let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
 
 /* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
@@ -3613,9 +3615,6 @@ setInterval(sincronizarCalandraServidor, 120000);
 /* ════════════════════════════════════════════════════════════════
    CALANDRA — CONTROL DE METRAJE
 ════════════════════════════════════════════════════════════════ */
-let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
-let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
-
 function guardarCalandra_store() {
   localStorage.setItem('ws_calandra', JSON.stringify(calandraRegistros));
 }
@@ -3638,7 +3637,7 @@ async function sincronizarCalandraServidor() {
       ancho:    r.ancho,
       fecha:    r.fecha,
       hora:     '',
-      semana:   getSemanaKey(new Date(r.fecha.split('/').reverse().join('-'))),
+      semana:   getSemanaKey((() => { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); })()),
       archivo:  r.archivo || '',
       disenador: r.disenador || '',
       origen:   'drive',
