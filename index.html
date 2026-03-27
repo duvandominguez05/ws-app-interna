@@ -2965,6 +2965,38 @@ function marcarDisenoListo(id) {
   toast(`Pedido #${id} marcado como listo`, 'ok');
 }
 
+function editarFecha(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+
+  // Mini modal inline
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:280px;text-align:center;">
+      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">📅 Fecha de entrega — #${p.id} ${esc(p.equipo||'')}</div>
+      <input type="date" id="fecha-edit-input" value="${p.fechaEntrega||''}" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;">
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button onclick="confirmarFecha(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
+        <button onclick="this.closest('.fecha-overlay').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Cancelar</button>
+      </div>
+    </div>`;
+  overlay.classList.add('fecha-overlay');
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function confirmarFecha(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const val = document.getElementById('fecha-edit-input').value;
+  p.fechaEntrega = val;
+  guardar();
+  render();
+  document.querySelector('.fecha-overlay')?.remove();
+  toast('Fecha actualizada', 'ok');
+}
+
 function liberarPedidoDiseno(id) {
   if (!confirm('¿Liberar este pedido para que otro diseñador lo tome?')) return;
   const p = pedidos.find(x => x.id === id);
@@ -2985,8 +3017,8 @@ function renderKanbanCard(p) {
     : '<span style="opacity:.5">Sin prendas</span>';
 
   const fechaHtml = p.fechaEntrega
-    ? `<div class="kanban-card-date">📅 ${fmtFecha(p.fechaEntrega)}</div>`
-    : '';
+    ? `<div class="kanban-card-date" onclick="editarFecha(${p.id})" title="Clic para cambiar fecha" style="cursor:pointer;">📅 ${fmtFecha(p.fechaEntrega)} ✎</div>`
+    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;cursor:pointer;" onclick="editarFecha(${p.id})" title="Agregar fecha de entrega">📅 Sin fecha — agregar</div>`;
 
   const notasHtml = p.notas
     ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-style:italic;">"${esc(p.notas)}"</div>`
