@@ -108,6 +108,7 @@ http.createServer((req, res) => {
         pedido.estado = estado;
         if (nota) pedido.notaWebhook = nota;
         pedido.ultimaActWebhook = new Date().toISOString();
+        pedido.ultimoMovimiento = new Date().toISOString();
         guardarPedidos(pedidos);
 
         console.log(`[webhook] #${pedido.id} ${pedido.equipo}: ${estadoAnterior} → ${estado}`);
@@ -149,6 +150,7 @@ http.createServer((req, res) => {
           tipoBandeja: tipo,
           estado:      tipo === 'pedido' ? 'hacer-diseno' : 'bandeja',
           creadoEn:    new Date().toLocaleDateString('es-CO'),
+          ultimoMovimiento: new Date().toISOString(),
           items:       [],
           fechaEntrega: '',
           notas:       '',

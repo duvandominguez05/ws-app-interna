@@ -2979,6 +2979,7 @@ function marcarDisenoListo(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.estado = 'confirmado';
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`Pedido #${id} marcado como listo`, 'ok');
@@ -3139,6 +3140,7 @@ function avanzar(id) {
   const sig = SIGUIENTE[p.estado];
   if (!sig) return;
   p.estado = sig;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
@@ -3165,6 +3167,7 @@ function avanzarNormal(id) {
   if (!p) return;
   p.estado = 'costura';
   p.arreglo = null;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`#${id} pasó a Costura`, 'success');
