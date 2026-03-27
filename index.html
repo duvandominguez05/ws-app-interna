@@ -2792,66 +2792,64 @@ guardar();
 updateDate();
 render();
 
-// Sincronizar desde servidor al cargar — el servidor es fuente de verdad
-fetch('/api/pedidos')
-  .then(r => r.json())
-  .then(data => {
-    // Soporte formato nuevo { pedidos, nextId } y formato viejo (array directo)
-    const serverPedidos = Array.isArray(data) ? data : (data.pedidos || []);
-    const serverNextId  = data.nextId || null;
+// Sincronizar desde servidor — el servidor es fuente de verdad
+function syncConServidor(silencioso = false) {
+  fetch('/api/pedidos')
+    .then(r => r.json())
+    .then(data => {
+      const serverPedidos = Array.isArray(data) ? data : (data.pedidos || []);
+      const serverNextId  = data.nextId || null;
 
-    if (!serverPedidos.length && !pedidos.length) return;
+      if (!serverPedidos.length && !pedidos.length) return;
 
-    if (!serverPedidos.length) {
-      // Servidor vacío pero tengo pedidos locales → subirlos
-      guardar();
-      return;
-    }
-
-    // Merge completo: servidor gana en estados, pero incluimos pedidos de ambos lados
-    const mapaServer = new Map(serverPedidos.map(p => [p.id, p]));
-    const mapaLocal  = new Map(pedidos.map(p => [p.id, p]));
-
-    const merged = [];
-
-    // Todos los ids entre servidor y local
-    const todosIds = new Set([...mapaServer.keys(), ...mapaLocal.keys()]);
-    todosIds.forEach(id => {
-      const s = mapaServer.get(id);
-      const l = mapaLocal.get(id);
-      if (s && l) {
-        // Existe en ambos: servidor gana en estado y campos de webhook
-        merged.push({ ...l, estado: s.estado,
-          notaWebhook: s.notaWebhook || l.notaWebhook,
-          ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook });
-      } else if (s) {
-        // Solo en servidor → agregarlo localmente
-        merged.push(s);
-      } else {
-        // Solo local → conservarlo
-        merged.push(l);
+      if (!serverPedidos.length) {
+        guardar();
+        return;
       }
-    });
 
-    // Ordenar por id
-    merged.sort((a, b) => a.id - b.id);
+      const mapaServer = new Map(serverPedidos.map(p => [p.id, p]));
+      const mapaLocal  = new Map(pedidos.map(p => [p.id, p]));
+      const merged = [];
 
-    // Actualizar nextId al mayor entre servidor y local
-    const maxId = merged.reduce((m, p) => Math.max(m, p.id), 0);
-    const nuevoNextId = Math.max(nextId, serverNextId || 1, maxId + 1);
+      const todosIds = new Set([...mapaServer.keys(), ...mapaLocal.keys()]);
+      todosIds.forEach(id => {
+        const s = mapaServer.get(id);
+        const l = mapaLocal.get(id);
+        if (s && l) {
+          merged.push({ ...l, estado: s.estado,
+            notaWebhook: s.notaWebhook || l.notaWebhook,
+            ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook });
+        } else if (s) {
+          merged.push(s);
+        } else {
+          merged.push(l);
+        }
+      });
 
-    const cambios = JSON.stringify(merged) !== JSON.stringify(pedidos) || nuevoNextId !== nextId;
-    if (cambios) {
-      pedidos = merged;
-      nextId  = nuevoNextId;
-      localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
-      localStorage.setItem('ws_nextId3', String(nextId));
-      guardar(); // subir estado fusionado al servidor
-      render();
-      toast('🔄 Pedidos sincronizados', 'info');
-    }
-  })
-  .catch(() => {});
+      merged.sort((a, b) => a.id - b.id);
+
+      const maxId = merged.reduce((m, p) => Math.max(m, p.id), 0);
+      const nuevoNextId = Math.max(nextId, serverNextId || 1, maxId + 1);
+
+      const cambios = JSON.stringify(merged) !== JSON.stringify(pedidos) || nuevoNextId !== nextId;
+      if (cambios) {
+        pedidos = merged;
+        nextId  = nuevoNextId;
+        localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+        localStorage.setItem('ws_nextId3', String(nextId));
+        guardar();
+        render();
+        if (!silencioso) toast('🔄 Pedidos sincronizados', 'info');
+      }
+    })
+    .catch(() => {});
+}
+
+// Sync al cargar
+syncConServidor(false);
+
+// Polling automático cada 15 segundos
+setInterval(() => syncConServidor(true), 15000);
 </script>
 </body>
 </html>
