@@ -2709,7 +2709,11 @@ function renderTablaRecientes() {
     return;
   }
 
-  cont.innerHTML = lista.map(p => {
+  const MAX = 5;
+  const visible = lista.slice(0, MAX);
+  const resto   = lista.length - MAX;
+
+  cont.innerHTML = visible.map(p => {
     const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
     const fecha  = p.fechaEntrega ? `📅 ${fmtFecha(p.fechaEntrega)}` : '';
     // Para el timeline, si el pedido tiene arreglo registrado tratamos la etapa 'arreglo'
@@ -2753,6 +2757,15 @@ function renderTablaRecientes() {
       </div>
     `;
   }).join('');
+
+  if (resto > 0) {
+    cont.innerHTML += `
+      <div style="text-align:center;padding:12px;">
+        <button class="btn btn-glass btn-sm" onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">
+          Ver ${resto} pedido${resto>1?'s':''} más →
+        </button>
+      </div>`;
+  }
 }
 
 /* ─── Bandeja ────────────────────────────────────────────────── */
