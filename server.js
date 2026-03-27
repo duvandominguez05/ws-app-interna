@@ -120,6 +120,55 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/venta — chatbot WhatsApp crea cotización/pedido ─
+  // Body: { tipo: 'cotizar'|'pedido', vendedora, telefono }
+  if (req.method === 'POST' && req.url === '/api/venta') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { tipo, vendedora, telefono } = JSON.parse(body);
+        if (!tipo || !vendedora || !telefono)
+          return json(res, 400, { error: 'Faltan campos: tipo, vendedora, telefono' });
+        if (!['cotizar', 'pedido'].includes(tipo))
+          return json(res, 400, { error: 'tipo debe ser cotizar o pedido' });
+
+        const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+        const vendedoraNorm = vendedora.toLowerCase();
+        if (!VENDEDORAS_VALIDAS.includes(vendedoraNorm))
+          return json(res, 400, { error: `Vendedora no reconocida: ${vendedora}` });
+
+        const pedidos = leerPedidos();
+        let nextId = leerNextId();
+
+        const nuevo = {
+          id:          nextId,
+          equipo:      '',
+          telefono:    String(telefono).trim(),
+          vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
+          tipoBandeja: tipo,
+          estado:      tipo === 'pedido' ? 'hacer-diseno' : 'bandeja',
+          creadoEn:    new Date().toLocaleDateString('es-CO'),
+          items:       [],
+          fechaEntrega: '',
+          notas:       '',
+          arreglo:     null,
+          origenBot:   true,
+        };
+
+        pedidos.push(nuevo);
+        guardarPedidos(pedidos, nextId + 1);
+
+        console.log(`[bot] Nueva ${tipo} #${nextId} — ${vendedora} — ${telefono}`);
+        return json(res, 200, { ok: true, id: nextId, tipo, vendedora: nuevo.vendedora, telefono });
+
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   const ext = path.extname(filePath);

@@ -1328,6 +1328,93 @@
       .metrics-grid { grid-template-columns: 1fr 1fr; }
       .kanban-board { grid-template-columns: 1fr !important; }
     }
+
+    /* ─── CALANDRA ──────────────────────────────────────────────────── */
+    .cal-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .cal-ancho-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+    .cal-item {
+      background: var(--card-bg);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .cal-item-info { flex: 1; min-width: 0; }
+    .cal-item-equipo { font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-item-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .cal-item-metros { font-size: 1rem; font-weight: 800; color: #a78bfa; white-space: nowrap; }
+    .cal-semana-header {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 18px 0 8px;
+    }
+
+    /* ─── SATÉLITES ─────────────────────────────────────────────────── */
+    .sat-resumen-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .sat-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(16,185,129,0.2);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .sat-card-nombre { font-weight: 800; font-size: 1rem; margin-bottom: 10px; color: #4ade80; }
+    .sat-stat-row { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 4px; }
+    .sat-stat-label { color: var(--text-muted); }
+    .sat-stat-val { font-weight: 700; }
+    .sat-pendiente { color: #fca5a5; }
+    .sat-entregado { color: #67e8f9; }
+    .sat-recibido  { color: #4ade80; }
+    .sat-item {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.82rem;
+    }
+    .sat-item.entrega { border: 1px solid rgba(6,182,212,0.2); }
+    .sat-item.recepcion { border: 1px solid rgba(16,185,129,0.2); }
+    .sat-tipo-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 768px) {
+      .cal-metrics { grid-template-columns: 1fr 1fr; }
+      .sat-resumen-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 400px) {
+      .cal-metrics { grid-template-columns: 1fr 1fr; }
+      .sat-resumen-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -1362,7 +1449,7 @@
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
         </span>
-        <span>Bandeja</span>
+        <span>Ventas</span>
         <span class="nav-badge" id="badge-bandeja">0</span>
       </div>
 
@@ -1395,6 +1482,18 @@
         <span class="nav-icon">🔧</span>
         <span>Arreglos</span>
         <span class="nav-badge" id="badge-arreglos">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('calandra', this)">
+        <span class="nav-icon">📐</span>
+        <span>Calandra</span>
+        <span class="nav-badge" id="badge-calandra">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('satelites', this)">
+        <span class="nav-icon">🧵</span>
+        <span>Satélites</span>
+        <span class="nav-badge" id="badge-satelites">0</span>
       </div>
 
     </nav>
@@ -1641,6 +1740,133 @@
       <div id="lista-arreglos-manuales"></div>
     </section>
 
+    <!-- ─── CALANDRA (METRAJE) ───────────────────────────────────── -->
+    <section id="calandra" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span>
+        Control de metraje enviado a calandra
+      </div>
+
+      <div class="cal-metrics">
+        <div class="metric-card metric-card-sm" style="--metric-color:#a78bfa;">
+          <div class="metric-label">Esta semana</div>
+          <div class="metric-value" id="cal-metros-semana">0.00</div>
+          <div class="metric-sub">metros enviados</div>
+          <div class="metric-icon">📐</div>
+        </div>
+        <div class="metric-card metric-card-sm" style="--metric-color:#67e8f9;">
+          <div class="metric-label">Hoy</div>
+          <div class="metric-value" id="cal-metros-hoy">0.00</div>
+          <div class="metric-sub">metros hoy</div>
+          <div class="metric-icon">📅</div>
+        </div>
+        <div class="metric-card metric-card-sm" style="--metric-color:#4ade80;">
+          <div class="metric-label">Archivos hoy</div>
+          <div class="metric-value" id="cal-archivos-hoy">0</div>
+          <div class="metric-sub">PDFs enviados</div>
+          <div class="metric-icon">📄</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envío</button>
+        <div class="cal-ancho-bar">
+          Ancho de tela:
+          <strong style="color:#a78bfa;" id="cal-ancho-label">1.50 m</strong>
+          <select id="cal-ancho-sel" onchange="cambiarAnchoTela(this.value)"
+            style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.12);color:var(--text);border-radius:5px;font-size:0.72rem;padding:3px 8px;">
+            <option value="1.40">1.40 m</option>
+            <option value="1.50" selected>1.50 m</option>
+            <option value="1.60">1.60 m</option>
+            <option value="1.70">1.70 m</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#a78bfa;margin-bottom:12px;">Registrar envío a calandra</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Equipo / Nombre del archivo</label>
+            <input type="text" class="form-input" id="cal-equipo" placeholder="Ej: Parroquia Funza Noveno 4">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Alto del PDF (cm)</label>
+            <input type="number" class="form-input" id="cal-alto" placeholder="Ej: 280" min="1" step="0.1">
+          </div>
+        </div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:10px;">
+          💡 Abre el PDF en Corel → Propiedades del documento → copia el alto en cm
+        </div>
+        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="guardarCalandra()">Guardar</button>
+        </div>
+      </div>
+
+      <div id="lista-calandra"></div>
+    </section>
+
+    <!-- ─── SATÉLITES DE COSTURA ──────────────────────────────────── -->
+    <section id="satelites" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>
+        Control de satélites — entrega y recepción de uniformes
+      </div>
+
+      <div class="sat-resumen-grid" id="sat-resumen"></div>
+
+      <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">📦 Registrar entrega</button>
+        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">✅ Registrar recepción</button>
+      </div>
+
+      <div id="form-sat" style="display:none;background:var(--card-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satélite</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Satélite</label>
+            <select class="form-select" id="sat-nombre">
+              <option value="">— Seleccionar —</option>
+              <option>Marcela</option>
+              <option>Yamile</option>
+              <option>Wilson</option>
+              <option>Cristina</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Equipo / Pedido</label>
+            <input type="text" class="form-input" id="sat-equipo" placeholder="Ej: Parroquia Funza">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tipo de prenda</label>
+            <select class="form-select" id="sat-prenda">
+              <option>Camiseta</option>
+              <option>Uniforme completo</option>
+              <option>Pantalón</option>
+              <option>Chaqueta</option>
+              <option>Buso</option>
+              <option>Sudadera</option>
+              <option>Portero acolchado buso</option>
+              <option>Portero acolchado pantalón</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cantidad</label>
+            <input type="number" class="form-input" id="sat-cantidad" placeholder="Ej: 20" min="1">
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-sat').style.display='none'">Cancelar</button>
+          <button class="btn btn-success btn-sm" onclick="guardarSat()">Guardar</button>
+        </div>
+      </div>
+
+      <div id="lista-satelites"></div>
+    </section>
+
   </div><!-- end main-area -->
 </div><!-- end app-layout -->
 
@@ -1732,11 +1958,11 @@
         <label class="form-label">Vendedora</label>
         <select class="form-select" id="nuevo-vendedora">
           <option value="">— Seleccionar —</option>
-          <option>Valentina</option>
-          <option>Alejandra</option>
-          <option>Marcela</option>
-          <option>Duvan</option>
-          <option>Otro</option>
+          <option>Betty</option>
+          <option>Graciela</option>
+          <option>Ney</option>
+          <option>Wendy</option>
+          <option>Paola</option>
         </select>
       </div>
     </div>
@@ -1869,11 +2095,13 @@ function guardar() {
 ════════════════════════════════════════════════════════════════ */
 const HEADER_INFO = {
   'vista-general': { icon: '📊', title: 'Vista general' },
-  'bandeja':       { icon: '📥', title: 'Bandeja de entrada' },
+  'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
   'wetransfer':    { icon: '📤', title: 'WeTransfer — envíos a calandra' },
   'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
+  'calandra':      { icon: '📐', title: 'Metraje — Control Calandra' },
+  'satelites':     { icon: '🧵', title: 'Satélites de costura' },
 };
 
 function showSection(id, navEl) {
@@ -1928,6 +2156,8 @@ function render() {
   renderKanban('enviado-final');
   renderWT();
   renderArreglos();
+  renderCalandra();
+  renderSatelites();
 }
 
 /* ─── Métricas ────────────────────────────────────────────────── */
@@ -2850,6 +3080,253 @@ syncConServidor(false);
 
 // Polling automático cada 15 segundos
 setInterval(() => syncConServidor(true), 15000);
+
+/* ════════════════════════════════════════════════════════════════
+   CALANDRA — CONTROL DE METRAJE
+════════════════════════════════════════════════════════════════ */
+let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
+let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
+
+function guardarCalandra_store() {
+  localStorage.setItem('ws_calandra', JSON.stringify(calandraRegistros));
+}
+
+function cambiarAnchoTela(val) {
+  calandraAncho = parseFloat(val);
+  localStorage.setItem('ws_calandra_ancho', String(calandraAncho));
+  document.getElementById('cal-ancho-label').textContent = calandraAncho.toFixed(2) + ' m';
+  renderCalandra();
+}
+
+function abrirFormCalandra() {
+  document.getElementById('cal-equipo').value = '';
+  document.getElementById('cal-alto').value   = '';
+  document.getElementById('form-calandra').style.display = 'block';
+  document.getElementById('cal-equipo').focus();
+}
+
+function guardarCalandra() {
+  const equipo = document.getElementById('cal-equipo').value.trim();
+  const alto   = parseFloat(document.getElementById('cal-alto').value);
+  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
+  if (!alto || alto <= 0) { toast('Ingresa el alto del PDF en cm', 'error'); return; }
+
+  // alto en cm × ancho en m → metros lineales
+  // (alto / 100) = alto en metros; metros lineales = alto_m (el ancho ya está fijo por la tela)
+  const altoCm   = alto;
+  const metros   = parseFloat(((altoCm / 100)).toFixed(3)); // metros lineales del rollo
+  const metros2  = parseFloat(((altoCm / 100) * calandraAncho).toFixed(3)); // m²
+
+  const hoy = new Date().toLocaleDateString('es-CO');
+  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+  calandraRegistros.unshift({
+    id:       Date.now(),
+    equipo,
+    altoCm,
+    metros,
+    metros2,
+    ancho:    calandraAncho,
+    fecha:    hoy,
+    hora,
+    semana:   getSemanaKey(new Date()),
+  });
+
+  guardarCalandra_store();
+  document.getElementById('form-calandra').style.display = 'none';
+  renderCalandra();
+  toast(`Registrado: ${equipo} — ${metros} m lineales`, 'success');
+}
+
+function getSemanaKey(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay() + 1); // lunes
+  return d.toLocaleDateString('es-CO');
+}
+
+function renderCalandra() {
+  const cont = document.getElementById('lista-calandra');
+  if (!cont) return;
+
+  const hoy       = new Date().toLocaleDateString('es-CO');
+  const semanaKey = getSemanaKey(new Date());
+
+  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy);
+  const semanaList = calandraRegistros.filter(r => r.semana === semanaKey);
+  const historico  = calandraRegistros.filter(r => r.fecha !== hoy);
+
+  const metrosHoy    = hoyList.reduce((s, r) => s + r.metros, 0);
+  const metrosSemana = semanaList.reduce((s, r) => s + r.metros, 0);
+
+  // Actualizar ancho selector
+  const sel = document.getElementById('cal-ancho-sel');
+  if (sel) sel.value = String(calandraAncho);
+  const lbl = document.getElementById('cal-ancho-label');
+  if (lbl) lbl.textContent = calandraAncho.toFixed(2) + ' m';
+
+  // Métricas
+  const elSemana = document.getElementById('cal-metros-semana');
+  const elHoy    = document.getElementById('cal-metros-hoy');
+  const elArch   = document.getElementById('cal-archivos-hoy');
+  if (elSemana) elSemana.textContent = metrosSemana.toFixed(2);
+  if (elHoy)    elHoy.textContent    = metrosHoy.toFixed(2);
+  if (elArch)   elArch.textContent   = hoyList.length;
+
+  // Badge sidebar
+  const badge = document.getElementById('badge-calandra');
+  if (badge) badge.textContent = hoyList.length;
+
+  let html = '';
+
+  if (!hoyList.length) {
+    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envíos registrados hoy</div>`;
+  } else {
+    html += `<div class="cal-semana-header">Hoy — ${hoyList.length} archivos · ${metrosHoy.toFixed(2)} m lineales</div>`;
+    html += hoyList.map(r => renderCalItem(r)).join('');
+  }
+
+  // Agrupar histórico por semana
+  if (historico.length) {
+    const porSemana = {};
+    historico.forEach(r => {
+      if (!porSemana[r.semana]) porSemana[r.semana] = [];
+      porSemana[r.semana].push(r);
+    });
+    Object.entries(porSemana).forEach(([sem, items]) => {
+      const total = items.reduce((s, r) => s + r.metros, 0);
+      html += `<div class="cal-semana-header">Semana del ${sem} — ${items.length} archivos · ${total.toFixed(2)} m lineales</div>`;
+      html += items.map(r => renderCalItem(r, true)).join('');
+    });
+  }
+
+  cont.innerHTML = html;
+}
+
+function renderCalItem(r, opaco = false) {
+  return `
+    <div class="cal-item" style="${opaco ? 'opacity:0.65;' : ''}">
+      <span style="font-size:1.3rem;">📄</span>
+      <div class="cal-item-info">
+        <div class="cal-item-equipo">${esc(r.equipo)}</div>
+        <div class="cal-item-meta">${r.altoCm} cm alto · ancho ${r.ancho} m · ${r.fecha} ${r.hora}</div>
+      </div>
+      <div class="cal-item-metros">${r.metros.toFixed(2)} m</div>
+    </div>
+  `;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SATÉLITES — CONTROL COSTURA
+════════════════════════════════════════════════════════════════ */
+const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
+let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
+let satTipoActual  = 'entrega';
+
+function guardarSat_store() {
+  localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
+}
+
+function abrirFormSat(tipo) {
+  satTipoActual = tipo;
+  document.getElementById('sat-nombre').value   = '';
+  document.getElementById('sat-equipo').value   = '';
+  document.getElementById('sat-cantidad').value = '';
+  const titulo = document.getElementById('form-sat-titulo');
+  if (titulo) titulo.textContent = tipo === 'entrega' ? '📦 Registrar entrega a satélite' : '✅ Registrar recepción de satélite';
+  document.getElementById('form-sat').style.display = 'block';
+  document.getElementById('sat-nombre').focus();
+}
+
+function guardarSat() {
+  const nombre   = document.getElementById('sat-nombre').value;
+  const equipo   = document.getElementById('sat-equipo').value.trim();
+  const prenda   = document.getElementById('sat-prenda').value;
+  const cantidad = parseInt(document.getElementById('sat-cantidad').value);
+
+  if (!nombre)           { toast('Selecciona el satélite', 'error'); return; }
+  if (!equipo)           { toast('Ingresa el equipo o pedido', 'error'); return; }
+  if (!cantidad || cantidad <= 0) { toast('Ingresa la cantidad', 'error'); return; }
+
+  const hoy = new Date().toLocaleDateString('es-CO');
+  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+  satMovimientos.unshift({
+    id:       Date.now(),
+    tipo:     satTipoActual,
+    satelite: nombre,
+    equipo,
+    prenda,
+    cantidad,
+    fecha:    hoy,
+    hora,
+  });
+
+  guardarSat_store();
+  document.getElementById('form-sat').style.display = 'none';
+  renderSatelites();
+  toast(`${satTipoActual === 'entrega' ? 'Entregado' : 'Recibido'}: ${cantidad} ${prenda} a ${nombre}`, 'success');
+}
+
+function renderSatelites() {
+  const contResumen = document.getElementById('sat-resumen');
+  const contLista   = document.getElementById('lista-satelites');
+  if (!contResumen || !contLista) return;
+
+  // Badge sidebar
+  const pendTotal = SATELITES.reduce((sum, s) => {
+    const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
+    const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
+    return sum + Math.max(0, entregado - recibido);
+  }, 0);
+  const badge = document.getElementById('badge-satelites');
+  if (badge) badge.textContent = pendTotal;
+
+  // Resumen por satélite
+  contResumen.innerHTML = SATELITES.map(s => {
+    const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
+    const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
+    const pendiente = Math.max(0, entregado - recibido);
+    return `
+      <div class="sat-card">
+        <div class="sat-card-nombre">🧵 ${esc(s)}</div>
+        <div class="sat-stat-row">
+          <span class="sat-stat-label">Entregado</span>
+          <span class="sat-stat-val sat-entregado">${entregado}</span>
+        </div>
+        <div class="sat-stat-row">
+          <span class="sat-stat-label">Recibido</span>
+          <span class="sat-stat-val sat-recibido">${recibido}</span>
+        </div>
+        <div class="sat-stat-row" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:6px;padding-top:6px;">
+          <span class="sat-stat-label">Pendiente</span>
+          <span class="sat-stat-val ${pendiente > 0 ? 'sat-pendiente' : 'sat-recibido'}">${pendiente}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Lista de movimientos recientes
+  if (!satMovimientos.length) {
+    contLista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin movimientos registrados</div>`;
+    return;
+  }
+
+  contLista.innerHTML = `
+    <div class="cal-semana-header" style="color:var(--text-muted);">Movimientos recientes</div>
+    ${satMovimientos.slice(0, 40).map(m => `
+      <div class="sat-item ${m.tipo}">
+        <span style="font-size:1.1rem;">${m.tipo === 'entrega' ? '📦' : '✅'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.satelite)} — ${esc(m.equipo)}</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(m.prenda)} · ${m.fecha} ${m.hora}</div>
+        </div>
+        <span class="sat-tipo-badge" style="${m.tipo === 'entrega' ? 'background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);' : 'background:rgba(16,185,129,0.15);color:#4ade80;border:1px solid rgba(16,185,129,0.3);'}">${m.tipo === 'entrega' ? '+' : '-'}${m.cantidad}</span>
+      </div>
+    `).join('')}
+  `;
+}
+
 </script>
 </body>
 </html>
