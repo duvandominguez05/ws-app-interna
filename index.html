@@ -1382,6 +1382,20 @@
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
+      <div class="divider"></div>
+      <div class="nav-label">Control</div>
+
+      <div class="nav-item" onclick="showSection('wetransfer', this)">
+        <span class="nav-icon">📤</span>
+        <span>WeTransfer</span>
+        <span class="nav-badge" id="badge-wt">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('arreglos', this)">
+        <span class="nav-icon">🔧</span>
+        <span>Arreglos</span>
+        <span class="nav-badge" id="badge-arreglos">0</span>
+      </div>
 
     </nav>
 
@@ -1554,6 +1568,77 @@
           <div class="kanban-cards" id="col-enviado-final"></div>
         </div>
       </div>
+    </section>
+
+    <!-- ─── WETRANSFER ──────────────────────────────────────────── -->
+    <section id="wetransfer" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
+        Enviados a calandra hoy
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;">
+        <button class="btn btn-primary btn-sm" onclick="registrarWT()">+ Registrar envío</button>
+        <span style="font-size:0.72rem;color:var(--text-muted);">Los envíos de n8n aparecen aquí automáticamente.</span>
+      </div>
+
+      <!-- Formulario rápido -->
+      <div id="form-wt" style="display:none;background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:12px;">Registrar envío WeTransfer</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nombre del equipo</label>
+            <input type="text" class="form-input" id="wt-equipo" placeholder="Ej: Galaktiturkos">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Archivos enviados</label>
+            <input type="text" class="form-input" id="wt-archivos" placeholder="Ej: camisas 3.pdf">
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-wt').style.display='none'">Cancelar</button>
+          <button class="btn btn-success btn-sm" onclick="guardarWT()">Guardar envío</button>
+        </div>
+      </div>
+
+      <div id="lista-wt"></div>
+    </section>
+
+    <!-- ─── ARREGLOS ──────────────────────────────────────────── -->
+    <section id="arreglos" class="section-content">
+      <div class="section-heading">
+        <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
+        Control de arreglos
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:18px;">
+        <button class="btn btn-danger btn-sm" onclick="registrarArregloManual()">+ Agregar arreglo</button>
+      </div>
+
+      <!-- Formulario -->
+      <div id="form-arreglo" style="display:none;background:var(--card-bg);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#fca5a5;margin-bottom:12px;">Nuevo arreglo</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nombre del equipo</label>
+            <input type="text" class="form-input" id="ar-equipo" placeholder="Ej: Galaktiturkos">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Qué falta</label>
+            <input type="text" class="form-input" id="ar-faltante" placeholder="Ej: 2 camisetas talla M">
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-arreglo').style.display='none'">Cancelar</button>
+          <button class="btn btn-danger btn-sm" onclick="guardarArregloManual()">Guardar arreglo</button>
+        </div>
+      </div>
+
+      <!-- Lista arreglos desde pedidos (calidad con arreglo) -->
+      <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">En pedidos activos</div>
+      <div id="lista-arreglos-pedidos"></div>
+
+      <!-- Lista arreglos manuales -->
+      <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-top:18px;margin-bottom:10px;">Registros manuales</div>
+      <div id="lista-arreglos-manuales"></div>
     </section>
 
   </div><!-- end main-area -->
@@ -1787,6 +1872,8 @@ const HEADER_INFO = {
   'bandeja':       { icon: '📥', title: 'Bandeja de entrada' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
+  'wetransfer':    { icon: '📤', title: 'WeTransfer — envíos a calandra' },
+  'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
 };
 
 function showSection(id, navEl) {
@@ -1839,6 +1926,8 @@ function render() {
   renderKanban('costura');
   renderKanban('listo');
   renderKanban('enviado-final');
+  renderWT();
+  renderArreglos();
 }
 
 /* ─── Métricas ────────────────────────────────────────────────── */
@@ -2110,7 +2199,7 @@ function renderKanbanCard(p) {
       actionsHtml = `
         <div class="kanban-card-actions">
           <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">→ Costura</button>
-          <button class="btn btn-danger btn-xs" onclick="registrarArreglo(${p.id})" style="background:rgba(234,179,8,0.15);color:#fde047;border-color:rgba(234,179,8,0.3);">⚠ Arreglo</button>
+          <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">🔧</button>
         </div>
       `;
     }
@@ -2531,6 +2620,162 @@ function registrarEnvioDirecto(id, metodo) {
   guardar();
   render();
   toast(`#${id} enviado — ${metodo}`, 'success');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   WETRANSFER
+════════════════════════════════════════════════════════════════ */
+let wtEnvios = JSON.parse(localStorage.getItem('ws_wt_envios') || '[]');
+
+function guardarWT_store() {
+  localStorage.setItem('ws_wt_envios', JSON.stringify(wtEnvios));
+}
+
+function registrarWT() {
+  document.getElementById('wt-equipo').value = '';
+  document.getElementById('wt-archivos').value = '';
+  document.getElementById('form-wt').style.display = 'block';
+  document.getElementById('wt-equipo').focus();
+}
+
+function guardarWT() {
+  const equipo   = document.getElementById('wt-equipo').value.trim();
+  const archivos = document.getElementById('wt-archivos').value.trim();
+  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
+  const hoy = new Date().toLocaleDateString('es-CO');
+  wtEnvios.unshift({ equipo, archivos, hora: new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}), fecha: hoy });
+  guardarWT_store();
+  document.getElementById('form-wt').style.display = 'none';
+  renderWT();
+  toast(`Envío registrado: ${equipo}`, 'success');
+}
+
+// n8n puede llamar esto vía webhook — también actualiza la lista de WeTransfer
+function registrarWTdesdeWebhook(equipo, archivos) {
+  const hoy = new Date().toLocaleDateString('es-CO');
+  wtEnvios.unshift({ equipo, archivos: archivos || '', hora: new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}), fecha: hoy, auto: true });
+  guardarWT_store();
+}
+
+function renderWT() {
+  const cont = document.getElementById('lista-wt');
+  if (!cont) return;
+  const hoy = new Date().toLocaleDateString('es-CO');
+  const hoy_list = wtEnvios.filter(e => e.fecha === hoy);
+  const hist     = wtEnvios.filter(e => e.fecha !== hoy);
+
+  document.getElementById('badge-wt').textContent = hoy_list.length;
+
+  let html = '';
+  if (!hoy_list.length) {
+    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envíos hoy</div>`;
+  } else {
+    html += hoy_list.map(e => `
+      <div style="background:var(--card-bg);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+        <span style="font-size:1.2rem;">📤</span>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:0.88rem;">${esc(e.equipo)}</div>
+          ${e.archivos ? `<div style="font-size:0.72rem;color:var(--text-muted);">${esc(e.archivos)}</div>` : ''}
+        </div>
+        <div style="font-size:0.72rem;color:#67e8f9;">${e.hora}</div>
+        ${e.auto ? `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 7px;">auto</span>` : ''}
+      </div>
+    `).join('');
+  }
+
+  if (hist.length) {
+    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:16px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
+    html += hist.slice(0, 20).map(e => `
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:0.7;">
+        <span style="font-size:0.9rem;">📁</span>
+        <div style="flex:1;font-size:0.82rem;">${esc(e.equipo)} ${e.archivos ? `<span style="color:var(--text-muted)">· ${esc(e.archivos)}</span>` : ''}</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);">${e.fecha} ${e.hora}</div>
+      </div>
+    `).join('');
+  }
+
+  cont.innerHTML = html;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ARREGLOS MANUALES
+════════════════════════════════════════════════════════════════ */
+let arreglosManuales = JSON.parse(localStorage.getItem('ws_arreglos_manuales') || '[]');
+
+function guardarArreglos_store() {
+  localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
+}
+
+function registrarArregloManual() {
+  document.getElementById('ar-equipo').value = '';
+  document.getElementById('ar-faltante').value = '';
+  document.getElementById('form-arreglo').style.display = 'block';
+  document.getElementById('ar-equipo').focus();
+}
+
+function guardarArregloManual() {
+  const equipo   = document.getElementById('ar-equipo').value.trim();
+  const faltante = document.getElementById('ar-faltante').value.trim();
+  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
+  if (!faltante) { toast('Ingresa qué falta', 'error'); return; }
+  arreglosManuales.unshift({ id: Date.now(), equipo, faltante, fecha: new Date().toLocaleDateString('es-CO'), resuelto: false });
+  guardarArreglos_store();
+  document.getElementById('form-arreglo').style.display = 'none';
+  renderArreglos();
+  toast(`Arreglo registrado: ${equipo}`, 'info');
+}
+
+function resolverArregloManual(id) {
+  const a = arreglosManuales.find(x => x.id === id);
+  if (!a) return;
+  a.resuelto = true;
+  guardarArreglos_store();
+  renderArreglos();
+  toast('Arreglo resuelto', 'success');
+}
+
+function renderArreglos() {
+  const contPed = document.getElementById('lista-arreglos-pedidos');
+  const contMan = document.getElementById('lista-arreglos-manuales');
+  if (!contPed || !contMan) return;
+
+  // Arreglos de pedidos activos
+  const conArreglo = pedidos.filter(p => p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'enviado-final');
+  document.getElementById('badge-arreglos').textContent = conArreglo.length + arreglosManuales.filter(a => !a.resuelto).length;
+
+  if (!conArreglo.length) {
+    contPed.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin arreglos en pedidos activos</div>`;
+  } else {
+    contPed.innerHTML = conArreglo.map(p => `
+      <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),var(--card-bg));border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <span style="font-size:0.65rem;color:var(--text-muted);">#${p.id}</span>
+          <span style="font-weight:700;font-size:0.88rem;">${esc(p.equipo || p.telefono)}</span>
+          <span style="font-size:0.68rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">calidad</span>
+        </div>
+        <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">🔧 ${esc(p.arreglo)}</div>
+      </div>
+    `).join('');
+  }
+
+  const pendientes = arreglosManuales.filter(a => !a.resuelto);
+  const resueltos  = arreglosManuales.filter(a =>  a.resuelto);
+
+  if (!pendientes.length && !resueltos.length) {
+    contMan.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin registros manuales</div>`;
+    return;
+  }
+
+  contMan.innerHTML = [...pendientes, ...resueltos].map(a => `
+    <div style="background:var(--card-bg);border:1px solid ${a.resuelto ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;${a.resuelto ? 'opacity:0.55;' : ''}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <span style="font-weight:700;font-size:0.88rem;">${esc(a.equipo)}</span>
+        <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);">${a.fecha}</span>
+      </div>
+      <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">🔧 ${esc(a.faltante)}</div>
+      ${!a.resuelto ? `<button class="btn btn-success btn-xs" onclick="resolverArregloManual(${a.id})">✓ Resuelto</button>` : `<span style="font-size:0.7rem;color:#6ee7b7;">✓ Resuelto</span>`}
+    </div>
+  `).join('');
 }
 
 /* ════════════════════════════════════════════════════════════════
