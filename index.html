@@ -2792,25 +2792,63 @@ guardar();
 updateDate();
 render();
 
-// Sincronizar desde servidor al cargar (n8n puede haber actualizado estados)
+// Sincronizar desde servidor al cargar — el servidor es fuente de verdad
 fetch('/api/pedidos')
   .then(r => r.json())
-  .then(serverPedidos => {
-    if (!Array.isArray(serverPedidos) || !serverPedidos.length) return;
-    // Merge: actualizar estados que el servidor tenga más recientes
-    let cambios = false;
-    serverPedidos.forEach(sp => {
-      const local = pedidos.find(p => p.id === sp.id);
-      if (local && local.estado !== sp.estado) {
-        local.estado = sp.estado;
-        if (sp.notaWebhook) local.notaWebhook = sp.notaWebhook;
-        cambios = true;
+  .then(data => {
+    // Soporte formato nuevo { pedidos, nextId } y formato viejo (array directo)
+    const serverPedidos = Array.isArray(data) ? data : (data.pedidos || []);
+    const serverNextId  = data.nextId || null;
+
+    if (!serverPedidos.length && !pedidos.length) return;
+
+    if (!serverPedidos.length) {
+      // Servidor vacío pero tengo pedidos locales → subirlos
+      guardar();
+      return;
+    }
+
+    // Merge completo: servidor gana en estados, pero incluimos pedidos de ambos lados
+    const mapaServer = new Map(serverPedidos.map(p => [p.id, p]));
+    const mapaLocal  = new Map(pedidos.map(p => [p.id, p]));
+
+    const merged = [];
+
+    // Todos los ids entre servidor y local
+    const todosIds = new Set([...mapaServer.keys(), ...mapaLocal.keys()]);
+    todosIds.forEach(id => {
+      const s = mapaServer.get(id);
+      const l = mapaLocal.get(id);
+      if (s && l) {
+        // Existe en ambos: servidor gana en estado y campos de webhook
+        merged.push({ ...l, estado: s.estado,
+          notaWebhook: s.notaWebhook || l.notaWebhook,
+          ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook });
+      } else if (s) {
+        // Solo en servidor → agregarlo localmente
+        merged.push(s);
+      } else {
+        // Solo local → conservarlo
+        merged.push(l);
       }
     });
+
+    // Ordenar por id
+    merged.sort((a, b) => a.id - b.id);
+
+    // Actualizar nextId al mayor entre servidor y local
+    const maxId = merged.reduce((m, p) => Math.max(m, p.id), 0);
+    const nuevoNextId = Math.max(nextId, serverNextId || 1, maxId + 1);
+
+    const cambios = JSON.stringify(merged) !== JSON.stringify(pedidos) || nuevoNextId !== nextId;
     if (cambios) {
+      pedidos = merged;
+      nextId  = nuevoNextId;
       localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+      localStorage.setItem('ws_nextId3', String(nextId));
+      guardar(); // subir estado fusionado al servidor
       render();
-      toast('🔄 Pedidos sincronizados con servidor', 'info');
+      toast('🔄 Pedidos sincronizados', 'info');
     }
   })
   .catch(() => {});

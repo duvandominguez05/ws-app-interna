@@ -3,7 +3,8 @@ const fs   = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'pedidos.json');
+const DATA_FILE   = path.join(__dirname, 'data', 'pedidos.json');
+const NEXTID_FILE = path.join(__dirname, 'data', 'nextId.json');
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -34,9 +35,17 @@ function leerPedidos() {
   } catch { return []; }
 }
 
-function guardarPedidos(pedidos) {
+function leerNextId() {
+  try {
+    if (!fs.existsSync(NEXTID_FILE)) return 1;
+    return JSON.parse(fs.readFileSync(NEXTID_FILE, 'utf8')).nextId || 1;
+  } catch { return 1; }
+}
+
+function guardarPedidos(pedidos, nextId) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(pedidos, null, 2));
+  if (nextId) fs.writeFileSync(NEXTID_FILE, JSON.stringify({ nextId }));
 }
 
 const ESTADOS_VALIDOS = [
@@ -56,7 +65,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/pedidos — lista todos los pedidos ──────────────
   if (req.method === 'GET' && req.url === '/api/pedidos') {
-    return json(res, 200, leerPedidos());
+    return json(res, 200, { pedidos: leerPedidos(), nextId: leerNextId() });
   }
 
   // ── POST /api/pedidos — app sincroniza su estado al servidor ─
@@ -65,9 +74,9 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { pedidos } = JSON.parse(body);
+        const { pedidos, nextId } = JSON.parse(body);
         if (!Array.isArray(pedidos)) return json(res, 400, { error: 'pedidos debe ser array' });
-        guardarPedidos(pedidos);
+        guardarPedidos(pedidos, nextId);
         return json(res, 200, { ok: true, total: pedidos.length });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
