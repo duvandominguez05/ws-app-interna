@@ -2966,6 +2966,9 @@ function liberarPedidoDiseno(id) {
 }
 
 function renderKanbanCard(p) {
+  const ESTADOS_DISENO = ['hacer-diseno', 'confirmado', 'enviado-calandra'];
+  if (ESTADOS_DISENO.includes(p.estado)) return renderKanbanCardDiseno(p);
+
   const siguiente = SIGUIENTE[p.estado];
   const itemsTxt = p.items && p.items.length
     ? p.items.map(i => `<span>${esc(i.prenda)}</span> · <span style="opacity:.7">${esc(i.tela)}</span>`).join('<br>')
