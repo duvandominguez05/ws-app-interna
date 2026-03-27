@@ -1599,6 +1599,129 @@
       .dash-metrics-top { grid-template-columns: repeat(2, 1fr); }
       .dash-cal-stats { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ─── NOTIFICACIONES ────────────────────────────────────────── */
+    .notif-btn {
+      position: relative;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+    .notif-btn:hover { background: rgba(124,58,237,0.15); color: var(--text); border-color: rgba(124,58,237,0.3); }
+    .notif-badge {
+      position: absolute;
+      top: -4px; right: -4px;
+      background: var(--red);
+      color: #fff;
+      font-size: 0.58rem;
+      font-weight: 800;
+      min-width: 16px; height: 16px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 3px;
+      display: none;
+    }
+    .notif-badge.visible { display: flex; }
+
+    .notif-panel {
+      position: fixed;
+      top: 64px; right: 16px;
+      width: 340px;
+      max-height: 70vh;
+      background: #161820;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .notif-panel.open { display: flex; }
+    .notif-panel-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .notif-panel-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text);
+      flex: 1;
+    }
+    .notif-clear-btn {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 3px 7px;
+      border-radius: 5px;
+      transition: var(--transition);
+    }
+    .notif-clear-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+    .notif-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
+    }
+    .notif-item {
+      display: flex;
+      gap: 10px;
+      padding: 10px 10px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .notif-item:hover { background: rgba(255,255,255,0.04); }
+    .notif-item.unread { background: rgba(124,58,237,0.08); }
+    .notif-item.unread::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 50%;
+      transform: translateY(-50%);
+      width: 3px; height: 60%;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    .notif-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .notif-body { flex: 1; min-width: 0; }
+    .notif-msg {
+      font-size: 0.78rem;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .notif-msg strong { color: var(--accent); }
+    .notif-time {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .notif-empty {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+
+    @media (max-width: 768px) {
+      .notif-panel { width: calc(100vw - 24px); right: 12px; top: 60px; }
+    }
   </style>
 </head>
 <body>
@@ -1710,12 +1833,33 @@
       </div>
       <div class="header-actions">
         <div class="header-date" id="header-date"></div>
+        <!-- Campana notificaciones -->
+        <button class="notif-btn" onclick="toggleNotifPanel()" title="Notificaciones">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="notif-badge" id="notif-badge">0</span>
+        </button>
         <button class="btn btn-orange btn-sm" onclick="openModalNuevo()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Nuevo pedido
         </button>
       </div>
     </header>
+
+    <!-- Panel notificaciones -->
+    <div class="notif-panel" id="notif-panel">
+      <div class="notif-panel-header">
+        <span style="font-size:1rem;">🔔</span>
+        <div class="notif-panel-title">Notificaciones</div>
+        <button class="notif-clear-btn" onclick="marcarTodasLeidas()">Marcar leídas</button>
+        <button class="notif-clear-btn" onclick="borrarNotifs()" style="color:#ef4444;">Borrar</button>
+      </div>
+      <div class="notif-list" id="notif-list">
+        <div class="notif-empty">Sin notificaciones</div>
+      </div>
+    </div>
 
     <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
     <section id="vista-general" class="section-content active section-bg">
@@ -2829,6 +2973,19 @@ function getBotonLabel(estado) {
 /* ════════════════════════════════════════════════════════════════
    ACCIONES
 ════════════════════════════════════════════════════════════════ */
+const NOTIF_ICONS = {
+  'bandeja':          '💼',
+  'hacer-diseno':     '🎨',
+  'confirmado':       '✅',
+  'enviado-calandra': '📤',
+  'llego-impresion':  '🖨️',
+  'corte':            '✂️',
+  'calidad':          '🔍',
+  'costura':          '🧵',
+  'listo':            '📦',
+  'enviado-final':    '🚀',
+};
+
 function avanzar(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
@@ -2838,6 +2995,22 @@ function avanzar(id) {
   guardar();
   render();
   toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
+
+  const icono = NOTIF_ICONS[sig] || '➡️';
+  const nombre = p.equipo || p.telefono;
+  if (sig === 'listo') {
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> está <strong>listo para entregar</strong> — vendedora: ${esc(p.vendedora || '—')}`, 'success', id);
+  } else if (sig === 'calidad') {
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó a <strong>control calidad</strong>`, 'info', id);
+  } else if (sig === 'enviado-calandra') {
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> enviado a <strong>calandra</strong>`, 'info', id);
+  } else if (sig === 'llego-impresion') {
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>corte</strong>`, 'info', id);
+  } else if (sig === 'enviado-final') {
+    crearNotif('🚀', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> — pedido completado`, 'success', id);
+  } else {
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> avanzó a <strong>${ESTADO_LABELS[sig]}</strong>`, 'info', id);
+  }
 }
 
 function avanzarNormal(id) {
@@ -2848,6 +3021,7 @@ function avanzarNormal(id) {
   guardar();
   render();
   toast(`#${id} pasó a Costura`, 'success');
+  crearNotif('🧵', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
 }
 
 function registrarArreglo(id) {
@@ -2857,6 +3031,7 @@ function registrarArreglo(id) {
   guardar();
   render();
   toast(`#${id} marcado con arreglo — escribe la descripción`, 'info');
+  crearNotif('⚠️', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
 }
 
 function guardarDescArreglo(id) {
@@ -3088,6 +3263,12 @@ function guardarNuevo() {
   closeModal('modal-nuevo');
   render();
   toast(`Pedido #${pedido.id} creado en bandeja`, 'success');
+
+  if (tipoNuevo === 'pedido') {
+    crearNotif('✅', `Nuevo pedido <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> confirmado — vendedora: ${esc(pedido.vendedora)}`, 'success', pedido.id);
+  } else {
+    crearNotif('💼', `Nueva cotización <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> — vendedora: ${esc(pedido.vendedora)}`, 'info', pedido.id);
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -3670,6 +3851,156 @@ function renderSatelites() {
     `).join('')}
   `;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   SISTEMA DE NOTIFICACIONES
+════════════════════════════════════════════════════════════════ */
+let notificaciones = JSON.parse(localStorage.getItem('ws_notifs') || '[]');
+
+function guardarNotifs() {
+  // Máximo 60 notificaciones guardadas
+  if (notificaciones.length > 60) notificaciones = notificaciones.slice(0, 60);
+  localStorage.setItem('ws_notifs', JSON.stringify(notificaciones));
+}
+
+function crearNotif(icono, mensaje, tipo = 'info', pedidoId = null) {
+  const notif = {
+    id:      Date.now(),
+    icono,
+    mensaje,
+    tipo,       // 'info' | 'success' | 'warning' | 'danger'
+    pedidoId,
+    leida:   false,
+    hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+    fecha:   new Date().toLocaleDateString('es-CO'),
+  };
+  notificaciones.unshift(notif);
+  guardarNotifs();
+  renderNotifs();
+}
+
+function renderNotifs() {
+  const lista  = document.getElementById('notif-list');
+  const badge  = document.getElementById('notif-badge');
+  if (!lista || !badge) return;
+
+  const noLeidas = notificaciones.filter(n => !n.leida).length;
+
+  // Badge
+  if (noLeidas > 0) {
+    badge.textContent = noLeidas > 99 ? '99+' : noLeidas;
+    badge.classList.add('visible');
+  } else {
+    badge.classList.remove('visible');
+  }
+
+  if (!notificaciones.length) {
+    lista.innerHTML = '<div class="notif-empty">🔕 Sin notificaciones</div>';
+    return;
+  }
+
+  // Agrupar por fecha
+  const grupos = {};
+  notificaciones.forEach(n => {
+    const hoy = new Date().toLocaleDateString('es-CO');
+    const key = n.fecha === hoy ? 'Hoy' : n.fecha;
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push(n);
+  });
+
+  lista.innerHTML = Object.entries(grupos).map(([fecha, items]) => `
+    <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:6px 10px 4px;">${fecha}</div>
+    ${items.map(n => `
+      <div class="notif-item ${n.leida ? '' : 'unread'}" onclick="notifClick(${n.id})">
+        <div class="notif-icon">${n.icono}</div>
+        <div class="notif-body">
+          <div class="notif-msg">${n.mensaje}</div>
+          <div class="notif-time">${n.hora}</div>
+        </div>
+      </div>
+    `).join('')}
+  `).join('');
+}
+
+function notifClick(id) {
+  const n = notificaciones.find(x => x.id === id);
+  if (!n) return;
+  n.leida = true;
+  guardarNotifs();
+  renderNotifs();
+  // Si tiene pedido asociado, navegar a vista general
+  if (n.pedidoId) {
+    showSection('vista-general', document.querySelector('[onclick*="vista-general"]'));
+  }
+}
+
+function marcarTodasLeidas() {
+  notificaciones.forEach(n => n.leida = true);
+  guardarNotifs();
+  renderNotifs();
+}
+
+function borrarNotifs() {
+  notificaciones = [];
+  guardarNotifs();
+  renderNotifs();
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  panel.classList.toggle('open');
+  // Al abrir, marcar como leídas
+  if (panel.classList.contains('open')) {
+    setTimeout(() => {
+      notificaciones.forEach(n => n.leida = true);
+      guardarNotifs();
+      renderNotifs();
+    }, 1500);
+  }
+}
+
+// Cerrar panel al hacer click fuera
+document.addEventListener('click', e => {
+  const panel = document.getElementById('notif-panel');
+  const btn   = document.querySelector('.notif-btn');
+  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+    panel.classList.remove('open');
+  }
+});
+
+// Verificar alertas de fechas próximas (se llama cada hora y al cargar)
+function verificarAlertasFechas() {
+  const hoy  = new Date(); hoy.setHours(0,0,0,0);
+  const hoyStr = hoy.toLocaleDateString('es-CO');
+
+  pedidos.filter(p => p.estado !== 'enviado-final' && p.fechaEntrega).forEach(p => {
+    const d    = new Date(p.fechaEntrega + 'T00:00:00');
+    const diff = Math.round((d - hoy) / 86400000);
+    const clave = `alerta-fecha-${p.id}-${hoyStr}`;
+
+    // Solo una alerta por pedido por día
+    if (localStorage.getItem(clave)) return;
+
+    if (diff === 0) {
+      localStorage.setItem(clave, '1');
+      crearNotif('🚨', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega HOY`, 'danger', p.id);
+    } else if (diff === 1) {
+      localStorage.setItem(clave, '1');
+      crearNotif('⚠️', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega mañana`, 'warning', p.id);
+    } else if (diff === 2) {
+      localStorage.setItem(clave, '1');
+      crearNotif('📅', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega en 2 días`, 'info', p.id);
+    } else if (diff < 0) {
+      localStorage.setItem(clave, '1');
+      crearNotif('🔴', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
+    }
+  });
+}
+
+// Inicializar notificaciones al cargar
+renderNotifs();
+setTimeout(verificarAlertasFechas, 1000);
+setInterval(verificarAlertasFechas, 3600000); // cada hora
 
 </script>
 </body>
