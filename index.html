@@ -1415,6 +1415,190 @@
       .cal-metrics { grid-template-columns: 1fr 1fr; }
       .sat-resumen-grid { grid-template-columns: 1fr; }
     }
+
+    /* ─── DASHBOARD ─────────────────────────────────────────────── */
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .dash-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .dash-panel-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dash-panel-title a {
+      margin-left: auto;
+      font-size: 0.68rem;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+      letter-spacing: 0;
+    }
+    .dash-panel-title a:hover { color: #a78bfa; }
+    /* Alertas urgentes */
+    .dash-alert-list { display: flex; flex-direction: column; gap: 7px; }
+    .dash-alert-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(239,68,68,0.07);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+    }
+    .dash-alert-item.warn {
+      background: rgba(234,179,8,0.07);
+      border-color: rgba(234,179,8,0.2);
+    }
+    .dash-alert-dias {
+      font-weight: 800;
+      font-size: 1rem;
+      min-width: 28px;
+      text-align: center;
+    }
+    .dash-alert-dias.red  { color: var(--red); }
+    .dash-alert-dias.yellow { color: var(--yellow); }
+    .dash-alert-info { flex: 1; }
+    .dash-alert-equipo { font-weight: 700; color: var(--text); }
+    .dash-alert-estado { font-size: 0.68rem; color: var(--text-muted); }
+    /* Satélites mini */
+    .dash-sat-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.82rem;
+    }
+    .dash-sat-row:last-child { border-bottom: none; }
+    .dash-sat-nombre { flex: 1; color: var(--text); font-weight: 600; }
+    .dash-sat-pend {
+      font-weight: 800;
+      font-size: 1rem;
+      min-width: 28px;
+      text-align: right;
+    }
+    .dash-sat-pend.ok { color: var(--green); }
+    .dash-sat-pend.warn { color: var(--yellow); }
+    .dash-sat-pend.high { color: var(--red); }
+    .dash-sat-label { font-size: 0.65rem; color: var(--text-muted); }
+    /* Calandra mini */
+    .dash-cal-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .dash-cal-stat {
+      text-align: center;
+      padding: 10px;
+      background: rgba(124,58,237,0.08);
+      border-radius: 8px;
+    }
+    .dash-cal-stat-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #a78bfa;
+      line-height: 1;
+    }
+    .dash-cal-stat-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    /* Flujo pipeline mini */
+    .dash-pipe-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.8rem;
+    }
+    .dash-pipe-row:last-child { border-bottom: none; }
+    .dash-pipe-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dash-pipe-label { flex: 1; color: var(--text-muted); }
+    .dash-pipe-count {
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    /* métricas top */
+    .dash-metrics-top {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .dash-kpi {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .dash-kpi::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--kpi-color, var(--accent));
+    }
+    .dash-kpi-val {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--kpi-color, var(--accent));
+      line-height: 1;
+    }
+    .dash-kpi-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    /* Panel timelines */
+    .dash-timelines-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    /* vacia */
+    .dash-empty {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      text-align: center;
+      padding: 16px 0;
+    }
+
+    @media (max-width: 768px) {
+      .dash-grid { grid-template-columns: 1fr; }
+      .dash-metrics-top { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 400px) {
+      .dash-metrics-top { grid-template-columns: repeat(2, 1fr); }
+      .dash-cal-stats { grid-template-columns: 1fr 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -1533,41 +1717,89 @@
       </div>
     </header>
 
-    <!-- ─── VISTA GENERAL ──────────────────────────────────────── -->
+    <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
     <section id="vista-general" class="section-content active section-bg">
 
-      <div class="section-heading">
-        <span class="dot"></span>
-        Pedidos en tiempo real
+      <!-- KPIs rápidos -->
+      <div class="dash-metrics-top">
+        <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
+          <div class="dash-kpi-val" id="m-total">0</div>
+          <div class="dash-kpi-label">Activos</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#fb923c;">
+          <div class="dash-kpi-val" id="m-diseno">0</div>
+          <div class="dash-kpi-label">Diseño</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#67e8f9;">
+          <div class="dash-kpi-val" id="m-produccion">0</div>
+          <div class="dash-kpi-label">Producción</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#4ade80;">
+          <div class="dash-kpi-val" id="m-listos">0</div>
+          <div class="dash-kpi-label">Listos</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#a78bfa;">
+          <div class="dash-kpi-val" id="m-cal-semana">0</div>
+          <div class="dash-kpi-label">m² calandra</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#f472b6;">
+          <div class="dash-kpi-val" id="m-sat-pend">0</div>
+          <div class="dash-kpi-label">Pend. satél.</div>
+        </div>
       </div>
 
-      <div class="pedidos-lista" id="tabla-recientes"></div>
+      <!-- Fila central: alertas + pipeline + satélites + calandra -->
+      <div class="dash-grid">
 
-      <div class="metrics-grid">
-        <div class="metric-card metric-card-sm" style="--metric-color: #c4b5fd;">
-          <div class="metric-label">Total activos</div>
-          <div class="metric-value" id="m-total">0</div>
-          <div class="metric-sub">en sistema</div>
-          <div class="metric-icon">📦</div>
+        <!-- Panel: Entregas próximas -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">
+            🔔 Entregas próximas
+            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver producción →</a>
+          </div>
+          <div class="dash-alert-list" id="dash-alertas">
+            <div class="dash-empty">Sin pedidos con fecha próxima</div>
+          </div>
         </div>
-        <div class="metric-card metric-card-sm" style="--metric-color: #fdba74;">
-          <div class="metric-label">En producción</div>
-          <div class="metric-value" id="m-produccion">0</div>
-          <div class="metric-sub">impresión → costura</div>
-          <div class="metric-icon">🏭</div>
+
+        <!-- Panel: Pipeline de estados -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">📊 Pipeline de producción</div>
+          <div id="dash-pipeline">
+            <div class="dash-empty">Sin pedidos</div>
+          </div>
         </div>
-        <div class="metric-card metric-card-sm" style="--metric-color: #4ade80;">
-          <div class="metric-label">Listos</div>
-          <div class="metric-value" id="m-listos">0</div>
-          <div class="metric-sub">para entregar</div>
-          <div class="metric-icon">✅</div>
+
+        <!-- Panel: Satélites -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">
+            🧵 Satélites — pendientes
+            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle →</a>
+          </div>
+          <div id="dash-satelites">
+            <div class="dash-empty">Sin movimientos</div>
+          </div>
         </div>
-        <div class="metric-card metric-card-sm" style="--metric-color: #67e8f9;">
-          <div class="metric-label">En diseño</div>
-          <div class="metric-value" id="m-diseno">0</div>
-          <div class="metric-sub">pendientes</div>
-          <div class="metric-icon">🎨</div>
+
+        <!-- Panel: Calandra -->
+        <div class="dash-panel">
+          <div class="dash-panel-title">
+            📐 Calandra — esta semana
+            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle →</a>
+          </div>
+          <div id="dash-calandra">
+            <div class="dash-empty">Sin registros esta semana</div>
+          </div>
         </div>
+
+      </div>
+
+      <!-- Timelines de todos los pedidos activos -->
+      <div class="dash-timelines-panel">
+        <div class="dash-panel-title" style="margin-bottom:12px;">
+          ⏱ Estado de todos los pedidos activos
+        </div>
+        <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
 
     </section>
@@ -2142,6 +2374,7 @@ function closeSidebar() {
 ════════════════════════════════════════════════════════════════ */
 function render() {
   renderMetricas();
+  renderDashboard();
   renderBadges();
   renderTablaRecientes();
   renderBandeja();
@@ -2171,6 +2404,117 @@ function renderMetricas() {
   document.getElementById('m-produccion').textContent = enProd;
   document.getElementById('m-listos').textContent     = listos;
   document.getElementById('m-diseno').textContent     = enDiseno;
+}
+
+/* ─── Dashboard ──────────────────────────────────────────────── */
+function renderDashboard() {
+  // KPIs calandra y satélites
+  const semanaKey = getSemanaKey(new Date());
+  const semLista  = calandraRegistros.filter(r => r.semana === semanaKey);
+  const totalMetros = semLista.reduce((a, r) => a + (r.metros || 0), 0);
+  document.getElementById('m-cal-semana').textContent = totalMetros.toFixed(1);
+
+  const pendTotalSat = SATELITES.reduce((sum, s) => {
+    const ent = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
+    const rec = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
+    return sum + Math.max(0, ent - rec);
+  }, 0);
+  document.getElementById('m-sat-pend').textContent = pendTotalSat;
+
+  // Panel alertas entregas próximas
+  const hoy   = new Date(); hoy.setHours(0,0,0,0);
+  const activos = pedidos.filter(p => p.estado !== 'enviado-final' && p.fechaEntrega);
+  const conFecha = activos.map(p => {
+    const d = new Date(p.fechaEntrega + 'T00:00:00');
+    const diff = Math.round((d - hoy) / 86400000);
+    return { ...p, diff };
+  }).filter(p => p.diff <= 5).sort((a, b) => a.diff - b.diff);
+
+  const contAlertas = document.getElementById('dash-alertas');
+  if (!conFecha.length) {
+    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los próximos 5 días</div>';
+  } else {
+    contAlertas.innerHTML = conFecha.map(p => {
+      const cls   = p.diff <= 1 ? 'red' : 'yellow';
+      const tipo  = p.diff < 0 ? `${Math.abs(p.diff)}d vencido` : p.diff === 0 ? 'HOY' : `${p.diff}d`;
+      const estad = ESTADO_LABELS[p.estado] || p.estado;
+      return `<div class="dash-alert-item ${p.diff <= 1 ? '' : 'warn'}">
+        <div class="dash-alert-dias ${cls}">${tipo}</div>
+        <div class="dash-alert-info">
+          <div class="dash-alert-equipo">#${p.id} ${esc(p.equipo || p.telefono)}</div>
+          <div class="dash-alert-estado">${esc(p.vendedora || '—')} · ${estad}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Panel pipeline conteos
+  const PIPE_ESTADOS = [
+    { key: 'bandeja',          label: 'Ventas / Cotizaciones', color: '#94a3b8' },
+    { key: 'hacer-diseno',     label: 'Hacer diseño',          color: '#818cf8' },
+    { key: 'confirmado',       label: 'Confirmado',            color: '#fb923c' },
+    { key: 'enviado-calandra', label: 'Enviado calandra',      color: '#06b6d4' },
+    { key: 'llego-impresion',  label: 'Llegó impresión',       color: '#38bdf8' },
+    { key: 'corte',            label: 'Corte',                 color: '#a78bfa' },
+    { key: 'calidad',          label: 'Control calidad',       color: '#fbbf24' },
+    { key: 'costura',          label: 'Costura',               color: '#f472b6' },
+    { key: 'listo',            label: 'Listo p/entregar',      color: '#4ade80' },
+  ];
+  const contPipe = document.getElementById('dash-pipeline');
+  const rowsPipe = PIPE_ESTADOS.map(e => {
+    const cnt = pedidos.filter(p => p.estado === e.key).length;
+    if (!cnt) return '';
+    return `<div class="dash-pipe-row">
+      <div class="dash-pipe-dot" style="background:${e.color};box-shadow:0 0 5px ${e.color}66;"></div>
+      <div class="dash-pipe-label">${e.label}</div>
+      <div class="dash-pipe-count" style="color:${e.color};">${cnt}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+  contPipe.innerHTML = rowsPipe || '<div class="dash-empty">Sin pedidos activos</div>';
+
+  // Panel satélites
+  const contSat = document.getElementById('dash-satelites');
+  contSat.innerHTML = SATELITES.map(s => {
+    const ent = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
+    const rec = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
+    const pend = Math.max(0, ent - rec);
+    const cls = pend === 0 ? 'ok' : pend <= 10 ? 'warn' : 'high';
+    return `<div class="dash-sat-row">
+      <div class="dash-sat-nombre">${s}</div>
+      <div>
+        <div class="dash-sat-pend ${cls}">${pend}</div>
+        <div class="dash-sat-label">pend.</div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);text-align:right;">
+        <div>↑${ent} entregado</div>
+        <div>↓${rec} recibido</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Panel calandra semana
+  const contCal = document.getElementById('dash-calandra');
+  if (!semLista.length) {
+    contCal.innerHTML = '<div class="dash-empty">Sin registros esta semana</div>';
+  } else {
+    const totalSem = semLista.reduce((a, r) => a + (r.metros || 0), 0);
+    const numEnvios = semLista.length;
+    const ultimoEnvio = semLista[0];
+    contCal.innerHTML = `<div class="dash-cal-stats">
+      <div class="dash-cal-stat">
+        <div class="dash-cal-stat-val">${totalSem.toFixed(1)}</div>
+        <div class="dash-cal-stat-label">metros esta semana</div>
+      </div>
+      <div class="dash-cal-stat">
+        <div class="dash-cal-stat-val">${numEnvios}</div>
+        <div class="dash-cal-stat-label">envíos registrados</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:0.75rem;color:var(--text-muted);">
+      Último: <span style="color:var(--text);">${esc(ultimoEnvio.equipo || '—')}</span>
+      · ${ultimoEnvio.metros}m · ${ultimoEnvio.fecha || ''}
+    </div>`;
+  }
 }
 
 /* ─── Badges sidebar ─────────────────────────────────────────── */
