@@ -1864,32 +1864,12 @@
     <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
     <section id="vista-general" class="section-content active section-bg">
 
-      <!-- KPIs rápidos -->
-      <div class="dash-metrics-top">
-        <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
-          <div class="dash-kpi-val" id="m-total">0</div>
-          <div class="dash-kpi-label">Activos</div>
+      <!-- Timelines de todos los pedidos activos (primero) -->
+      <div class="dash-timelines-panel">
+        <div class="dash-panel-title" style="margin-bottom:12px;">
+          ⏱ Estado de todos los pedidos activos
         </div>
-        <div class="dash-kpi" style="--kpi-color:#fb923c;">
-          <div class="dash-kpi-val" id="m-diseno">0</div>
-          <div class="dash-kpi-label">Diseño</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#67e8f9;">
-          <div class="dash-kpi-val" id="m-produccion">0</div>
-          <div class="dash-kpi-label">Producción</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#4ade80;">
-          <div class="dash-kpi-val" id="m-listos">0</div>
-          <div class="dash-kpi-label">Listos</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#a78bfa;">
-          <div class="dash-kpi-val" id="m-cal-semana">0</div>
-          <div class="dash-kpi-label">m² calandra</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#f472b6;">
-          <div class="dash-kpi-val" id="m-sat-pend">0</div>
-          <div class="dash-kpi-label">Pend. satél.</div>
-        </div>
+        <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
 
       <!-- Fila central: alertas + pipeline + satélites + calandra -->
@@ -1938,12 +1918,32 @@
 
       </div>
 
-      <!-- Timelines de todos los pedidos activos -->
-      <div class="dash-timelines-panel">
-        <div class="dash-panel-title" style="margin-bottom:12px;">
-          ⏱ Estado de todos los pedidos activos
+      <!-- KPIs rápidos (al final) -->
+      <div class="dash-metrics-top">
+        <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
+          <div class="dash-kpi-val" id="m-total">0</div>
+          <div class="dash-kpi-label">Activos</div>
         </div>
-        <div class="pedidos-lista" id="tabla-recientes"></div>
+        <div class="dash-kpi" style="--kpi-color:#fb923c;">
+          <div class="dash-kpi-val" id="m-diseno">0</div>
+          <div class="dash-kpi-label">Diseño</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#67e8f9;">
+          <div class="dash-kpi-val" id="m-produccion">0</div>
+          <div class="dash-kpi-label">Producción</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#4ade80;">
+          <div class="dash-kpi-val" id="m-listos">0</div>
+          <div class="dash-kpi-label">Listos</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#a78bfa;">
+          <div class="dash-kpi-val" id="m-cal-semana">0</div>
+          <div class="dash-kpi-label">m² calandra</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#f472b6;">
+          <div class="dash-kpi-val" id="m-sat-pend">0</div>
+          <div class="dash-kpi-label">Pend. satél.</div>
+        </div>
       </div>
 
     </section>
@@ -2696,7 +2696,7 @@ const TL_ORDER = TL_ETAPAS.map(e => e.key);
 
 function renderTablaRecientes() {
   const cont = document.getElementById('tabla-recientes');
-  const lista = pedidos.filter(p => p.estado !== 'enviado-final');
+  const lista = pedidos.filter(p => p.estado !== 'enviado-final').sort((a, b) => a.id - b.id);
 
   if (!lista.length) {
     cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin pedidos aún</div>`;
