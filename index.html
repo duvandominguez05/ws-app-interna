@@ -2435,6 +2435,9 @@ let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
 let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
+const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
+let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
+let satTipoActual  = 'entrega';
 
 /* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
@@ -3609,7 +3612,7 @@ syncConServidor(false);
 setInterval(() => syncConServidor(true), 15000);
 
 // Sync calandra Drive al cargar y cada 2 minutos
-setTimeout(sincronizarCalandraServidor, 2000);
+setTimeout(sincronizarCalandraServidor, 500);
 setInterval(sincronizarCalandraServidor, 120000);
 
 /* ════════════════════════════════════════════════════════════════
@@ -3792,10 +3795,6 @@ function renderCalItem(r, opaco = false) {
 /* ════════════════════════════════════════════════════════════════
    SATÉLITES — CONTROL COSTURA
 ════════════════════════════════════════════════════════════════ */
-const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
-let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
-let satTipoActual  = 'entrega';
-
 function guardarSat_store() {
   localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
 }
