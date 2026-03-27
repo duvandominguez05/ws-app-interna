@@ -2906,8 +2906,8 @@ function renderKanbanCardDiseno(p) {
       const opts = DISENADORES.map(d => `<option value="${d}">${d}</option>`).join('');
       actionHtml = `
         <div style="display:flex;gap:6px;align-items:center;">
-          <select id="sel-dis-${p.id}" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;">
-            <option value="">Seleccionar...</option>${opts}
+          <select id="sel-dis-${p.id}" style="flex:1;background:#1e1b2e;border:1px solid #4c1d95;border-radius:6px;color:#e2e8f0;font-size:0.75rem;padding:5px 8px;outline:none;">
+            <option value="" style="background:#1e1b2e;color:#e2e8f0;">Seleccionar...</option>${opts.replace(/<option /g, '<option style="background:#1e1b2e;color:#e2e8f0;" ')}
           </select>
           <button onclick="tomarPedidoDiseno(${p.id})" style="background:rgba(124,58,237,0.25);border:1px solid rgba(124,58,237,0.5);color:#c4b5fd;border-radius:6px;padding:5px 10px;font-size:0.75rem;cursor:pointer;white-space:nowrap;">Tomar</button>
         </div>`;
