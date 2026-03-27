@@ -2786,7 +2786,7 @@ function renderBandejaCotizaciones(arr) {
   return arr.map(p => `
     <div class="bandeja-card">
       <div class="bandeja-card-top">
-        <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
+        <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
         <div class="bandeja-id">#${p.id}</div>
       </div>
       <div class="bandeja-meta">
@@ -2866,7 +2866,7 @@ function renderBandejaPedidos(arr) {
     return `
     <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
       <div class="bandeja-card-top">
-        <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
+        <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bandeja-id">#${p.id}</div>
           <button onclick="eliminarPedidoBandeja(${p.id}, event)" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 6px;font-size:0.7rem;cursor:pointer;line-height:1.4;">✕</button>
@@ -3017,6 +3017,38 @@ function confirmarFecha(id) {
   toast('Fecha actualizada', 'ok');
 }
 
+function editarEquipo(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:300px;text-align:center;">
+      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">✏️ Nombre del equipo — #${p.id}</div>
+      <input type="text" id="equipo-edit-input" value="${esc(p.equipo||'')}" placeholder="Nombre del equipo / cliente" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;box-sizing:border-box;">
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button onclick="confirmarEquipo(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
+        <button onclick="this.closest('.equipo-overlay').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Cancelar</button>
+      </div>
+    </div>`;
+  overlay.classList.add('equipo-overlay');
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  setTimeout(() => { const i = document.getElementById('equipo-edit-input'); if(i){i.focus();i.select();} }, 100);
+}
+
+function confirmarEquipo(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const val = document.getElementById('equipo-edit-input').value.trim();
+  if (!val) { toast('El nombre no puede estar vacío', 'error'); return; }
+  p.equipo = val;
+  guardar();
+  render();
+  document.querySelector('.equipo-overlay')?.remove();
+  toast('Nombre actualizado', 'ok');
+}
+
 function liberarPedidoDiseno(id) {
   if (!confirm('¿Liberar este pedido para que otro diseñador lo tome?')) return;
   const p = pedidos.find(x => x.id === id);
@@ -3090,7 +3122,10 @@ function renderKanbanCard(p) {
   return `
     <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}">
       <div class="kanban-card-id">#${p.id}</div>
-      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);">${esc(p.equipo || p.telefono)}</div>
+      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;">
+        ${esc(p.equipo || p.telefono)}
+        ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}
+      </div>
       ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">📱 ${esc(p.telefono)}</div>` : ''}
       <div class="kanban-card-items">${itemsTxt}</div>
       <div class="kanban-card-vendor">
