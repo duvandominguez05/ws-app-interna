@@ -2049,31 +2049,37 @@
     <section id="wetransfer" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
-        Enviados a calandra hoy
+        Control WeTransfer — Enviados y Descargados
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;">
-        <button class="btn btn-primary btn-sm" onclick="registrarWT()">+ Registrar envío</button>
-        <span style="font-size:0.72rem;color:var(--text-muted);">Los envíos de n8n aparecen aquí automáticamente.</span>
+      <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">📤 Registrar envío</button>
+        <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">✅ Registrar descarga</button>
+        <button class="btn btn-glass btn-sm" onclick="cargarWT()">↺ Actualizar</button>
+        <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automáticamente vía Gmail.</span>
       </div>
 
       <!-- Formulario rápido -->
       <div id="form-wt" style="display:none;background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:12px;">Registrar envío WeTransfer</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envío WeTransfer</div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:12px;" id="wt-form-sub"></div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Nombre del equipo</label>
-            <input type="text" class="form-input" id="wt-equipo" placeholder="Ej: Galaktiturkos">
+            <label class="form-label">Nombre del archivo PDF</label>
+            <input type="text" class="form-input" id="wt-archivo" placeholder="Ej: galaktiturkos camisas.pdf">
           </div>
           <div class="form-group">
-            <label class="form-label">Archivos enviados</label>
-            <input type="text" class="form-input" id="wt-archivos" placeholder="Ej: camisas 3.pdf">
+            <label class="form-label">Equipo (opcional)</label>
+            <input type="text" class="form-input" id="wt-equipo" placeholder="Ej: Galaktiturkos">
           </div>
         </div>
         <div class="form-actions" style="margin-top:10px;padding-top:10px;">
           <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-wt').style.display='none'">Cancelar</button>
-          <button class="btn btn-success btn-sm" onclick="guardarWT()">Guardar envío</button>
+          <button class="btn btn-success btn-sm" id="wt-btn-guardar" onclick="guardarWT()">Guardar</button>
         </div>
       </div>
+
+      <!-- Resumen del día -->
+      <div id="wt-resumen-hoy" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;"></div>
 
       <div id="lista-wt"></div>
     </section>
@@ -2536,7 +2542,7 @@ function render() {
   renderKanban('costura');
   renderKanban('listo');
   renderKanban('enviado-final');
-  renderWT();
+  cargarWT();
   renderArreglos();
   renderCalandra();
   renderSatelites();
@@ -3508,73 +3514,118 @@ function registrarEnvioDirecto(id, metodo) {
 /* ════════════════════════════════════════════════════════════════
    WETRANSFER
 ════════════════════════════════════════════════════════════════ */
-let wtEnvios = JSON.parse(localStorage.getItem('ws_wt_envios') || '[]');
+let wtRegistros = []; // cargados del servidor
+let _wtTipo = 'enviado'; // tipo activo en formulario
 
-function guardarWT_store() {
-  localStorage.setItem('ws_wt_envios', JSON.stringify(wtEnvios));
-}
-
-function registrarWT() {
-  document.getElementById('wt-equipo').value = '';
-  document.getElementById('wt-archivos').value = '';
-  document.getElementById('form-wt').style.display = 'block';
-  document.getElementById('wt-equipo').focus();
-}
-
-function guardarWT() {
-  const equipo   = document.getElementById('wt-equipo').value.trim();
-  const archivos = document.getElementById('wt-archivos').value.trim();
-  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
-  const hoy = new Date().toLocaleDateString('es-CO');
-  wtEnvios.unshift({ equipo, archivos, hora: new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}), fecha: hoy });
-  guardarWT_store();
-  document.getElementById('form-wt').style.display = 'none';
+async function cargarWT() {
+  try {
+    const r = await fetch('/api/wetransfer');
+    const d = await r.json();
+    wtRegistros = d.registros || [];
+  } catch { wtRegistros = []; }
   renderWT();
-  toast(`Envío registrado: ${equipo}`, 'success');
 }
 
-// n8n puede llamar esto vía webhook — también actualiza la lista de WeTransfer
-function registrarWTdesdeWebhook(equipo, archivos) {
-  const hoy = new Date().toLocaleDateString('es-CO');
-  wtEnvios.unshift({ equipo, archivos: archivos || '', hora: new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}), fecha: hoy, auto: true });
-  guardarWT_store();
+function registrarWT(tipo) {
+  _wtTipo = tipo || 'enviado';
+  document.getElementById('wt-archivo').value = '';
+  document.getElementById('wt-equipo').value = '';
+  document.getElementById('wt-form-title').textContent =
+    tipo === 'descargado' ? '✅ Registrar descarga WeTransfer' : '📤 Registrar envío WeTransfer';
+  document.getElementById('wt-form-sub').textContent =
+    tipo === 'descargado' ? 'Mauricio confirmó que descargó el archivo' : 'Se envió el diseño por WeTransfer a calandra';
+  document.getElementById('wt-btn-guardar').textContent = tipo === 'descargado' ? 'Guardar descarga' : 'Guardar envío';
+  document.getElementById('form-wt').style.display = 'block';
+  document.getElementById('wt-archivo').focus();
+}
+
+async function guardarWT() {
+  const archivo = document.getElementById('wt-archivo').value.trim();
+  const equipo  = document.getElementById('wt-equipo').value.trim();
+  if (!archivo) { toast('Ingresa el nombre del archivo', 'error'); return; }
+
+  try {
+    const r = await fetch('/api/wetransfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: _wtTipo, archivo, equipo }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    document.getElementById('form-wt').style.display = 'none';
+    toast(_wtTipo === 'descargado' ? `Descarga registrada: ${archivo}` : `Envío registrado: ${archivo}`, 'success');
+    await cargarWT();
+  } catch (e) {
+    toast('Error al guardar: ' + e.message, 'error');
+  }
 }
 
 function renderWT() {
   const cont = document.getElementById('lista-wt');
+  const resumen = document.getElementById('wt-resumen-hoy');
   if (!cont) return;
+
   const hoy = new Date().toLocaleDateString('es-CO');
-  const hoy_list = wtEnvios.filter(e => e.fecha === hoy);
-  const hist     = wtEnvios.filter(e => e.fecha !== hoy);
+  const hoy_list = wtRegistros.filter(e => e.fecha === hoy);
+  const hist     = wtRegistros.filter(e => e.fecha !== hoy);
+
+  // Contar enviados y descargados hoy
+  const envHoy  = hoy_list.filter(e => e.tipo === 'enviado').length;
+  const descHoy = hoy_list.filter(e => e.tipo === 'descargado').length;
 
   document.getElementById('badge-wt').textContent = hoy_list.length;
 
+  if (resumen) {
+    resumen.innerHTML = `
+      <div style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:1.1rem;">📤</span>
+        <div>
+          <div style="font-size:1.3rem;font-weight:800;color:#67e8f9;line-height:1;">${envHoy}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">Enviados hoy</div>
+        </div>
+      </div>
+      <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:1.1rem;">✅</span>
+        <div>
+          <div style="font-size:1.3rem;font-weight:800;color:#4ade80;line-height:1;">${descHoy}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">Descargados hoy</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Agrupar: unir enviado + descargado del mismo archivo
+  function renderFila(e, dim) {
+    const esBadge = e.tipo === 'descargado'
+      ? `<span style="font-size:0.65rem;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:2px 8px;white-space:nowrap;">✅ Descargado</span>`
+      : `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 8px;white-space:nowrap;">📤 Enviado</span>`;
+    const autoTag = e.auto ? `<span style="font-size:0.62rem;background:rgba(167,139,250,0.12);color:#a78bfa;border:1px solid rgba(167,139,250,0.25);border-radius:10px;padding:1px 6px;">auto</span>` : '';
+    return `
+      <div style="background:var(--card-bg);border:1px solid ${e.tipo==='descargado'?'rgba(34,197,94,0.2)':'rgba(6,182,212,0.15)'};border-radius:var(--radius);padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;${dim?'opacity:0.6;':''}">
+        <span style="font-size:1.1rem;">${e.tipo==='descargado'?'✅':'📤'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e.archivo)}</div>
+          ${e.equipo ? `<div style="font-size:0.72rem;color:var(--text-muted);">Equipo: ${esc(e.equipo)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          ${esBadge}${autoTag}
+          <span style="font-size:0.68rem;color:var(--text-muted);">${dim ? e.fecha+' ' : ''}${e.hora}</span>
+        </div>
+      </div>`;
+  }
+
   let html = '';
   if (!hoy_list.length) {
-    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envíos hoy</div>`;
+    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin registros hoy</div>`;
   } else {
-    html += hoy_list.map(e => `
-      <div style="background:var(--card-bg);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
-        <span style="font-size:1.2rem;">📤</span>
-        <div style="flex:1;">
-          <div style="font-weight:700;font-size:0.88rem;">${esc(e.equipo)}</div>
-          ${e.archivos ? `<div style="font-size:0.72rem;color:var(--text-muted);">${esc(e.archivos)}</div>` : ''}
-        </div>
-        <div style="font-size:0.72rem;color:#67e8f9;">${e.hora}</div>
-        ${e.auto ? `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 7px;">auto</span>` : ''}
-      </div>
-    `).join('');
+    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hoy</div>`;
+    // Ordenar: más reciente primero
+    html += [...hoy_list].reverse().map(e => renderFila(e, false)).join('');
   }
 
   if (hist.length) {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:16px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
-    html += hist.slice(0, 20).map(e => `
-      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:0.7;">
-        <span style="font-size:0.9rem;">📁</span>
-        <div style="flex:1;font-size:0.82rem;">${esc(e.equipo)} ${e.archivos ? `<span style="color:var(--text-muted)">· ${esc(e.archivos)}</span>` : ''}</div>
-        <div style="font-size:0.68rem;color:var(--text-muted);">${e.fecha} ${e.hora}</div>
-      </div>
-    `).join('');
+    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
+    html += [...hist].reverse().slice(0, 30).map(e => renderFila(e, true)).join('');
   }
 
   cont.innerHTML = html;

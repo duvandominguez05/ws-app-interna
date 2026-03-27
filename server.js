@@ -255,6 +255,61 @@ http.createServer((req, res) => {
     return json(res, 200, { registros });
   }
 
+  // ── POST /api/wetransfer — registra envío o descarga ────────
+  // Body: { tipo: 'enviado'|'descargado', archivo, equipo? }
+  if (req.method === 'POST' && req.url === '/api/wetransfer') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { tipo, archivo, equipo } = JSON.parse(body);
+        if (!tipo || !archivo)
+          return json(res, 400, { error: 'Faltan campos: tipo, archivo' });
+        if (!['enviado', 'descargado'].includes(tipo))
+          return json(res, 400, { error: 'tipo debe ser enviado o descargado' });
+
+        const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
+        let registros = [];
+        try {
+          if (fs.existsSync(WT_FILE))
+            registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
+        } catch {}
+
+        const registro = {
+          id:      Date.now(),
+          tipo,
+          archivo: String(archivo).trim(),
+          equipo:  equipo ? String(equipo).trim() : '',
+          fecha:   new Date().toLocaleDateString('es-CO'),
+          hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+          ts:      new Date().toISOString(),
+        };
+
+        registros.push(registro);
+        fs.mkdirSync(path.dirname(WT_FILE), { recursive: true });
+        fs.writeFileSync(WT_FILE, JSON.stringify(registros, null, 2));
+
+        console.log(`[wetransfer] ${tipo} — ${archivo} ${equipo ? `(${equipo})` : ''}`);
+        return json(res, 200, { ok: true, id: registro.id, tipo, archivo });
+
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/wetransfer — devuelve todos los registros ──────
+  if (req.method === 'GET' && req.url === '/api/wetransfer') {
+    const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
+    let registros = [];
+    try {
+      if (fs.existsSync(WT_FILE))
+        registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
+    } catch {}
+    return json(res, 200, { registros });
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   const ext = path.extname(filePath);
