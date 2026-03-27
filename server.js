@@ -169,6 +169,77 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/calandra — n8n registra envío de PDF a calandra ─
+  // Body: { equipo, alto, ancho?, archivo?, diseñador? }
+  // alto en cm, ancho en metros (opcional, default 1.50)
+  if (req.method === 'POST' && req.url === '/api/calandra') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { equipo, alto, ancho, archivo, disenador } = JSON.parse(body);
+        if (!equipo || !alto)
+          return json(res, 400, { error: 'Faltan campos: equipo, alto' });
+
+        const altoCm  = parseFloat(alto);
+        const anchoM  = parseFloat(ancho || 1.50);
+        if (isNaN(altoCm) || altoCm <= 0)
+          return json(res, 400, { error: 'alto debe ser un número positivo en cm' });
+
+        const metros  = parseFloat(((altoCm / 100) * anchoM).toFixed(3));
+        const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+
+        let registros = [];
+        try {
+          if (fs.existsSync(CAL_FILE))
+            registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
+        } catch {}
+
+        // Clave de semana ISO (lunes como inicio)
+        const hoy = new Date();
+        const diaSemana = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
+        const lunes = new Date(hoy);
+        lunes.setDate(hoy.getDate() - diaSemana);
+        const semana = `${lunes.getFullYear()}-W${String(Math.ceil((lunes.getDate()) / 7)).padStart(2,'0')}-${lunes.getMonth()+1}`;
+
+        const registro = {
+          id:        Date.now(),
+          equipo:    String(equipo).trim(),
+          alto:      altoCm,
+          ancho:     anchoM,
+          metros,
+          semana,
+          fecha:     hoy.toLocaleDateString('es-CO'),
+          archivo:   archivo || '',
+          disenador: disenador || '',
+          origen:    'drive',
+        };
+
+        registros.push(registro);
+        fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
+        fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+
+        console.log(`[calandra] ${equipo} — ${altoCm}cm × ${anchoM}m = ${metros}m | ${archivo || ''}`);
+        return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id });
+
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/calandra — devuelve todos los registros ────────
+  if (req.method === 'GET' && req.url === '/api/calandra') {
+    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+    let registros = [];
+    try {
+      if (fs.existsSync(CAL_FILE))
+        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
+    } catch {}
+    return json(res, 200, { registros });
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   const ext = path.extname(filePath);

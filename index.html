@@ -3606,6 +3606,10 @@ syncConServidor(false);
 // Polling automático cada 15 segundos
 setInterval(() => syncConServidor(true), 15000);
 
+// Sync calandra Drive al cargar y cada 2 minutos
+setTimeout(sincronizarCalandraServidor, 2000);
+setInterval(sincronizarCalandraServidor, 120000);
+
 /* ════════════════════════════════════════════════════════════════
    CALANDRA — CONTROL DE METRAJE
 ════════════════════════════════════════════════════════════════ */
@@ -3614,6 +3618,46 @@ let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || 
 
 function guardarCalandra_store() {
   localStorage.setItem('ws_calandra', JSON.stringify(calandraRegistros));
+}
+
+// Sincroniza registros de Drive (vienen del servidor vía n8n) con los locales
+async function sincronizarCalandraServidor() {
+  try {
+    const r = await fetch('/api/calandra');
+    if (!r.ok) return;
+    const { registros: del_servidor } = await r.json();
+    if (!del_servidor || !del_servidor.length) return;
+
+    // Normalizar registros del servidor al formato local
+    const normalizados = del_servidor.map(r => ({
+      id:       r.id,
+      equipo:   r.equipo,
+      altoCm:   r.alto,
+      metros:   r.metros,
+      metros2:  parseFloat(((r.alto / 100) * r.ancho).toFixed(3)),
+      ancho:    r.ancho,
+      fecha:    r.fecha,
+      hora:     '',
+      semana:   getSemanaKey(new Date(r.fecha.split('/').reverse().join('-'))),
+      archivo:  r.archivo || '',
+      disenador: r.disenador || '',
+      origen:   'drive',
+    }));
+
+    // Mezclar: no duplicar por id
+    const idsLocales = new Set(calandraRegistros.map(r => r.id));
+    const nuevos = normalizados.filter(r => !idsLocales.has(r.id));
+
+    if (nuevos.length) {
+      calandraRegistros = [...nuevos, ...calandraRegistros];
+      guardarCalandra_store();
+      renderCalandra();
+      renderDashboard();
+      nuevos.forEach(r => {
+        crearNotif('📄', `<strong>Drive:</strong> PDF <em>${esc(r.archivo || r.equipo)}</em> registrado — <strong>${r.metros.toFixed(2)} m</strong>`, 'info');
+      });
+    }
+  } catch {}
 }
 
 function cambiarAnchoTela(val) {
@@ -3729,12 +3773,17 @@ function renderCalandra() {
 }
 
 function renderCalItem(r, opaco = false) {
+  const esDrive = r.origen === 'drive';
+  const icono   = esDrive ? '🌐' : '📄';
+  const extra   = esDrive && r.archivo
+    ? `<span style="font-size:0.7rem;color:#a78bfa;margin-left:6px;" title="${esc(r.archivo)}">Drive · ${esc(r.disenador || '')}</span>`
+    : '';
   return `
     <div class="cal-item" style="${opaco ? 'opacity:0.65;' : ''}">
-      <span style="font-size:1.3rem;">📄</span>
+      <span style="font-size:1.3rem;">${icono}</span>
       <div class="cal-item-info">
-        <div class="cal-item-equipo">${esc(r.equipo)}</div>
-        <div class="cal-item-meta">${r.altoCm} cm alto · ancho ${r.ancho} m · ${r.fecha} ${r.hora}</div>
+        <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
+        <div class="cal-item-meta">${r.altoCm} cm alto · ancho ${r.ancho} m · ${r.fecha} ${r.hora || ''}</div>
       </div>
       <div class="cal-item-metros">${r.metros.toFixed(2)} m</div>
     </div>
