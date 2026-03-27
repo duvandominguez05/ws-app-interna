@@ -182,11 +182,10 @@ http.createServer((req, res) => {
           return json(res, 400, { error: 'Faltan campos: equipo, alto' });
 
         const altoCm  = parseFloat(alto);
-        const anchoM  = parseFloat(ancho || 1.50);
         if (isNaN(altoCm) || altoCm <= 0)
           return json(res, 400, { error: 'alto debe ser un número positivo en cm' });
 
-        const metros  = parseFloat(((altoCm / 100) * anchoM).toFixed(3));
+        const metros  = parseFloat((altoCm / 100).toFixed(3));
         const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
 
         let registros = [];
