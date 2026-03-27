@@ -39,13 +39,9 @@
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "equipo", "value": "={{ $json.equipo }}" },
-            { "name": "estado", "value": "enviado-calandra" },
-            { "name": "nota", "value": "Actualizado automáticamente por WeTransfer" }
-          ]
-        }
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ equipo: $json.equipo, estado: 'enviado-calandra', nota: 'Actualizado automáticamente por WeTransfer' }) }}"
       },
       "id": "llamar-webhook",
       "name": "Actualizar pedido en app",
