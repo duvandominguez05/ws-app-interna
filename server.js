@@ -18,7 +18,7 @@ const mime = {
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -205,7 +205,6 @@ http.createServer((req, res) => {
           id:        Date.now(),
           equipo:    String(equipo).trim(),
           alto:      altoCm,
-          ancho:     anchoM,
           metros,
           semana,
           fecha:     hoy.toLocaleDateString('es-CO'),
@@ -218,7 +217,7 @@ http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
         fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
 
-        console.log(`[calandra] ${equipo} — ${altoCm}cm × ${anchoM}m = ${metros}m | ${archivo || ''}`);
+        console.log(`[calandra] ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
         return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id });
 
       } catch (e) {
@@ -226,6 +225,23 @@ http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // ── DELETE /api/calandra/:id — borra un registro ────────────
+  if (req.method === 'DELETE' && req.url.startsWith('/api/calandra/')) {
+    const id = req.url.split('/')[3];
+    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+    let registros = [];
+    try {
+      if (fs.existsSync(CAL_FILE))
+        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
+    } catch {}
+    const antes = registros.length;
+    registros = registros.filter(r => String(r.id) !== String(id));
+    fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
+    fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+    console.log(`[calandra] borrado id=${id}, quedaron ${registros.length}/${antes}`);
+    return json(res, 200, { ok: true, borrado: antes !== registros.length });
   }
 
   // ── GET /api/calandra — devuelve todos los registros ────────

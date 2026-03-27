@@ -3636,8 +3636,6 @@ async function sincronizarCalandraServidor() {
       equipo:   r.equipo,
       altoCm:   r.alto,
       metros:   r.metros,
-      metros2:  parseFloat(((r.alto / 100) * r.ancho).toFixed(3)),
-      ancho:    r.ancho,
       fecha:    r.fecha,
       hora:     '',
       semana:   getSemanaKey((() => { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); })()),
@@ -3795,12 +3793,14 @@ function renderCalItem(r, opaco = false) {
   `;
 }
 
-function borrarCalItem(id) {
+async function borrarCalItem(id) {
   if (!confirm('¿Borrar este registro?')) return;
   calandraRegistros = calandraRegistros.filter(r => String(r.id) !== String(id));
   guardarCalandra_store();
   renderCalandra();
   renderDashboard();
+  // También borra del servidor para que no vuelva a aparecer
+  try { await fetch('/api/calandra/' + id, { method: 'DELETE' }); } catch {}
 }
 
 /* ════════════════════════════════════════════════════════════════
