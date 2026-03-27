@@ -3785,11 +3785,22 @@ function renderCalItem(r, opaco = false) {
       <span style="font-size:1.3rem;">${icono}</span>
       <div class="cal-item-info">
         <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
-        <div class="cal-item-meta">${r.altoCm} cm alto · ancho ${r.ancho} m · ${r.fecha} ${r.hora || ''}</div>
+        <div class="cal-item-meta">${r.altoCm} cm alto · ${r.fecha} ${r.hora || ''}</div>
       </div>
-      <div class="cal-item-metros">${r.metros.toFixed(2)} m</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="cal-item-metros">${r.metros.toFixed(2)} m</div>
+        <button onclick="borrarCalItem('${r.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1rem;padding:4px;line-height:1;" title="Borrar">🗑</button>
+      </div>
     </div>
   `;
+}
+
+function borrarCalItem(id) {
+  if (!confirm('¿Borrar este registro?')) return;
+  calandraRegistros = calandraRegistros.filter(r => String(r.id) !== String(id));
+  guardarCalandra_store();
+  renderCalandra();
+  renderDashboard();
 }
 
 /* ════════════════════════════════════════════════════════════════
