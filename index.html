@@ -2918,6 +2918,16 @@ function renderKanbanCardDiseno(p) {
           <button onclick="liberarPedidoDiseno(${p.id})" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:6px 10px;font-size:0.75rem;cursor:pointer;" title="Liberar pedido">✕</button>
         </div>`;
     }
+  } else if (p.estado === 'confirmado') {
+    actionHtml = `
+      <div class="kanban-card-actions">
+        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Enviar a calandra</button>
+      </div>`;
+  } else if (p.estado === 'enviado-calandra') {
+    actionHtml = `
+      <div class="kanban-card-actions">
+        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Llegó impresión</button>
+      </div>`;
   }
 
   return `
