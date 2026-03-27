@@ -1,0 +1,116 @@
+{
+  "name": "WeTransfer → Avanzar pedido a Calandra",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "filters": {
+          "sender": "noreply@wetransfer.com",
+          "subject": "enviado correctamente a sublimarte"
+        },
+        "format": "simple"
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail — WeTransfer enviado",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// El asunto llega así:\n// \"galaktiturkos camisas 3.pdf enviado correctamente a sublimarte.alqueria@gmail.com\"\n// Extraemos todo lo que está ANTES de la primera palabra clave\n\nconst asunto = $input.first().json.subject || '';\n\n// Quitamos el nombre del archivo (.pdf, .cdr, etc.) y lo que sigue\nconst match = asunto.match(/^(.+?)(?:\\s+\\S+\\.(?:pdf|cdr|ai|eps|jpg|png|zip))/);\nlet equipo = match ? match[1].trim() : asunto.split(' enviado')[0].trim();\n\n// Limpieza básica: quitar números al final (ej: \"galaktiturkos camisas 3\" → \"galaktiturkos\")\n// Solo dejamos la primera parte antes de un espacio + tipo de prenda conocido\nconst prendas = ['camisas','camiseta','pantalon','pantaloneta','uniforme','conjunto','portero','buso','chaqueta'];\nfor (const prenda of prendas) {\n  const idx = equipo.toLowerCase().indexOf(' ' + prenda);\n  if (idx !== -1) { equipo = equipo.substring(0, idx).trim(); break; }\n}\n\nreturn [{ json: { equipo, asuntoOriginal: asunto } }];"
+      },
+      "id": "extraer-equipo",
+      "name": "Extraer nombre del equipo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ws-app-interna-production.up.railway.app/api/webhook",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "equipo", "value": "={{ $json.equipo }}" },
+            { "name": "estado", "value": "enviado-calandra" },
+            { "name": "nota", "value": "Actualizado automáticamente por WeTransfer" }
+          ]
+        }
+      },
+      "id": "llamar-webhook",
+      "name": "Actualizar pedido en app",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "check-ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "check-resultado",
+      "name": "¿Pedido encontrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`✅ Pedido #${d.id} (${d.equipo}) avanzado a enviado-calandra`);\nreturn [{ json: { mensaje: `✅ #${d.id} ${d.equipo} → Enviado a calandra`, ...d } }];"
+      },
+      "id": "log-ok",
+      "name": "OK — Pedido avanzado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`⚠️ No se encontró pedido para equipo: ${$('Extraer nombre del equipo').first().json.equipo}`);\nconsole.log('Respuesta:', JSON.stringify(d));\nreturn [{ json: { alerta: true, ...d } }];"
+      },
+      "id": "log-error",
+      "name": "ALERTA — Pedido no encontrado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 420]
+    }
+  ],
+  "connections": {
+    "Gmail — WeTransfer enviado": {
+      "main": [[{ "node": "Extraer nombre del equipo", "type": "main", "index": 0 }]]
+    },
+    "Extraer nombre del equipo": {
+      "main": [[{ "node": "Actualizar pedido en app", "type": "main", "index": 0 }]]
+    },
+    "Actualizar pedido en app": {
+      "main": [[{ "node": "¿Pedido encontrado?", "type": "main", "index": 0 }]]
+    },
+    "¿Pedido encontrado?": {
+      "main": [
+        [{ "node": "OK — Pedido avanzado", "type": "main", "index": 0 }],
+        [{ "node": "ALERTA — Pedido no encontrado", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}
