@@ -1771,6 +1771,12 @@ function limpiarEnviadosDelMesPasado() {
 function guardar() {
   localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
   localStorage.setItem('ws_nextId3', String(nextId));
+  // Sincronizar con servidor para que n8n pueda leer y actualizar pedidos
+  fetch('/api/pedidos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pedidos, nextId })
+  }).catch(() => {}); // silencioso — no interrumpe si falla
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -2540,6 +2546,29 @@ pedidos.forEach(p => {
 guardar();
 updateDate();
 render();
+
+// Sincronizar desde servidor al cargar (n8n puede haber actualizado estados)
+fetch('/api/pedidos')
+  .then(r => r.json())
+  .then(serverPedidos => {
+    if (!Array.isArray(serverPedidos) || !serverPedidos.length) return;
+    // Merge: actualizar estados que el servidor tenga más recientes
+    let cambios = false;
+    serverPedidos.forEach(sp => {
+      const local = pedidos.find(p => p.id === sp.id);
+      if (local && local.estado !== sp.estado) {
+        local.estado = sp.estado;
+        if (sp.notaWebhook) local.notaWebhook = sp.notaWebhook;
+        cambios = true;
+      }
+    });
+    if (cambios) {
+      localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+      render();
+      toast('🔄 Pedidos sincronizados con servidor', 'info');
+    }
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>

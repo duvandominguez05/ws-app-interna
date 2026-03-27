@@ -59,6 +59,23 @@ http.createServer((req, res) => {
     return json(res, 200, leerPedidos());
   }
 
+  // ── POST /api/pedidos — app sincroniza su estado al servidor ─
+  if (req.method === 'POST' && req.url === '/api/pedidos') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { pedidos } = JSON.parse(body);
+        if (!Array.isArray(pedidos)) return json(res, 400, { error: 'pedidos debe ser array' });
+        guardarPedidos(pedidos);
+        return json(res, 200, { ok: true, total: pedidos.length });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/webhook — n8n actualiza estado de un pedido ───
   if (req.method === 'POST' && req.url === '/api/webhook') {
     let body = '';
