@@ -2889,7 +2889,7 @@ function renderKanban(estado) {
 
 function renderKanbanCardDiseno(p) {
   const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
-  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '—';
+  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
   const disenadorTxt = p.disenadorAsignado || '';
 
   const disenadorHtml = disenadorTxt
@@ -2926,7 +2926,7 @@ function renderKanbanCardDiseno(p) {
         <div style="font-size:0.7rem;color:var(--text-muted);">#${p.id}</div>
       </div>
       <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
-      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">📅 ${fechaTxt} &nbsp; 👤 ${esc(p.vendedora || '—')}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">📅 ${fechaTxt} &nbsp; 👤 ${esc(p.vendedora || '-')}</div>
       ${notasHtml}
       ${disenadorHtml}
       ${actionHtml}
