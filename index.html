@@ -4715,10 +4715,11 @@ function generarPDF() {
   guardarDocs();
   renderDocHistorial();
 
-  const win = window.open('', '_blank', 'width=900,height=700');
-  win.document.write(htmlDoc);
-  win.document.close();
-  setTimeout(() => win.print(), 800);
+  const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (win) setTimeout(() => win.print(), 1200);
+  else window.location.href = url; // fallback celular bloqueó popup
 
   showToast(titulo + ' #' + numStr + ' generada', 'success');
   cerrarFormDoc();
