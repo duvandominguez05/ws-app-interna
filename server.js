@@ -47,27 +47,19 @@ async function conectarBot() {
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      console.log('\n📱 QR generado en logs. Revisa el código de emparejamiento abajo:\n');
+      console.log('\n📱 ATENCIÓN: WhatsApp bloqueó temporalmente el Pairing Code por demasiados intentos.');
+      console.log('📱 DEBES ESCANEAR ESTE QR. Tienes 40 segundos antes de que cambie:\n');
       qrcode.generate(qr, { small: true });
 
-      // Pedir pairing code SOLO UNA VEZ para que no se refresque a cada rato y no deje copiarlo
+      /* 
+      // Desactivado temporalmente porque WhatsApp empezó a tumbar el WebSocket por límite de Pairing Codes
       if (!sock.authState.creds.registered && !sock.pairingCodeRequested) {
-        sock.pairingCodeRequested = true; // Fijamos esta bandera para detener el bucle
+        sock.pairingCodeRequested = true;
         setTimeout(async () => {
-          try {
-            const PHONE = process.env.WA_PHONE || '573133064614';
-            const code = await sock.requestPairingCode(PHONE);
-            console.log(`\n========================================================`);
-            console.log(`🔑 PAIRING CODE: ${code}`);
-            console.log(`📱 PARA EL NÚMERO: ${PHONE}`);
-            console.log(`Ve a WhatsApp → Dispositivos vinculados → Vincular con número`);
-            console.log(`========================================================\n`);
-          } catch (e) {
-            console.error('[bot] Error solicitando pairing code:', e.message);
-            sock.pairingCodeRequested = false; // Permitir reintento si falló
-          }
+          // ... 
         }, 1500);
       }
+      */
     }
     
     if (connection === 'open') {
