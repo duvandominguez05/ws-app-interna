@@ -35,24 +35,36 @@ function enviarAlerta(texto) {
 
 async function conectarBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
   sockGlobal = sock;
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      console.log('\n📱 Escanea este QR con WhatsApp del número del bot:\n');
-      qrcode.generate(qr, { small: true });
+      console.log('\n📱 QR disponible pero usa el pairing code de arriba\n');
+    }
+    if (connection === 'open') {
+      console.log('✅ Bot WhatsApp conectado');
     }
     if (connection === 'close') {
       const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log('[bot] Conexión cerrada. Reconectando:', shouldReconnect);
       if (shouldReconnect) conectarBot();
-    } else if (connection === 'open') {
-      console.log('✅ Bot WhatsApp conectado');
     }
   });
+
+  // Pairing code si no hay sesión
+  if (!sock.authState.creds.registered) {
+    const PHONE = process.env.WA_PHONE || '573133064614';
+    try {
+      const code = await sock.requestPairingCode(PHONE);
+      console.log(`\n🔑 PAIRING CODE: ${code}\n`);
+      console.log('Ve a WhatsApp → Dispositivos vinculados → Vincular con número de teléfono → ingresa ese código\n');
+    } catch (e) {
+      console.error('[bot] Error solicitando pairing code:', e.message);
+    }
+  }
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
