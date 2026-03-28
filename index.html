@@ -4422,7 +4422,9 @@ setInterval(verificarAlertasFechas, 3600000); // cada hora
 /* ════════════════════════════════════════════════════════════════
    MÓDULO COTIZACIONES / FACTURAS
 ════════════════════════════════════════════════════════════════ */
-const LOGO_WYS = '/logos wys.png';
+const LOGO_WYS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? '/logos wys.png'
+  : 'https://' + location.hostname + '/logos%20wys.png';
 
 let docTipo = 'cotizacion';
 let docItems = [];
@@ -4689,7 +4691,6 @@ function generarPDF() {
 
   ${notaCot}
 </div>
-<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt>
 </body>
 </html>`;
 
@@ -4708,6 +4709,7 @@ function generarPDF() {
   const win = window.open('', '_blank', 'width=900,height=700');
   win.document.write(htmlDoc);
   win.document.close();
+  setTimeout(() => win.print(), 800);
 
   showToast(titulo + ' #' + numStr + ' generada', 'success');
   cerrarFormDoc();
