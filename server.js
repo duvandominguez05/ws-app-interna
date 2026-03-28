@@ -312,6 +312,34 @@ http.createServer((req, res) => {
     return json(res, 200, { registros });
   }
 
+  // ── GET /api/docs/nums — devuelve nextCot y nextFac ─────────
+  if (req.method === 'GET' && req.url === '/api/docs/nums') {
+    const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
+    let nums = { nextCot: 210, nextFac: 501 };
+    try {
+      if (fs.existsSync(NUMS_FILE)) nums = JSON.parse(fs.readFileSync(NUMS_FILE, 'utf8'));
+    } catch {}
+    return json(res, 200, nums);
+  }
+
+  // ── POST /api/docs/nums — guarda nextCot y nextFac ──────────
+  if (req.method === 'POST' && req.url === '/api/docs/nums') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { nextCot, nextFac } = JSON.parse(body);
+        const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
+        fs.mkdirSync(path.dirname(NUMS_FILE), { recursive: true });
+        fs.writeFileSync(NUMS_FILE, JSON.stringify({ nextCot, nextFac }));
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   const ext = path.extname(filePath);
