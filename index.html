@@ -2377,6 +2377,15 @@
         <!-- Totales -->
         <div id="doc-totales" style="margin-top:16px;padding:12px;background:rgba(249,115,22,0.06);border-radius:8px;text-align:right;font-size:0.85rem;"></div>
 
+        <!-- Cuenta Bancolombia -->
+        <div style="margin-top:14px;">
+          <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Cuenta Bancolombia</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="btn-cta1" class="btn btn-orange btn-xs" onclick="selCuenta(1)">Duvan D. — 215 0000 3773</button>
+            <button id="btn-cta2" class="btn btn-glass btn-xs" onclick="selCuenta(2)">William S. — 912 383 287 94</button>
+          </div>
+        </div>
+
         <!-- Acciones -->
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;">
           <button class="btn btn-glass btn-sm" onclick="cerrarFormDoc()">Cancelar</button>
@@ -4440,6 +4449,18 @@ let docItems = [];
 let docHistorial = JSON.parse(localStorage.getItem('ws_docs') || '[]');
 let nextCot = parseInt(localStorage.getItem('ws_nextCot') || '210');
 let nextFac = parseInt(localStorage.getItem('ws_nextFac') || '501');
+let docCuenta = 1; // 1 = Duvan, 2 = William
+
+const CUENTAS_BANCOLOMBIA = {
+  1: { num: '215 0000 3773', nombre: 'DUVAN DOMINGUEZ VELANDIA', cc: 'C.C. 1 030 675 743', tipo: 'CTA DE AHORROS' },
+  2: { num: '912 383 287 94', nombre: 'william sneider dominguez', cc: '1.233.506.852', tipo: 'cta de ahorros' },
+};
+
+function selCuenta(n) {
+  docCuenta = n;
+  document.getElementById('btn-cta1').className = 'btn btn-xs ' + (n===1 ? 'btn-orange' : 'btn-glass');
+  document.getElementById('btn-cta2').className = 'btn btn-xs ' + (n===2 ? 'btn-orange' : 'btn-glass');
+}
 
 function guardarDocs() {
   localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
@@ -4681,10 +4702,10 @@ function generarPDF() {
   <div class="cuentas">
     <div class="cuenta">
       <strong>BANCOLOMBIA</strong><br>
-      215 0000 3773<br>
-      DUVAN DOMINGUEZ VELANDIA<br>
-      C.C. 1 030 675 743<br>
-      CTA DE AHORROS
+      ${CUENTAS_BANCOLOMBIA[docCuenta].num}<br>
+      ${CUENTAS_BANCOLOMBIA[docCuenta].nombre}<br>
+      ${CUENTAS_BANCOLOMBIA[docCuenta].cc}<br>
+      ${CUENTAS_BANCOLOMBIA[docCuenta].tipo}
     </div>
     <div class="cuenta">
       <strong>NEQUI</strong><br>
