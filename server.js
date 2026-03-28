@@ -6,14 +6,17 @@ if (!global.crypto) global.crypto = webcrypto;
 
 // ── Restaurar sesión WhatsApp desde variable de entorno ──────────
 const AUTH_DIR_INIT = path.join(__dirname, 'data', 'wa_auth');
-if (process.env.WA_CREDS_B64 && !fs.existsSync(path.join(AUTH_DIR_INIT, 'creds.json'))) {
-  fs.mkdirSync(AUTH_DIR_INIT, { recursive: true });
-  fs.writeFileSync(
-    path.join(AUTH_DIR_INIT, 'creds.json'),
-    Buffer.from(process.env.WA_CREDS_B64, 'base64').toString('utf8')
-  );
-  console.log('[bot] creds.json restaurado desde variable de entorno');
+function restaurarDesdeEnv() {
+  if (process.env.WA_CREDS_B64 && !fs.existsSync(path.join(AUTH_DIR_INIT, 'creds.json'))) {
+    fs.mkdirSync(AUTH_DIR_INIT, { recursive: true });
+    fs.writeFileSync(
+      path.join(AUTH_DIR_INIT, 'creds.json'),
+      Buffer.from(process.env.WA_CREDS_B64, 'base64').toString('utf8')
+    );
+    console.log('[bot] creds.json restaurado desde variable de entorno');
+  }
 }
+restaurarDesdeEnv();
 
 // ── Bot WhatsApp (Baileys) ───────────────────────────────────────
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
@@ -83,6 +86,15 @@ async function conectarBot() {
         setTimeout(conectarBot, 5000);
       } else {
         console.log('[bot] Sesión cerrada definitivamente por WhatsApp (loggedOut).');
+        console.log('[bot] Limpiando sesión corrupta y generando nuevo QR...');
+        try {
+          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+          // No volvemos a llamar a restaurarDesdeEnv() en este ciclo para forzar QR
+          console.log('[bot] Re-iniciando bot limpio en 3s...');
+          setTimeout(conectarBot, 3000);
+        } catch (e) {
+          console.error('[bot] Error limpiando sesión:', e.message);
+        }
       }
     }
   });
