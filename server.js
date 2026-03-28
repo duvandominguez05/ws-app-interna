@@ -332,21 +332,9 @@ http.createServer((req, res) => {
     return;
   }
 
-  // ── GET /api/wa-status — estado de la conexión WhatsApp ─────
+  // ── GET /api/wa-status — el bot corre local, no en Railway ──
   if (req.method === 'GET' && req.url === '/api/wa-status') {
-    const status = sockGlobal ? (sockGlobal.user ? 'conectado' : 'esperando') : 'desconectado';
-    return json(res, 200, { 
-      ok: true, 
-      status, 
-      user: sockGlobal?.user || null,
-      authDirExists: fs.existsSync(AUTH_DIR),
-      credsExists: fs.existsSync(path.join(AUTH_DIR, 'creds.json'))
-    });
-  }
-
-  // ── POST /api/reset-wa — obsoleto en modo local ────────────
-  if (req.method === 'POST' && req.url === '/api/reset-wa') {
-    return json(res, 200, { msg: 'Modo local activo. Reinicia el bot en tu PC local.' });
+    return json(res, 200, { ok: true, status: 'bot-local' });
   }
 
   // ── Archivos estáticos ──────────────────────────────────────
