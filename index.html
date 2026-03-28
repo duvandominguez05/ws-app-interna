@@ -2006,6 +2006,9 @@
 
     <!-- ─── BANDEJA ────────────────────────────────────────────── -->
     <section id="bandeja" class="section-content">
+      <div style="margin-bottom:14px;">
+        <input type="search" id="buscar-pedidos" class="form-input" placeholder="🔍 Buscar por equipo o teléfono…" oninput="buscarPedidos(this.value)" style="max-width:400px;">
+      </div>
       <div class="bandeja-cols">
         <div class="bandeja-col bandeja-col-cotizar">
           <div class="bandeja-col-header">
@@ -2734,11 +2737,11 @@ function renderDashboard() {
     const d = new Date(p.fechaEntrega + 'T00:00:00');
     const diff = Math.round((d - hoy) / 86400000);
     return { ...p, diff };
-  }).filter(p => p.diff <= 5).sort((a, b) => a.diff - b.diff);
+  }).filter(p => p.diff <= 2).sort((a, b) => a.diff - b.diff);
 
   const contAlertas = document.getElementById('dash-alertas');
   if (!conFecha.length) {
-    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los próximos 5 días</div>';
+    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los próximos 2 días</div>';
   } else {
     contAlertas.innerHTML = conFecha.map(p => {
       const cls   = p.diff <= 1 ? 'red' : 'yellow';
@@ -2920,10 +2923,22 @@ function renderTablaRecientes() {
 }
 
 /* ─── Bandeja ────────────────────────────────────────────────── */
+let busquedaActual = '';
+
+function buscarPedidos(q) {
+  busquedaActual = q.toLowerCase().trim();
+  renderBandeja();
+}
+
 function renderBandeja() {
-  const cotizaciones = pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja');
+  const q = busquedaActual;
+  const filtrar = p => !q ||
+    (p.equipo   && p.equipo.toLowerCase().includes(q)) ||
+    (p.telefono && p.telefono.toLowerCase().includes(q));
+
+  const cotizaciones = pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja' && filtrar(p));
   // Pedidos confirmados: visible desde que se confirman hasta que se entregan (todo excepto enviado-final)
-  const pedidosConf  = pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final');
+  const pedidosConf  = pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final' && filtrar(p));
 
   document.getElementById('count-cotizar').textContent = cotizaciones.length;
   document.getElementById('count-pedido').textContent  = pedidosConf.length;
