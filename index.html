@@ -1856,7 +1856,7 @@
 
       <div class="nav-item" onclick="showSection('cotizaciones', this)">
         <span class="nav-icon">🧾</span>
-        <span>Cotizaciones</span>
+        <span>Facturas</span>
       </div>
 
     </nav>
@@ -2642,7 +2642,7 @@ const HEADER_INFO = {
   'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
   'calandra':      { icon: '📐', title: 'Metraje — Control Calandra' },
   'satelites':     { icon: '🧵', title: 'Satélites de costura' },
-  'cotizaciones':  { icon: '🧾', title: 'Cotizaciones y Facturas' },
+  'cotizaciones':  { icon: '🧾', title: 'Facturas y Cotizaciones' },
 };
 
 function showSection(id, navEl) {
@@ -4792,14 +4792,33 @@ function renderDocHistorial() {
     return;
   }
   cont.innerHTML = docHistorial.slice(0, 20).map(d => `
-    <div class="doc-hist-row">
+    <div class="doc-hist-row" style="flex-wrap:wrap;gap:4px;">
       <span class="doc-num">#${d.numero}</span>
       <span class="${d.tipo === 'cotizacion' ? 'doc-badge-cot' : 'doc-badge-fac'}">${d.tipo === 'cotizacion' ? 'Cot' : 'Fac'}</span>
       <span class="doc-cliente">${esc(d.cliente)}</span>
       <span class="doc-total">${fmtPeso(d.total)}</span>
       <span class="doc-fecha">${d.fecha}</span>
+      <button onclick="compartirDocWA(${d.id})" style="margin-left:auto;background:#25d366;border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">WhatsApp</button>
     </div>
   `).join('');
+}
+
+function compartirDocWA(id) {
+  const d = docHistorial.find(x => x.id === id);
+  if (!d) return;
+  const tipo  = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const items = d.items.map(it => `• ${it.desc} x${it.qty} — ${fmtPeso(it.total)}`).join('\n');
+  const msg =
+`*${tipo} #${d.numero} — W&S Textil*
+Cliente: ${d.cliente}
+Fecha: ${d.fecha}
+
+${items}
+
+*Total: ${fmtPeso(d.total)}*
+
+_W&S Textil — Uniformes Deportivos_`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
 // Hook showSection para renderizar historial al abrir la sección
