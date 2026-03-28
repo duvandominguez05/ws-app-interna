@@ -3952,7 +3952,8 @@ pedidos.forEach(p => {
     p.arreglo = null;
   }
 });
-guardar();
+// Solo subir al servidor al inicio si hay pedidos en localStorage (evita borrar datos del servidor)
+if (pedidos.length > 0) guardar();
 updateDate();
 render();
 
@@ -3967,7 +3968,7 @@ function syncConServidor(silencioso = false) {
       if (!serverPedidos.length && !pedidos.length) return;
 
       if (!serverPedidos.length) {
-        guardar();
+        if (pedidos.length > 0) guardar();
         return;
       }
 

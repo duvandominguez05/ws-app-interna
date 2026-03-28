@@ -2,6 +2,19 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 
+const BOT_URL = process.env.BOT_URL || 'http://localhost:3001';
+
+function enviarAlerta(texto) {
+  const body = JSON.stringify({ texto });
+  const req = http.request(`${BOT_URL}/alerta`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  });
+  req.on('error', () => {});
+  req.write(body);
+  req.end();
+}
+
 const PORT = process.env.PORT || 3000;
 const DATA_FILE   = path.join(__dirname, 'data', 'pedidos.json');
 const NEXTID_FILE = path.join(__dirname, 'data', 'nextId.json');
@@ -112,6 +125,13 @@ http.createServer((req, res) => {
         guardarPedidos(pedidos);
 
         console.log(`[webhook] #${pedido.id} ${pedido.equipo}: ${estadoAnterior} → ${estado}`);
+
+        // Alertas automáticas al grupo de WhatsApp
+        if (estado === 'listo') {
+          enviarAlerta(`✅ *Pedido listo:* ${pedido.equipo}\n👤 Vendedora: ${pedido.vendedora}\n📞 Tel: ${pedido.telefono}`);
+        } else if (estado === 'costura') {
+          enviarAlerta(`🧵 *Nuevo en costura:* ${pedido.equipo}\n¿Quién lo toma? (Marcela / Yamile / Wilson / Cristina)`);
+        }
         return json(res, 200, { ok: true, id: pedido.id, equipo: pedido.equipo, estadoAnterior, estadoNuevo: estado });
 
       } catch (e) {

@@ -4,9 +4,16 @@
   "description": "App interna W&S Textil",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "bot": "node bot.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.4.0",
+    "node-fetch": "^2.7.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
