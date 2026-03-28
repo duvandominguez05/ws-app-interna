@@ -57,6 +57,7 @@ async function conectar() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
+      console.log('[bot] JID:', msg.key.remoteJid);
       const texto = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
       const match = texto.match(REGEX);
       if (!match) continue;

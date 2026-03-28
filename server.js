@@ -35,38 +35,53 @@ function enviarAlerta(texto) {
 
 async function conectarBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  // Agregar configuración de navegador (browser) previene algunos bloqueos inmediatos de WhatsApp
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['Ubuntu', 'Chrome', '20.0.04']
+  });
   sockGlobal = sock;
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      console.log('\n📱 QR disponible pero usa el pairing code de arriba\n');
+      console.log('\n📱 QR generado en logs. Revisa el código de emparejamiento abajo:\n');
+      qrcode.generate(qr, { small: true });
+
+      // Pedir pairing code SOLO UNA VEZ para que no se refresque a cada rato y no deje copiarlo
+      if (!sock.authState.creds.registered && !sock.pairingCodeRequested) {
+        sock.pairingCodeRequested = true; // Fijamos esta bandera para detener el bucle
+        setTimeout(async () => {
+          try {
+            const PHONE = process.env.WA_PHONE || '573133064614';
+            const code = await sock.requestPairingCode(PHONE);
+            console.log(`\n========================================================`);
+            console.log(`🔑 PAIRING CODE: ${code}`);
+            console.log(`📱 PARA EL NÚMERO: ${PHONE}`);
+            console.log(`Ve a WhatsApp → Dispositivos vinculados → Vincular con número`);
+            console.log(`========================================================\n`);
+          } catch (e) {
+            console.error('[bot] Error solicitando pairing code:', e.message);
+            sock.pairingCodeRequested = false; // Permitir reintento si falló
+          }
+        }, 1500);
+      }
     }
+    
     if (connection === 'open') {
       console.log('✅ Bot WhatsApp conectado');
     }
+    
     if (connection === 'close') {
       const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('[bot] Conexión cerrada. Reconectando:', shouldReconnect);
-      if (shouldReconnect) conectarBot();
+      console.log('[bot] Conexión cerrada. Reconectando en 5 segundos...', shouldReconnect);
+      if (shouldReconnect) {
+        setTimeout(conectarBot, 5000); // Dar un respiro de 5s para que no haga un bucle infinito
+      }
     }
   });
-
-  // Pairing code si no hay sesión
-  if (!sock.authState.creds.registered) {
-    const PHONE = process.env.WA_PHONE || '573133064614';
-    // Esperar a que la conexión esté lista antes de pedir el código
-    await new Promise(r => setTimeout(r, 3000));
-    try {
-      const code = await sock.requestPairingCode(PHONE);
-      console.log(`\n🔑 PAIRING CODE: ${code}\n`);
-      console.log('Ve a WhatsApp → Dispositivos vinculados → Vincular con número de teléfono → ingresa ese código\n');
-    } catch (e) {
-      console.error('[bot] Error solicitando pairing code:', e.message);
-    }
-  }
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
@@ -83,7 +98,7 @@ async function conectarBot() {
         const jid = msg.key.remoteJid;
         if (result.ok) {
           await sock.sendMessage(jid, {
-            text: `✅ ${tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}`,
+            text: `✅ ${result.tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}`,
           });
         } else {
           await sock.sendMessage(jid, { text: `❌ Error: ${result.error}` });

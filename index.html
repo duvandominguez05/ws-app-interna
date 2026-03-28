@@ -3946,10 +3946,13 @@ function renderArreglos() {
    INIT
 ════════════════════════════════════════════════════════════════ */
 limpiarEnviadosDelMesPasado();
-// Migración: limpiar valores rotos de p.arreglo (false, "", 0)
+// Migración: limpiar valores rotos de p.arreglo (false, "", 0) y normalizar tipoBandeja
 pedidos.forEach(p => {
   if (p.arreglo !== null && p.arreglo !== undefined && !p.arreglo) {
     p.arreglo = null;
+  }
+  if (p.tipoBandeja) {
+    p.tipoBandeja = p.tipoBandeja.toLowerCase();
   }
 });
 // Solo subir al servidor al inicio si hay pedidos en localStorage (evita borrar datos del servidor)
