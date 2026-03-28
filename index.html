@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="W&S Textil">
   <meta name="theme-color" content="#7c3aed">
   <link rel="manifest" href="/manifest.json">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     /* ─── RESET & BASE ─────────────────────────────────────────────────── */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -4764,7 +4765,7 @@ function generarPDF() {
 
   // Guardar en historial
   const registro = {
-    id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora,
+    id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora, telefono,
     subtotal, abono, total, fecha,
     items: docItems.filter(it => it.desc).map(it => ({...it})),
   };
@@ -4803,31 +4804,169 @@ function renderDocHistorial() {
   `).join('');
 }
 
+function buildDocHTML(d) {
+  const esCot   = d.tipo === 'cotizacion';
+  const titulo  = esCot ? 'COTIZACION' : 'FACTURA';
+  const color1  = '#c8a96e';
+  const color2  = '#f5e6c8';
+
+  const filasItems = d.items.filter(it => it.desc).map(it => {
+    const tot = (it.cant || 1) * (it.precio || 0);
+    return `<tr>
+      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;color:#c8501a;">${it.cant}</td>
+      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;text-transform:uppercase;">${esc(it.desc)}</td>
+      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(it.precio || 0)}</td>
+      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(tot)}</td>
+    </tr>`;
+  }).join('');
+
+  const itemsValidos = d.items.filter(it => it.desc).length;
+  const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
+    .map(() => `<tr><td style="padding:10px 6px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
+
+  const abonoFila = !esCot && d.abono > 0 ? `<tr>
+    <td colspan="2"></td>
+    <td style="text-align:right;font-weight:600;padding:6px 6px;">ABONO:</td>
+    <td style="text-align:center;padding:6px 6px;">
+      <span style="background:${color1};color:white;padding:2px 10px;border-radius:3px;font-weight:700;">${fmtPesoNum(d.abono)}</span>
+    </td>
+  </tr>` : '';
+
+  const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
+    <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
+    TELA<br>
+    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
+    BONOS<br>
+    por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
+    por compra de +100 uniformes obsequiamos descuento del 5%
+  </div>` : '';
+
+  // Cuenta bancolombia (siempre la primera por defecto al regenerar)
+  const cta = CUENTAS_BANCOLOMBIA[0];
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:12px;color:#333;background:white}
+  .page{width:800px;margin:0 auto;padding:30px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+  .empresa-info{font-size:11px;line-height:1.7}
+  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
+  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
+  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+  .campo{color:#999;min-width:60px;display:inline-block}
+  table{width:100%;border-collapse:collapse}
+  thead tr{background:${color1}}
+  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
+  tbody tr:nth-child(even){background:${color2}}
+  tbody tr{border-bottom:1px solid #e8d8b8}
+  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
+  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
+  .cuenta{text-align:center;font-size:10px;line-height:1.7}
+  .cuenta strong{font-size:11px;text-transform:uppercase}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <div>
+      <img src="${LOGO_WYS}" style="height:90px;width:auto;" alt="W&S">
+      <div class="empresa-info" style="margin-top:8px;">
+        <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
+      </div>
+    </div>
+    <div class="titulo-doc">
+      <h1>${titulo}</h1>
+      <div class="num"># ${d.numero}</div>
+      <div style="text-align:right;font-size:11px;margin-top:10px;">
+        Fecha: ${d.fecha}<br><strong>VENDEDOR: ${esc(d.vendedora)}</strong>
+      </div>
+    </div>
+  </div>
+  <hr>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
+    <div style="font-size:11px;line-height:1.8;">
+      <span class="campo">Nombre</span> ${esc(d.cliente)}<br>
+      ${d.telefono ? `<span class="campo">Teléfono</span> ${d.telefono}<br>` : ''}
+    </div>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:80px">CANTIDAD</th><th>DESCRIPCION</th>
+      <th style="width:110px">PRECIO</th><th style="width:110px">TOTAL</th>
+    </tr></thead>
+    <tbody>
+      ${filasItems}${filasVacias}
+      <tr><td colspan="2"></td>
+        <td style="text-align:right;font-weight:600;padding:8px 6px;">SUBTOTAL:</td>
+        <td style="text-align:center;font-weight:700;padding:8px 6px;">${fmtPesoNum(d.subtotal)}</td>
+      </tr>
+      ${abonoFila}
+      <tr style="background:${color2};">
+        <td colspan="2"></td>
+        <td style="text-align:right;font-weight:800;font-size:13px;padding:8px 6px;">TOTAL:</td>
+        <td style="text-align:center;font-weight:800;font-size:14px;padding:8px 6px;">${fmtPesoNum(d.total)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="footer-text">
+    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
+    SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
+  </div>
+  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
+  <div class="cuentas">
+    <div class="cuenta"><strong>BANCOLOMBIA</strong><br>${cta.num}<br>${cta.nombre}<br>${cta.cc}<br>${cta.tipo}</div>
+    <div class="cuenta"><strong>NEQUI</strong><br>350 697 47 11<br>301 663 94 30</div>
+    <div class="cuenta"><strong>DAVIPLATA</strong><br>350 697 47 11<br>301 663 94 30</div>
+  </div>
+  ${notaCot}
+</div></body></html>`;
+}
+
 async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
-  const tipo  = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
-  const items = d.items.map(it => `• ${it.desc} x${it.cant} — ${fmtPeso(it.cant * it.precio)}`).join('\n');
-  const msg =
-`*${tipo} #${d.numero} — W&S Textil*
-Cliente: ${d.cliente}
-Fecha: ${d.fecha}
+  const tipo     = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const nombre   = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
 
-${items}
+  showToast('Generando PDF...', 'info');
 
-*Total: ${fmtPeso(d.total)}*
+  try {
+    const htmlDoc  = buildDocHTML(d);
+    const container = document.createElement('div');
+    container.innerHTML = htmlDoc.replace(/<!DOCTYPE[^>]*>|<html[^>]*>|<\/html>|<head>[\s\S]*<\/head>|<body>|<\/body>/gi, '');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;font-family:Arial,sans-serif;font-size:12px;color:#333;';
+    document.body.appendChild(container);
 
-_W&S Textil — Uniformes Deportivos_`;
+    const opt = {
+      margin:      [10, 10, 10, 10],
+      filename:    nombre,
+      image:       { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    };
 
-  // En celular: intentar compartir nativo (abre WhatsApp, Drive, etc.)
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: `${tipo} #${d.numero}`, text: msg });
+    const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+    document.body.removeChild(container);
+
+    // Celular con soporte de archivos: compartir como PDF
+    if (navigator.canShare && navigator.canShare({ files: [new File([pdfBlob], nombre, { type: 'application/pdf' })] })) {
+      const file = new File([pdfBlob], nombre, { type: 'application/pdf' });
+      await navigator.share({ files: [file], title: nombre });
       return;
-    } catch (e) { /* usuario canceló o no soportado */ }
+    }
+
+    // Fallback: descargar el PDF
+    const url = URL.createObjectURL(pdfBlob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = nombre; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('PDF descargado — compártelo manualmente por WhatsApp', 'info');
+
+  } catch (err) {
+    console.error('Error generando PDF:', err);
+    showToast('Error generando PDF', 'error');
   }
-  // Fallback PC: abrir wa.me con el texto
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
 // Hook showSection para renderizar historial al abrir la sección
