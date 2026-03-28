@@ -2,6 +2,17 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 
+// ── Restaurar sesión WhatsApp desde variable de entorno ──────────
+const AUTH_DIR_INIT = path.join(__dirname, 'data', 'wa_auth');
+if (process.env.WA_CREDS_B64 && !fs.existsSync(path.join(AUTH_DIR_INIT, 'creds.json'))) {
+  fs.mkdirSync(AUTH_DIR_INIT, { recursive: true });
+  fs.writeFileSync(
+    path.join(AUTH_DIR_INIT, 'creds.json'),
+    Buffer.from(process.env.WA_CREDS_B64, 'base64').toString('utf8')
+  );
+  console.log('[bot] creds.json restaurado desde variable de entorno');
+}
+
 // ── Bot WhatsApp (Baileys) ───────────────────────────────────────
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
