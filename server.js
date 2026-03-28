@@ -1,6 +1,8 @@
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
+const { webcrypto } = require('crypto');
+if (!global.crypto) global.crypto = webcrypto;
 
 // ── Restaurar sesión WhatsApp desde variable de entorno ──────────
 const AUTH_DIR_INIT = path.join(__dirname, 'data', 'wa_auth');
