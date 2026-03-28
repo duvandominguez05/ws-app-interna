@@ -3269,6 +3269,7 @@ function renderKanbanCard(p) {
     }
   } else if (p.estado === 'listo') {
     actionsHtml = `
+      <button onclick="copiarMsgListo(${p.id})" style="width:100%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;color:#4ade80;font-size:0.75rem;font-weight:600;padding:6px 10px;cursor:pointer;margin-bottom:8px;">📋 Copiar mensaje para cliente</button>
       <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">¿Cómo se envía?</div>
       <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;">
         ${METODOS_ENVIO.map(m => `<button onclick="registrarEnvioDirecto(${p.id},'${esc(m)}')" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--text);font-size:0.72rem;padding:5px 8px;cursor:pointer;text-align:left;">${esc(m)}</button>`).join('')}
@@ -3716,6 +3717,18 @@ function registrarEnvio(id) {
   guardar();
   render();
   toast(`#${id} enviado — ${metodo}`, 'success');
+}
+
+function copiarMsgListo(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const nombre = p.equipo || p.telefono || 'cliente';
+  const msg = `Hola! 👋 Le informamos que su pedido *${nombre}* ya está listo para despacho. 🎉\n\nPor favor enviar el saldo restante para proceder con el envío.\n\n¡Gracias por su compra! 🙏`;
+  navigator.clipboard.writeText(msg).then(() => {
+    showToast('Mensaje copiado — pégalo en WhatsApp', 'success');
+  }).catch(() => {
+    prompt('Copia este mensaje:', msg);
+  });
 }
 
 function registrarEnvioDirecto(id, metodo) {
