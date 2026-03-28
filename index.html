@@ -4766,7 +4766,7 @@ function generarPDF() {
   // Guardar en historial
   const registro = {
     id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora, telefono,
-    subtotal, abono, total, fecha,
+    subtotal, abono, total, fecha, cuenta: docCuenta,
     items: docItems.filter(it => it.desc).map(it => ({...it})),
   };
   docHistorial.unshift(registro);
@@ -4841,8 +4841,8 @@ function buildDocHTML(d) {
     por compra de +100 uniformes obsequiamos descuento del 5%
   </div>` : '';
 
-  // Cuenta bancolombia (siempre la primera por defecto al regenerar)
-  const cta = CUENTAS_BANCOLOMBIA[0];
+  // Cuenta bancolombia (usar la seleccionada actualmente, o la 1 por defecto)
+  const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
 <style>
