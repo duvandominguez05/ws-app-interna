@@ -429,6 +429,19 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/reset-wa — borra sesión WhatsApp (temporal) ───
+  if (req.method === 'POST' && req.url === '/api/reset-wa') {
+    try {
+      if (sockGlobal) { try { sockGlobal.end(); } catch {} sockGlobal = null; }
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      console.log('[bot] Sesión WhatsApp borrada, reconectando...');
+      setTimeout(() => conectarBot(), 1000);
+      return json(res, 200, { ok: true, msg: 'Sesión borrada, QR generándose en logs' });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   const ext = path.extname(filePath);
