@@ -57,6 +57,8 @@ async function conectarBot() {
   // Pairing code si no hay sesión
   if (!sock.authState.creds.registered) {
     const PHONE = process.env.WA_PHONE || '573133064614';
+    // Esperar a que la conexión esté lista antes de pedir el código
+    await new Promise(r => setTimeout(r, 3000));
     try {
       const code = await sock.requestPairingCode(PHONE);
       console.log(`\n🔑 PAIRING CODE: ${code}\n`);
@@ -110,6 +112,7 @@ const mime = {
 };
 
 function crearVentaInterna(tipo, vendedora, telefono) {
+  const tipoNorm = tipo.toLowerCase();
   const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
   const vendedoraNorm = vendedora.toLowerCase();
   if (!VENDEDORAS_VALIDAS.includes(vendedoraNorm))
@@ -123,8 +126,8 @@ function crearVentaInterna(tipo, vendedora, telefono) {
     equipo:      '',
     telefono:    String(telefono).trim(),
     vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
-    tipoBandeja: tipo,
-    estado:      tipo === 'pedido' ? 'hacer-diseno' : 'bandeja',
+    tipoBandeja: tipoNorm,
+    estado:      tipoNorm === 'pedido' ? 'hacer-diseno' : 'bandeja',
     creadoEn:    new Date().toLocaleDateString('es-CO'),
     ultimoMovimiento: new Date().toISOString(),
     items:       [],
@@ -136,8 +139,8 @@ function crearVentaInterna(tipo, vendedora, telefono) {
 
   pedidos.push(nuevo);
   guardarPedidos(pedidos, nextId + 1);
-  console.log(`[bot] Nueva ${tipo} #${nextId} — ${vendedora} — ${telefono}`);
-  return { ok: true, id: nextId, tipo, vendedora: nuevo.vendedora, telefono };
+  console.log(`[bot] Nueva ${tipoNorm} #${nextId} — ${vendedora} — ${telefono}`);
+  return { ok: true, id: nextId, tipo: tipoNorm, vendedora: nuevo.vendedora, telefono };
 }
 
 function cors(res) {
@@ -261,7 +264,8 @@ http.createServer((req, res) => {
         const { tipo, vendedora, telefono } = JSON.parse(body);
         if (!tipo || !vendedora || !telefono)
           return json(res, 400, { error: 'Faltan campos: tipo, vendedora, telefono' });
-        if (!['cotizar', 'pedido'].includes(tipo))
+        const tipoNorm = tipo.toLowerCase();
+        if (!['cotizar', 'pedido'].includes(tipoNorm))
           return json(res, 400, { error: 'tipo debe ser cotizar o pedido' });
         const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''));
         return json(res, result.ok ? 200 : 400, result);
@@ -446,9 +450,11 @@ http.createServer((req, res) => {
     try {
       if (sockGlobal) { try { sockGlobal.end(); } catch {} sockGlobal = null; }
       fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-      console.log('[bot] Sesión WhatsApp borrada, reconectando...');
-      setTimeout(() => conectarBot(), 1000);
-      return json(res, 200, { ok: true, msg: 'Sesión borrada, QR generándose en logs' });
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+      console.log('[bot] Sesión WhatsApp borrada completamente.');
+      console.log('[bot] Reconectando en 5 segundos...');
+      setTimeout(() => conectarBot(), 5000);
+      return json(res, 200, { ok: true, msg: 'Sesión borrada. Pairing code aparecerá en logs en ~10s' });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
