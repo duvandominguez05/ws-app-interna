@@ -2952,7 +2952,10 @@ function renderBandejaCotizaciones(arr) {
   return arr.map(p => `
     <div class="bandeja-card">
       <div class="bandeja-card-top">
-        <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
+        <div>
+          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
+          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
+        </div>
         <div class="bandeja-id">#${p.id}</div>
       </div>
       <div class="bandeja-meta">
@@ -3032,7 +3035,10 @@ function renderBandejaPedidos(arr) {
     return `
     <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
       <div class="bandeja-card-top">
-        <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
+        <div>
+          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
+          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
+        </div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bandeja-id">#${p.id}</div>
           <button onclick="eliminarPedidoBandeja(${p.id}, event)" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 6px;font-size:0.7rem;cursor:pointer;line-height:1.4;">✕</button>
