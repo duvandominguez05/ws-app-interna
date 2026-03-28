@@ -2,18 +2,73 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 
-const BOT_URL = process.env.BOT_URL || 'http://localhost:3001';
+// ── Bot WhatsApp (Baileys) ───────────────────────────────────────
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const qrcode = require('qrcode-terminal');
+
+const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
+const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
+const REGEX    = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+)/i;
+
+let sockGlobal = null;
 
 function enviarAlerta(texto) {
-  const body = JSON.stringify({ texto });
-  const req = http.request(`${BOT_URL}/alerta`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  if (!sockGlobal) return;
+  sockGlobal.sendMessage(GRUPO_ID, { text: texto }).catch(e => {
+    console.error('[bot] Error enviando alerta:', e.message);
   });
-  req.on('error', () => {});
-  req.write(body);
-  req.end();
 }
+
+async function conectarBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  sockGlobal = sock;
+
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      console.log('\n📱 Escanea este QR con WhatsApp del número del bot:\n');
+      qrcode.generate(qr, { small: true });
+    }
+    if (connection === 'close') {
+      const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('[bot] Conexión cerrada. Reconectando:', shouldReconnect);
+      if (shouldReconnect) conectarBot();
+    } else if (connection === 'open') {
+      console.log('✅ Bot WhatsApp conectado');
+    }
+  });
+
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    for (const msg of messages) {
+      if (msg.key.fromMe) continue;
+      const texto = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+      const match = texto.match(REGEX);
+      if (!match) continue;
+
+      const [, tipo, vendedora, telefono] = match;
+      console.log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono}`);
+
+      try {
+        const result = await crearVentaInterna(tipo, vendedora, telefono.replace(/\s/g, ''));
+        const jid = msg.key.remoteJid;
+        if (result.ok) {
+          await sock.sendMessage(jid, {
+            text: `✅ ${tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}`,
+          });
+        } else {
+          await sock.sendMessage(jid, { text: `❌ Error: ${result.error}` });
+        }
+      } catch (e) {
+        console.error('[bot] Error al crear venta:', e.message);
+      }
+    }
+  });
+}
+
+conectarBot();
 
 const PORT = process.env.PORT || 3000;
 const DATA_FILE   = path.join(__dirname, 'data', 'pedidos.json');
@@ -28,6 +83,37 @@ const mime = {
   '.ico':  'image/x-icon',
   '.json': 'application/json',
 };
+
+function crearVentaInterna(tipo, vendedora, telefono) {
+  const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+  const vendedoraNorm = vendedora.toLowerCase();
+  if (!VENDEDORAS_VALIDAS.includes(vendedoraNorm))
+    return { ok: false, error: `Vendedora no reconocida: ${vendedora}` };
+
+  const pedidos = leerPedidos();
+  const nextId  = leerNextId();
+
+  const nuevo = {
+    id:          nextId,
+    equipo:      '',
+    telefono:    String(telefono).trim(),
+    vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
+    tipoBandeja: tipo,
+    estado:      tipo === 'pedido' ? 'hacer-diseno' : 'bandeja',
+    creadoEn:    new Date().toLocaleDateString('es-CO'),
+    ultimoMovimiento: new Date().toISOString(),
+    items:       [],
+    fechaEntrega: '',
+    notas:       '',
+    arreglo:     null,
+    origenBot:   true,
+  };
+
+  pedidos.push(nuevo);
+  guardarPedidos(pedidos, nextId + 1);
+  console.log(`[bot] Nueva ${tipo} #${nextId} — ${vendedora} — ${telefono}`);
+  return { ok: true, id: nextId, tipo, vendedora: nuevo.vendedora, telefono };
+}
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -142,7 +228,6 @@ http.createServer((req, res) => {
   }
 
   // ── POST /api/venta — chatbot WhatsApp crea cotización/pedido ─
-  // Body: { tipo: 'cotizar'|'pedido', vendedora, telefono }
   if (req.method === 'POST' && req.url === '/api/venta') {
     let body = '';
     req.on('data', d => body += d);
@@ -153,37 +238,8 @@ http.createServer((req, res) => {
           return json(res, 400, { error: 'Faltan campos: tipo, vendedora, telefono' });
         if (!['cotizar', 'pedido'].includes(tipo))
           return json(res, 400, { error: 'tipo debe ser cotizar o pedido' });
-
-        const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
-        const vendedoraNorm = vendedora.toLowerCase();
-        if (!VENDEDORAS_VALIDAS.includes(vendedoraNorm))
-          return json(res, 400, { error: `Vendedora no reconocida: ${vendedora}` });
-
-        const pedidos = leerPedidos();
-        let nextId = leerNextId();
-
-        const nuevo = {
-          id:          nextId,
-          equipo:      '',
-          telefono:    String(telefono).trim(),
-          vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
-          tipoBandeja: tipo,
-          estado:      tipo === 'pedido' ? 'hacer-diseno' : 'bandeja',
-          creadoEn:    new Date().toLocaleDateString('es-CO'),
-          ultimoMovimiento: new Date().toISOString(),
-          items:       [],
-          fechaEntrega: '',
-          notas:       '',
-          arreglo:     null,
-          origenBot:   true,
-        };
-
-        pedidos.push(nuevo);
-        guardarPedidos(pedidos, nextId + 1);
-
-        console.log(`[bot] Nueva ${tipo} #${nextId} — ${vendedora} — ${telefono}`);
-        return json(res, 200, { ok: true, id: nextId, tipo, vendedora: nuevo.vendedora, telefono });
-
+        const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''));
+        return json(res, result.ok ? 200 : 400, result);
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
       }
