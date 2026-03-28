@@ -4803,11 +4803,11 @@ function renderDocHistorial() {
   `).join('');
 }
 
-function compartirDocWA(id) {
+async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
   const tipo  = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
-  const items = d.items.map(it => `• ${it.desc} x${it.qty} — ${fmtPeso(it.total)}`).join('\n');
+  const items = d.items.map(it => `• ${it.desc} x${it.cant} — ${fmtPeso(it.cant * it.precio)}`).join('\n');
   const msg =
 `*${tipo} #${d.numero} — W&S Textil*
 Cliente: ${d.cliente}
@@ -4818,6 +4818,15 @@ ${items}
 *Total: ${fmtPeso(d.total)}*
 
 _W&S Textil — Uniformes Deportivos_`;
+
+  // En celular: intentar compartir nativo (abre WhatsApp, Drive, etc.)
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `${tipo} #${d.numero}`, text: msg });
+      return;
+    } catch (e) { /* usuario canceló o no soportado */ }
+  }
+  // Fallback PC: abrir wa.me con el texto
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
