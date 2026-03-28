@@ -35,7 +35,7 @@ function enviarAlerta(texto) {
 
 async function conectarBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
   sockGlobal = sock;
 
   sock.ev.on('creds.update', saveCreds);
