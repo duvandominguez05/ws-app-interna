@@ -1760,7 +1760,16 @@
     .doc-badge-cot { background: rgba(249,115,22,0.15); color: #fb923c; padding: 2px 7px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; }
     .doc-badge-fac { background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; }
     @media (max-width: 600px) {
-      .doc-item-row { grid-template-columns: 60px 1fr 90px 90px 28px; }
+      .doc-item-row {
+        grid-template-columns: 65px 1fr 80px 26px;
+        grid-template-rows: auto auto;
+        gap: 4px;
+      }
+      /* descripción ocupa toda la fila */
+      .doc-item-row input:nth-child(2) {
+        grid-column: 1 / -1;
+      }
+      /* cant — col 1, precio — col 2-3, total — col 3, x — col 4 */
     }
   </style>
 </head>
