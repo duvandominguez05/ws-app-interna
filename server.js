@@ -4,129 +4,8 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 if (!global.crypto) global.crypto = webcrypto;
 
-// ── Restaurar sesión WhatsApp desde variable de entorno ──────────
-const AUTH_DIR_INIT = path.join(__dirname, 'data', 'wa_auth');
-function restaurarDesdeEnv() {
-  if (process.env.WA_CREDS_B64 && !fs.existsSync(path.join(AUTH_DIR_INIT, 'creds.json'))) {
-    fs.mkdirSync(AUTH_DIR_INIT, { recursive: true });
-    fs.writeFileSync(
-      path.join(AUTH_DIR_INIT, 'creds.json'),
-      Buffer.from(process.env.WA_CREDS_B64, 'base64').toString('utf8')
-    );
-    console.log('[bot] creds.json restaurado desde variable de entorno');
-  }
-}
-restaurarDesdeEnv();
-
-// ── Bot WhatsApp (Baileys) ───────────────────────────────────────
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
-const qrcode = require('qrcode-terminal');
-
-const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
-const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
-const REGEX    = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+)/i;
-
-let sockGlobal = null;
-
-function enviarAlerta(texto) {
-  if (!sockGlobal) return;
-  sockGlobal.sendMessage(GRUPO_ID, { text: texto }).catch(e => {
-    console.error('[bot] Error enviando alerta:', e.message);
-  });
-}
-
-async function conectarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  // Agregar configuración de navegador (browser) previene algunos bloqueos inmediatos de WhatsApp
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    browser: Browsers.macOS('Edge'),
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 0,
-    keepAliveIntervalMs: 10000,
-  });
-  sockGlobal = sock;
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      console.log('\n📱 ATENCIÓN: WhatsApp bloqueó temporalmente el Pairing Code por demasiados intentos.');
-      console.log('📱 DEBES ESCANEAR ESTE QR. Tienes 40 segundos antes de que cambie:\n');
-      qrcode.generate(qr, { small: true });
-
-      /* 
-      // Desactivado temporalmente porque WhatsApp empezó a tumbar el WebSocket por límite de Pairing Codes
-      if (!sock.authState.creds.registered && !sock.pairingCodeRequested) {
-        sock.pairingCodeRequested = true;
-        setTimeout(async () => {
-          // ... 
-        }, 1500);
-      }
-      */
-    }
-    
-    if (connection === 'open') {
-      console.log('✅ Bot WhatsApp conectado');
-    }
-    
-    if (connection === 'close') {
-      const error = lastDisconnect?.error;
-      const status = error?.output?.statusCode || error?.code || 'unknown';
-      
-      console.log(`[bot] Conexión cerrada. Status: ${status} | Error: ${error?.message || 'N/A'}`);
-      
-      // Reconectar si no es un cierre de sesión explícito
-      const shouldReconnect = status !== DisconnectReason.loggedOut;
-      
-      if (shouldReconnect) {
-        console.log('[bot] Intentando reconectar en 5 segundos...');
-        setTimeout(conectarBot, 5000);
-      } else {
-        console.log('[bot] Sesión cerrada definitivamente por WhatsApp (loggedOut).');
-        console.log('[bot] Limpiando sesión corrupta y generando nuevo QR...');
-        try {
-          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-          // No volvemos a llamar a restaurarDesdeEnv() en este ciclo para forzar QR
-          console.log('[bot] Re-iniciando bot limpio en 3s...');
-          setTimeout(conectarBot, 3000);
-        } catch (e) {
-          console.error('[bot] Error limpiando sesión:', e.message);
-        }
-      }
-    }
-  });
-
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    for (const msg of messages) {
-      if (msg.key.fromMe) continue;
-      const texto = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-      const match = texto.match(REGEX);
-      if (!match) continue;
-
-      const [, tipo, vendedora, telefono] = match;
-      console.log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono}`);
-
-      try {
-        const result = await crearVentaInterna(tipo, vendedora, telefono.replace(/\s/g, ''));
-        const jid = msg.key.remoteJid;
-        if (result.ok) {
-          await sock.sendMessage(jid, {
-            text: `✅ ${result.tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}`,
-          });
-        } else {
-          await sock.sendMessage(jid, { text: `❌ Error: ${result.error}` });
-        }
-      } catch (e) {
-        console.error('[bot] Error al crear venta:', e.message);
-      }
-    }
-  });
-}
-
-conectarBot();
+// ── Configuración de Seguridad ───────────────────────────────────
+const API_KEY = process.env.API_KEY || 'ws-textil-2026';
 
 const PORT = process.env.PORT || 3000;
 const DATA_FILE   = path.join(__dirname, 'data', 'pedidos.json');
@@ -142,7 +21,7 @@ const mime = {
   '.json': 'application/json',
 };
 
-function crearVentaInterna(tipo, vendedora, telefono) {
+function crearVentaInterna(tipo, vendedora, telefono, waMsgId) {
   const tipoNorm = tipo.toLowerCase();
   const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
   const vendedoraNorm = vendedora.toLowerCase();
@@ -150,6 +29,14 @@ function crearVentaInterna(tipo, vendedora, telefono) {
     return { ok: false, error: `Vendedora no reconocida: ${vendedora}` };
 
   const pedidos = leerPedidos();
+  
+  // Control de Duplicados por waMsgId
+  if (waMsgId && pedidos.some(p => p.waMsgId === waMsgId)) {
+    console.log(`[api] Pedido duplicado ignorado: waMsgId=${waMsgId}`);
+    const existnte = pedidos.find(p => p.waMsgId === waMsgId);
+    return { ok: true, id: existnte.id, tipo: tipoNorm, vendedora: existnte.vendedora, telefono, duplicado: true };
+  }
+
   const nextId  = leerNextId();
 
   const nuevo = {
@@ -166,11 +53,12 @@ function crearVentaInterna(tipo, vendedora, telefono) {
     notas:       '',
     arreglo:     null,
     origenBot:   true,
+    waMsgId:     waMsgId || null,
   };
 
   pedidos.push(nuevo);
   guardarPedidos(pedidos, nextId + 1);
-  console.log(`[bot] Nueva ${tipoNorm} #${nextId} — ${vendedora} — ${telefono}`);
+  console.log(`[api] Nueva ${tipoNorm} #${nextId} — ${vendedora} — ${telefono} (${waMsgId || 'manual'})`);
   return { ok: true, id: nextId, tipo: tipoNorm, vendedora: nuevo.vendedora, telefono };
 }
 
@@ -243,62 +131,30 @@ http.createServer((req, res) => {
     return;
   }
 
-  // ── POST /api/webhook — n8n actualiza estado de un pedido ───
-  if (req.method === 'POST' && req.url === '/api/webhook') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
-      try {
-        const { equipo, estado, nota } = JSON.parse(body);
-        if (!equipo || !estado) return json(res, 400, { error: 'Faltan campos: equipo, estado' });
-        if (!ESTADOS_VALIDOS.includes(estado)) return json(res, 400, { error: `Estado inválido: ${estado}` });
-
-        const pedidos = leerPedidos();
-        // Busca por nombre del equipo (case-insensitive, parcial)
-        const pedido = pedidos.find(p =>
-          p.equipo && p.equipo.toLowerCase().includes(equipo.toLowerCase()) &&
-          p.estado !== 'enviado-final'
-        );
-
-        if (!pedido) return json(res, 404, { error: `No se encontró pedido activo con equipo: ${equipo}` });
-
-        const estadoAnterior = pedido.estado;
-        pedido.estado = estado;
-        if (nota) pedido.notaWebhook = nota;
-        pedido.ultimaActWebhook = new Date().toISOString();
-        pedido.ultimoMovimiento = new Date().toISOString();
-        guardarPedidos(pedidos);
-
-        console.log(`[webhook] #${pedido.id} ${pedido.equipo}: ${estadoAnterior} → ${estado}`);
-
-        // Alertas automáticas al grupo de WhatsApp
-        if (estado === 'listo') {
-          enviarAlerta(`✅ *Pedido listo:* ${pedido.equipo}\n👤 Vendedora: ${pedido.vendedora}\n📞 Tel: ${pedido.telefono}`);
-        } else if (estado === 'costura') {
-          enviarAlerta(`🧵 *Nuevo en costura:* ${pedido.equipo}\n¿Quién lo toma? (Marcela / Yamile / Wilson / Cristina)`);
-        }
-        return json(res, 200, { ok: true, id: pedido.id, equipo: pedido.equipo, estadoAnterior, estadoNuevo: estado });
-
-      } catch (e) {
-        return json(res, 400, { error: 'JSON inválido' });
-      }
-    });
-    return;
+  // ── GET /api/wa-status — estado simulado ────────────────────
+  if (req.method === 'GET' && req.url === '/api/wa-status') {
+    return json(res, 200, { ok: true, status: 'modo-local-habilitado' });
   }
 
-  // ── POST /api/venta — chatbot WhatsApp crea cotización/pedido ─
+  // ── POST /api/venta — bot local crea cotización/pedido ─────
   if (req.method === 'POST' && req.url === '/api/venta') {
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { tipo, vendedora, telefono } = JSON.parse(body);
+        const { tipo, vendedora, telefono, waMsgId, key } = JSON.parse(body);
+        
+        // Validación de API Key
+        if (key !== API_KEY) return json(res, 401, { error: 'Contraseña de API inválida' });
+
         if (!tipo || !vendedora || !telefono)
           return json(res, 400, { error: 'Faltan campos: tipo, vendedora, telefono' });
+        
         const tipoNorm = tipo.toLowerCase();
         if (!['cotizar', 'pedido'].includes(tipoNorm))
           return json(res, 400, { error: 'tipo debe ser cotizar o pedido' });
-        const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''));
+        
+        const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''), waMsgId);
         return json(res, result.ok ? 200 : 400, result);
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
@@ -488,19 +344,9 @@ http.createServer((req, res) => {
     });
   }
 
-  // ── POST /api/reset-wa — borra sesión WhatsApp (temporal) ───
+  // ── POST /api/reset-wa — obsoleto en modo local ────────────
   if (req.method === 'POST' && req.url === '/api/reset-wa') {
-    try {
-      if (sockGlobal) { try { sockGlobal.end(); } catch {} sockGlobal = null; }
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-      fs.mkdirSync(AUTH_DIR, { recursive: true });
-      console.log('[bot] Sesión WhatsApp borrada completamente.');
-      console.log('[bot] Reconectando en 5 segundos...');
-      setTimeout(() => conectarBot(), 5000);
-      return json(res, 200, { ok: true, msg: 'Sesión borrada. Pairing code aparecerá en logs en ~10s' });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
+    return json(res, 200, { msg: 'Modo local activo. Reinicia el bot en tu PC local.' });
   }
 
   // ── Archivos estáticos ──────────────────────────────────────
