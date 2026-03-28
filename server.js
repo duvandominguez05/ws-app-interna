@@ -16,7 +16,7 @@ if (process.env.WA_CREDS_B64 && !fs.existsSync(path.join(AUTH_DIR_INIT, 'creds.j
 }
 
 // ── Bot WhatsApp (Baileys) ───────────────────────────────────────
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
 
@@ -39,7 +39,10 @@ async function conectarBot() {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    browser: ['Ubuntu', 'Chrome', '20.0.04']
+    browser: Browsers.macOS('Edge'),
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 10000,
   });
   sockGlobal = sock;
 
@@ -67,10 +70,19 @@ async function conectarBot() {
     }
     
     if (connection === 'close') {
-      const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('[bot] Conexión cerrada. Reconectando en 5 segundos...', shouldReconnect);
+      const error = lastDisconnect?.error;
+      const status = error?.output?.statusCode || error?.code || 'unknown';
+      
+      console.log(`[bot] Conexión cerrada. Status: ${status} | Error: ${error?.message || 'N/A'}`);
+      
+      // Reconectar si no es un cierre de sesión explícito
+      const shouldReconnect = status !== DisconnectReason.loggedOut;
+      
       if (shouldReconnect) {
-        setTimeout(conectarBot, 5000); // Dar un respiro de 5s para que no haga un bucle infinito
+        console.log('[bot] Intentando reconectar en 5 segundos...');
+        setTimeout(conectarBot, 5000);
+      } else {
+        console.log('[bot] Sesión cerrada definitivamente por WhatsApp (loggedOut).');
       }
     }
   });
@@ -450,6 +462,18 @@ http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // ── GET /api/wa-status — estado de la conexión WhatsApp ─────
+  if (req.method === 'GET' && req.url === '/api/wa-status') {
+    const status = sockGlobal ? (sockGlobal.user ? 'conectado' : 'esperando') : 'desconectado';
+    return json(res, 200, { 
+      ok: true, 
+      status, 
+      user: sockGlobal?.user || null,
+      authDirExists: fs.existsSync(AUTH_DIR),
+      credsExists: fs.existsSync(path.join(AUTH_DIR, 'creds.json'))
+    });
   }
 
   // ── POST /api/reset-wa — borra sesión WhatsApp (temporal) ───
