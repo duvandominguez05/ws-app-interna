@@ -3732,7 +3732,7 @@ function copiarMsgListo(id) {
   const nombre = p.equipo || p.telefono || 'cliente';
   const msg = `Hola! 👋 Le informamos que su pedido *${nombre}* ya está listo para despacho. 🎉\n\nPor favor enviar el saldo restante para proceder con el envío.\n\n¡Gracias por su compra! 🙏`;
   navigator.clipboard.writeText(msg).then(() => {
-    showToast('Mensaje copiado — pégalo en WhatsApp', 'success');
+    toast('Mensaje copiado — pégalo en WhatsApp', 'success');
   }).catch(() => {
     prompt('Copia este mensaje:', msg);
   });
@@ -4593,9 +4593,9 @@ function fmtPesoNum(n) {
 function generarPDF() {
   const cliente   = document.getElementById('doc-cliente').value.trim();
   const vendedora = document.getElementById('doc-vendedora').value;
-  if (!cliente)   return showToast('Ingresa el nombre del cliente', 'warning');
-  if (!vendedora) return showToast('Selecciona la vendedora', 'warning');
-  if (docItems.every(it => !it.desc)) return showToast('Agrega al menos un ítem', 'warning');
+  if (!cliente)   return toast('Ingresa el nombre del cliente', 'warning');
+  if (!vendedora) return toast('Selecciona la vendedora', 'warning');
+  if (docItems.every(it => !it.desc)) return toast('Agrega al menos un ítem', 'warning');
 
   const telefono = document.getElementById('doc-telefono').value.trim();
   const nit      = document.getElementById('doc-nit').value.trim();
@@ -4781,7 +4781,7 @@ function generarPDF() {
   if (win) setTimeout(() => win.print(), 1200);
   else window.location.href = url; // fallback celular bloqueó popup
 
-  showToast(titulo + ' #' + numStr + ' generada', 'success');
+  toast(titulo + ' #' + numStr + ' generada', 'success');
   cerrarFormDoc();
 }
 
@@ -4926,47 +4926,29 @@ function buildDocHTML(d) {
 async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
-  const tipo     = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
-  const nombre   = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
+  const tipo   = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const nombre = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
 
-  showToast('Generando PDF...', 'info');
+  // Abrir el documento listo para guardar/imprimir como PDF
+  const htmlDoc = buildDocHTML(d);
+  // Inyectar botón de instrucción al final del body
+  const htmlConBoton = htmlDoc.replace('</body>', `
+    <div style="position:fixed;bottom:0;left:0;right:0;background:#25d366;color:white;text-align:center;padding:10px;font-family:Arial;font-size:13px;font-weight:700;z-index:9999;">
+      📥 Guarda como PDF → luego comparte por WhatsApp
+    </div>
+  </body>`);
 
-  try {
-    const htmlDoc  = buildDocHTML(d);
-    const container = document.createElement('div');
-    container.innerHTML = htmlDoc.replace(/<!DOCTYPE[^>]*>|<html[^>]*>|<\/html>|<head>[\s\S]*<\/head>|<body>|<\/body>/gi, '');
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:white;font-family:Arial,sans-serif;font-size:12px;color:#333;';
-    document.body.appendChild(container);
-
-    const opt = {
-      margin:      [10, 10, 10, 10],
-      filename:    nombre,
-      image:       { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    };
-
-    const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
-    document.body.removeChild(container);
-
-    // Celular con soporte de archivos: compartir como PDF
-    if (navigator.canShare && navigator.canShare({ files: [new File([pdfBlob], nombre, { type: 'application/pdf' })] })) {
-      const file = new File([pdfBlob], nombre, { type: 'application/pdf' });
-      await navigator.share({ files: [file], title: nombre });
-      return;
-    }
-
-    // Fallback: descargar el PDF
-    const url = URL.createObjectURL(pdfBlob);
-    const a   = document.createElement('a');
-    a.href = url; a.download = nombre; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showToast('PDF descargado — compártelo manualmente por WhatsApp', 'info');
-
-  } catch (err) {
-    console.error('Error generando PDF:', err);
-    showToast('Error generando PDF', 'error');
+  const blob = new Blob([htmlConBoton], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (win) {
+    setTimeout(() => win.print(), 1000);
+  } else {
+    // Popup bloqueado: descargar el HTML directamente
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre.replace('.pdf', '.html'); a.click();
   }
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 // Hook showSection para renderizar historial al abrir la sección
