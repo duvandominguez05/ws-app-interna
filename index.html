@@ -3053,9 +3053,10 @@ function renderBandejaPedidos(arr) {
         </span>
         ${fechaHtml}
       </div>
-      <div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}55;">● ${etiqueta}</span>
-        ${esNavegable ? `<span style="font-size:0.65rem;color:var(--text-muted);margin-left:6px;">→ ver pedido</span>` : ''}
+        ${esNavegable ? `<span style="font-size:0.65rem;color:var(--text-muted);">→ ver pedido</span>` : ''}
+        <button onclick="openModalCompletar(${p.id});event.stopPropagation();" style="margin-left:auto;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;border-radius:4px;padding:2px 8px;font-size:0.68rem;cursor:pointer;">✏ Editar prendas</button>
       </div>
     </div>
   `;
