@@ -4934,32 +4934,53 @@ async function compartirDocWA(id) {
 
   try {
     const htmlDoc = buildDocHTML(d);
-    const blob    = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
 
-    // Celular con soporte de archivos nativos → abre WhatsApp directamente
+    // Renderizar en iframe oculto para que html2pdf capture bien
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;';
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(htmlDoc);
+    iframe.contentDocument.close();
+
+    await new Promise(r => setTimeout(r, 800)); // esperar renderizado
+
+    const opt = {
+      margin:      [8, 8, 8, 8],
+      filename:    nombre,
+      image:       { type: 'jpeg', quality: 0.97 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    };
+
+    const pdfBlob = await html2pdf()
+      .set(opt)
+      .from(iframe.contentDocument.body)
+      .outputPdf('blob');
+
+    document.body.removeChild(iframe);
+
+    // Celular: compartir como PDF directo (abre WhatsApp)
     if (navigator.canShare) {
-      const htmlFile = new File([blob], nombre.replace('.pdf', '.html'), { type: 'text/html' });
-      if (navigator.canShare({ files: [htmlFile] })) {
-        await navigator.share({ files: [htmlFile], title: nombre });
+      const pdfFile = new File([pdfBlob], nombre, { type: 'application/pdf' });
+      if (navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({ files: [pdfFile], title: nombre });
         return;
       }
     }
 
-    // PC o celular sin share API → descargar el HTML (se puede abrir y guardar como PDF)
-    const url = URL.createObjectURL(blob);
+    // PC: descargar PDF
+    const url = URL.createObjectURL(pdfBlob);
     const a   = document.createElement('a');
-    a.href = url;
-    a.download = nombre.replace('.pdf', '.html');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('Descargado — ábrelo y guárdalo como PDF', 'info');
+    toast('PDF descargado', 'success');
 
   } catch (err) {
     if (err.name !== 'AbortError') {
       console.error(err);
-      toast('Error al compartir', 'error');
+      toast('Error al generar PDF', 'error');
     }
   }
 }
