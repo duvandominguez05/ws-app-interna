@@ -4930,26 +4930,38 @@ async function compartirDocWA(id) {
   const tipo   = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
   const nombre = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
 
-  // Abrir el documento listo para guardar/imprimir como PDF
-  const htmlDoc = buildDocHTML(d);
-  // Inyectar botón de instrucción al final del body
-  const htmlConBoton = htmlDoc.replace('</body>', `
-    <div style="position:fixed;bottom:0;left:0;right:0;background:#25d366;color:white;text-align:center;padding:10px;font-family:Arial;font-size:13px;font-weight:700;z-index:9999;">
-      📥 Guarda como PDF → luego comparte por WhatsApp
-    </div>
-  </body>`);
+  toast('Generando PDF...', 'info');
 
-  const blob = new Blob([htmlConBoton], { type: 'text/html;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const win  = window.open(url, '_blank');
-  if (win) {
-    setTimeout(() => win.print(), 1000);
-  } else {
-    // Popup bloqueado: descargar el HTML directamente
-    const a = document.createElement('a');
-    a.href = url; a.download = nombre.replace('.pdf', '.html'); a.click();
+  try {
+    const htmlDoc = buildDocHTML(d);
+    const blob    = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+
+    // Celular con soporte de archivos nativos → abre WhatsApp directamente
+    if (navigator.canShare) {
+      const htmlFile = new File([blob], nombre.replace('.pdf', '.html'), { type: 'text/html' });
+      if (navigator.canShare({ files: [htmlFile] })) {
+        await navigator.share({ files: [htmlFile], title: nombre });
+        return;
+      }
+    }
+
+    // PC o celular sin share API → descargar el HTML (se puede abrir y guardar como PDF)
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = nombre.replace('.pdf', '.html');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Descargado — ábrelo y guárdalo como PDF', 'info');
+
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      console.error(err);
+      toast('Error al compartir', 'error');
+    }
   }
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 // Hook showSection para renderizar historial al abrir la sección
