@@ -3876,6 +3876,32 @@ let arreglosManuales = JSON.parse(localStorage.getItem('ws_arreglos_manuales') |
 
 function guardarArreglos_store() {
   localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
+  fetch('/api/arreglos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arreglos: arreglosManuales })
+  }).catch(() => {});
+}
+
+async function sincronizarArreglosServidor() {
+  try {
+    const r = await fetch('/api/arreglos');
+    if (!r.ok) return;
+    const data = await r.json();
+    const serv = Array.isArray(data.arreglos) ? data.arreglos : [];
+    const todos = [...arreglosManuales, ...serv];
+    const vistos = new Set();
+    arreglosManuales = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
+    arreglosManuales.sort((a, b) => b.id - a.id);
+    localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
+    // Subir merge al servidor
+    fetch('/api/arreglos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ arreglos: arreglosManuales })
+    }).catch(() => {});
+    renderArreglos();
+  } catch {}
 }
 
 function registrarArregloManual() {
@@ -4224,6 +4250,32 @@ async function borrarCalItem(id) {
 ════════════════════════════════════════════════════════════════ */
 function guardarSat_store() {
   localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
+  fetch('/api/satelites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ movimientos: satMovimientos })
+  }).catch(() => {});
+}
+
+async function sincronizarSatelitesServidor() {
+  try {
+    const r = await fetch('/api/satelites');
+    if (!r.ok) return;
+    const data = await r.json();
+    const serv = Array.isArray(data.movimientos) ? data.movimientos : [];
+    const todos = [...satMovimientos, ...serv];
+    const vistos = new Set();
+    satMovimientos = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
+    satMovimientos.sort((a, b) => b.id - a.id);
+    localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
+    // Subir merge al servidor
+    fetch('/api/satelites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movimientos: satMovimientos })
+    }).catch(() => {});
+    renderSatelites();
+  } catch {}
 }
 
 function abrirFormSat(tipo) {
@@ -4506,11 +4558,42 @@ function guardarDocs() {
   localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
   localStorage.setItem('ws_nextCot', String(nextCot));
   localStorage.setItem('ws_nextFac', String(nextFac));
+  // Subir al servidor (historial + contadores)
   fetch('/api/docs/nums', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nextCot, nextFac })
+    body: JSON.stringify({ nextCot, nextFac, historial: docHistorial })
   }).catch(() => {});
+}
+
+// Sincroniza historial entre este dispositivo y el servidor (bidireccional)
+async function cargarDocsServidor() {
+  try {
+    // 1. Bajar lo que tiene el servidor
+    const r = await fetch('/api/docs/nums');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.nextCot) { nextCot = data.nextCot; localStorage.setItem('ws_nextCot', String(nextCot)); }
+    if (data.nextFac) { nextFac = data.nextFac; localStorage.setItem('ws_nextFac', String(nextFac)); }
+
+    // 2. Merge servidor + local
+    const servidorHist = Array.isArray(data.historial) ? data.historial : [];
+    const todos = [...docHistorial, ...servidorHist];
+    const vistos = new Set();
+    const merged = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
+    merged.sort((a, b) => b.id - a.id);
+    if (merged.length > 50) merged.length = 50;
+    docHistorial = merged;
+    localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
+    renderDocHistorial();
+
+    // 3. Siempre subir el merge completo al servidor (para que quede todo centralizado)
+    fetch('/api/docs/nums', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nextCot, nextFac, historial: docHistorial })
+    }).catch(() => {});
+  } catch {}
 }
 
 function abrirFormDoc(tipo) {
@@ -4805,7 +4888,8 @@ function renderDocHistorial() {
   `).join('');
 }
 
-function buildDocHTML(d) {
+function buildDocHTML(d, logoSrc) {
+  logoSrc = logoSrc || LOGO_WYS;
   const esCot   = d.tipo === 'cotizacion';
   const titulo  = esCot ? 'COTIZACION' : 'FACTURA';
   const color1  = '#c8a96e';
@@ -4845,10 +4929,10 @@ function buildDocHTML(d) {
   // Cuenta bancolombia (usar la seleccionada actualmente, o la 1 por defecto)
   const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
+  return `<!DOCTYPE html><html style="background:white;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:Arial,sans-serif;font-size:12px;color:#333;background:white}
+  html,body{font-family:Arial,sans-serif;font-size:12px;color:#333 !important;background:white !important;color-scheme:light !important}
   .page{width:800px;margin:0 auto;padding:30px}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
   .empresa-info{font-size:11px;line-height:1.7}
@@ -4870,7 +4954,7 @@ function buildDocHTML(d) {
 <div class="page">
   <div class="header">
     <div>
-      <img src="${LOGO_WYS}" style="height:90px;width:auto;" alt="W&S">
+      <img src="${logoSrc}" style="height:90px;width:auto;" alt="W&S">
       <div class="empresa-info" style="margin-top:8px;">
         <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
       </div>
@@ -4924,6 +5008,22 @@ function buildDocHTML(d) {
 </div></body></html>`;
 }
 
+// Convierte una URL de imagen a base64 para embeber en el PDF
+function imgToBase64(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(src); // fallback: usar src original
+    img.src = src;
+  });
+}
+
 async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
@@ -4933,23 +5033,25 @@ async function compartirDocWA(id) {
   toast('Generando PDF...', 'info');
 
   try {
-    const htmlDoc = buildDocHTML(d);
+    // Convertir logo a base64 para que se vea en el iframe sin problemas de CORS
+    const logoBase64 = await imgToBase64(LOGO_WYS);
+    const htmlDoc = buildDocHTML(d, logoBase64);
 
     // Renderizar en iframe oculto para que html2pdf capture bien
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;';
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
     document.body.appendChild(iframe);
     iframe.contentDocument.open();
     iframe.contentDocument.write(htmlDoc);
     iframe.contentDocument.close();
 
-    await new Promise(r => setTimeout(r, 800)); // esperar renderizado
+    await new Promise(r => setTimeout(r, 1000)); // esperar renderizado
 
     const opt = {
       margin:      [8, 8, 8, 8],
       filename:    nombre,
       image:       { type: 'jpeg', quality: 0.97 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
       jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
     };
 
@@ -4990,9 +5092,16 @@ async function compartirDocWA(id) {
   const _orig = showSection;
   showSection = function(id, navEl) {
     _orig(id, navEl);
-    if (id === 'cotizaciones') renderDocHistorial();
+    if (id === 'cotizaciones') { cargarDocsServidor(); renderDocHistorial(); }
+    if (id === 'arreglos')     { sincronizarArreglosServidor(); }
+    if (id === 'satelites')    { sincronizarSatelitesServidor(); }
   };
 })();
+
+// Sync inicial con servidor para todos los módulos
+setTimeout(cargarDocsServidor, 1500);
+setTimeout(sincronizarArreglosServidor, 2000);
+setTimeout(sincronizarSatelitesServidor, 2500);
 
 </script>
 </body>

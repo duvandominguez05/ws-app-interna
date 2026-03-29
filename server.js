@@ -304,30 +304,92 @@ http.createServer((req, res) => {
     return json(res, 200, { registros });
   }
 
-  // ── GET /api/docs/nums — devuelve nextCot y nextFac ─────────
+  // ── GET /api/docs/nums — devuelve nextCot, nextFac e historial ──
   if (req.method === 'GET' && req.url === '/api/docs/nums') {
     const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
+    const HIST_FILE = path.join(__dirname, 'data', 'docsHistorial.json');
     let nums = { nextCot: 210, nextFac: 501 };
-    try {
-      if (fs.existsSync(NUMS_FILE)) nums = JSON.parse(fs.readFileSync(NUMS_FILE, 'utf8'));
-    } catch {}
-    return json(res, 200, nums);
+    let historial = [];
+    try { if (fs.existsSync(NUMS_FILE)) nums = JSON.parse(fs.readFileSync(NUMS_FILE, 'utf8')); } catch {}
+    try { if (fs.existsSync(HIST_FILE)) historial = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch {}
+    return json(res, 200, { ...nums, historial });
   }
 
-  // ── POST /api/docs/nums — guarda nextCot y nextFac ──────────
+  // ── POST /api/docs/nums — guarda nextCot, nextFac e historial ──
   if (req.method === 'POST' && req.url === '/api/docs/nums') {
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { nextCot, nextFac } = JSON.parse(body);
+        const { nextCot, nextFac, historial } = JSON.parse(body);
         const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
+        const HIST_FILE = path.join(__dirname, 'data', 'docsHistorial.json');
         fs.mkdirSync(path.dirname(NUMS_FILE), { recursive: true });
         fs.writeFileSync(NUMS_FILE, JSON.stringify({ nextCot, nextFac }));
+        // Merge historial: combinar con lo existente, sin duplicados por id
+        if (Array.isArray(historial) && historial.length > 0) {
+          let existente = [];
+          try { if (fs.existsSync(HIST_FILE)) existente = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch {}
+          const todos = [...historial, ...existente];
+          const vistos = new Set();
+          const merged = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
+          merged.sort((a, b) => b.id - a.id);
+          fs.writeFileSync(HIST_FILE, JSON.stringify(merged.slice(0, 100), null, 2));
+        }
         return json(res, 200, { ok: true });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
       }
+    });
+    return;
+  }
+
+  // ── GET /api/arreglos ────────────────────────────────────────
+  if (req.method === 'GET' && req.url === '/api/arreglos') {
+    const FILE = path.join(__dirname, 'data', 'arreglos.json');
+    let data = [];
+    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+    return json(res, 200, { arreglos: data });
+  }
+
+  // ── POST /api/arreglos — reemplaza lista completa ────────────
+  if (req.method === 'POST' && req.url === '/api/arreglos') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { arreglos } = JSON.parse(body);
+        if (!Array.isArray(arreglos)) return json(res, 400, { error: 'arreglos debe ser array' });
+        const FILE = path.join(__dirname, 'data', 'arreglos.json');
+        fs.mkdirSync(path.dirname(FILE), { recursive: true });
+        fs.writeFileSync(FILE, JSON.stringify(arreglos, null, 2));
+        return json(res, 200, { ok: true, total: arreglos.length });
+      } catch { return json(res, 400, { error: 'JSON inválido' }); }
+    });
+    return;
+  }
+
+  // ── GET /api/satelites ───────────────────────────────────────
+  if (req.method === 'GET' && req.url === '/api/satelites') {
+    const FILE = path.join(__dirname, 'data', 'satelites.json');
+    let data = [];
+    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+    return json(res, 200, { movimientos: data });
+  }
+
+  // ── POST /api/satelites — reemplaza lista completa ──────────
+  if (req.method === 'POST' && req.url === '/api/satelites') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { movimientos } = JSON.parse(body);
+        if (!Array.isArray(movimientos)) return json(res, 400, { error: 'movimientos debe ser array' });
+        const FILE = path.join(__dirname, 'data', 'satelites.json');
+        fs.mkdirSync(path.dirname(FILE), { recursive: true });
+        fs.writeFileSync(FILE, JSON.stringify(movimientos, null, 2));
+        return json(res, 200, { ok: true, total: movimientos.length });
+      } catch { return json(res, 400, { error: 'JSON inválido' }); }
     });
     return;
   }
@@ -353,4 +415,62 @@ http.createServer((req, res) => {
     res.end(data);
   });
 
-}).listen(PORT, () => console.log(`W&S App corriendo en puerto ${PORT}`));
+}).listen(PORT, () => {
+  console.log(`W&S App corriendo en puerto ${PORT}`);
+  limpiezaAutomatica(); // al arrancar
+});
+
+// ── Limpieza automática cada 45 días ────────────────────────────
+// Borra registros más antiguos de 45 días, dejando mínimo los 6 más recientes
+function limpiezaAutomatica() {
+  const LIMITE_MS  = 45 * 24 * 60 * 60 * 1000; // 45 días en ms
+  const MIN_ITEMS  = 6;
+  const ahora      = Date.now();
+  const CLEAN_FILE = path.join(__dirname, 'data', 'ultimaLimpieza.json');
+
+  // Solo ejecutar si pasaron al menos 24h desde la última limpieza
+  try {
+    if (fs.existsSync(CLEAN_FILE)) {
+      const { ts } = JSON.parse(fs.readFileSync(CLEAN_FILE, 'utf8'));
+      if (ahora - ts < 24 * 60 * 60 * 1000) return;
+    }
+  } catch {}
+
+  const archivos = [
+    { file: path.join(__dirname, 'data', 'pedidos.json'),        campo: 'id' },
+    { file: path.join(__dirname, 'data', 'arreglos.json'),       campo: 'id' },
+    { file: path.join(__dirname, 'data', 'satelites.json'),      campo: 'id' },
+    { file: path.join(__dirname, 'data', 'docsHistorial.json'),  campo: 'id' },
+    { file: path.join(__dirname, 'data', 'wetransfer.json'),     campo: 'id' },
+    { file: path.join(__dirname, 'data', 'calandra.json'),       campo: 'id' },
+  ];
+
+  for (const { file, campo } of archivos) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      let lista = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!Array.isArray(lista) || lista.length <= MIN_ITEMS) continue;
+
+      // El campo 'id' es timestamp en ms para todos los registros
+      const recientes = lista.filter(x => (ahora - (x[campo] || 0)) < LIMITE_MS);
+      // Si quedan menos de MIN_ITEMS, tomar los MIN_ITEMS más nuevos
+      const resultado = recientes.length >= MIN_ITEMS
+        ? recientes
+        : lista.sort((a, b) => (b[campo] || 0) - (a[campo] || 0)).slice(0, MIN_ITEMS);
+
+      if (resultado.length < lista.length) {
+        fs.writeFileSync(file, JSON.stringify(resultado, null, 2));
+        console.log(`[limpieza] ${path.basename(file)}: ${lista.length} → ${resultado.length} registros`);
+      }
+    } catch (e) {
+      console.error(`[limpieza] Error en ${file}: ${e.message}`);
+    }
+  }
+
+  fs.mkdirSync(path.dirname(CLEAN_FILE), { recursive: true });
+  fs.writeFileSync(CLEAN_FILE, JSON.stringify({ ts: ahora }));
+  console.log('[limpieza] Completada');
+}
+
+// Repetir cada 24 horas mientras el servidor esté corriendo
+setInterval(limpiezaAutomatica, 24 * 60 * 60 * 1000);
