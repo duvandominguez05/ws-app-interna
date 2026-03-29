@@ -3040,8 +3040,8 @@ function renderBandejaPedidos(arr) {
       : 'Sin prendas';
 
     const fechaHtml = p.fechaEntrega
-      ? `<span>📅 ${fmtFecha(p.fechaEntrega)}</span>`
-      : '';
+      ? `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Clic para cambiar fecha" style="cursor:pointer;color:#fde047;">📅 ${fmtFecha(p.fechaEntrega)} <span style="opacity:0.5;font-size:0.65rem;">✎</span></span>`
+      : `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Agregar fecha de entrega" style="cursor:pointer;color:var(--text-muted);">📅 Agregar fecha</span>`;
 
     const esNavegable = p.estado !== 'bandeja';
 
