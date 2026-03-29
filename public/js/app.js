@@ -1621,9 +1621,9 @@ function renderCalandra() {
   const hoy       = new Date().toLocaleDateString('es-CO');
   const semanaKey = getSemanaKey(new Date());
 
-  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy);
+  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy).sort((a, b) => b.id - a.id);
   const semanaList = calandraRegistros.filter(r => r.semana === semanaKey);
-  const historico  = calandraRegistros.filter(r => r.fecha !== hoy);
+  const historico  = calandraRegistros.filter(r => r.fecha !== hoy).sort((a, b) => b.id - a.id);
 
   const metrosHoy    = hoyList.reduce((s, r) => s + r.metros, 0);
   const metrosSemana = semanaList.reduce((s, r) => s + r.metros, 0);
