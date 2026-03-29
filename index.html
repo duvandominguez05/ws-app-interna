@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>W&S Textil â€” App Interna</title>
+  <title>W&S Textil — App Interna</title>
   <link rel="icon" type="image/png" href="/icon.png">
   <link rel="apple-touch-icon" href="/icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#7c3aed">
   <link rel="manifest" href="/manifest.json">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel='stylesheet' href='/css/style.css'>
 </head>
 <body>
 
@@ -19,19 +19,19 @@
 
 <div class="app-layout">
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════════════
        SIDEBAR
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  ════════════════════════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="logo-text">
-        <span class="bolt">âš¡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
+        <span class="bolt">⚡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
       </div>
-      <div class="logo-sub">ProducciÃ³n textil</div>
+      <div class="logo-sub">Producción textil</div>
     </div>
 
     <nav class="sidebar-nav">
-      <div class="nav-label">NavegaciÃ³n</div>
+      <div class="nav-label">Navegación</div>
 
       <div class="nav-item active" onclick="showSection('vista-general', this)">
         <span class="nav-icon">
@@ -53,7 +53,7 @@
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r="0.5"/><circle cx="17.5" cy="10.5" r="0.5"/><circle cx="8.5" cy="7.5" r="0.5"/><circle cx="6.5" cy="12.5" r="0.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
         </span>
-        <span>DiseÃ±o</span>
+        <span>Diseño</span>
         <span class="nav-badge" id="badge-diseno">0</span>
       </div>
 
@@ -61,7 +61,7 @@
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7-6H4a2 2 0 0 0-2 2z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M8 18v-1"/><path d="M16 18v-3"/></svg>
         </span>
-        <span>ProducciÃ³n</span>
+        <span>Producción</span>
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
@@ -69,33 +69,33 @@
       <div class="nav-label">Control</div>
 
       <div class="nav-item" onclick="showSection('wetransfer', this)">
-        <span class="nav-icon">ðŸ“¤</span>
+        <span class="nav-icon">📤</span>
         <span>WeTransfer</span>
         <span class="nav-badge" id="badge-wt">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('arreglos', this)">
-        <span class="nav-icon">ðŸ”§</span>
+        <span class="nav-icon">🔧</span>
         <span>Arreglos</span>
         <span class="nav-badge" id="badge-arreglos">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('calandra', this)">
-        <span class="nav-icon">ðŸ“</span>
+        <span class="nav-icon">📐</span>
         <span>Calandra</span>
         <span class="nav-badge" id="badge-calandra">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('satelites', this)">
-        <span class="nav-icon">ðŸ§µ</span>
-        <span>SatÃ©lites</span>
+        <span class="nav-icon">🧵</span>
+        <span>Satélites</span>
         <span class="nav-badge" id="badge-satelites">0</span>
       </div>
 
       <div class="nav-label">Comercial</div>
 
       <div class="nav-item" onclick="showSection('cotizaciones', this)">
-        <span class="nav-icon">ðŸ§¾</span>
+        <span class="nav-icon">🧾</span>
         <span>Facturas</span>
       </div>
 
@@ -109,22 +109,22 @@
     </div>
   </aside>
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════════════
        MAIN
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  ════════════════════════════════════════════════════════════ -->
   <div class="main-area">
 
     <!-- HEADER -->
     <header class="main-header">
       <div class="header-title">
-        <button class="btn-hamburger" onclick="toggleSidebar()" aria-label="MenÃº">
+        <button class="btn-hamburger" onclick="toggleSidebar()" aria-label="Menú">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="3" y1="6" x2="21" y2="6"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <span class="section-icon" id="header-icon">ðŸ“Š</span>
+        <span class="section-icon" id="header-icon">📊</span>
         <span id="header-title-text">Vista general</span>
       </div>
       <div class="header-actions">
@@ -147,9 +147,9 @@
     <!-- Panel notificaciones -->
     <div class="notif-panel" id="notif-panel">
       <div class="notif-panel-header">
-        <span style="font-size:1rem;">ðŸ””</span>
+        <span style="font-size:1rem;">🔔</span>
         <div class="notif-panel-title">Notificaciones</div>
-        <button class="notif-clear-btn" onclick="marcarTodasLeidas()">Marcar leÃ­das</button>
+        <button class="notif-clear-btn" onclick="marcarTodasLeidas()">Marcar leídas</button>
         <button class="notif-clear-btn" onclick="borrarNotifs()" style="color:#ef4444;">Borrar</button>
       </div>
       <div class="notif-list" id="notif-list">
@@ -157,44 +157,44 @@
       </div>
     </div>
 
-    <!-- â”€â”€â”€ VISTA GENERAL / DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
     <section id="vista-general" class="section-content active section-bg">
 
       <!-- Timelines de todos los pedidos activos (primero) -->
       <div class="dash-timelines-panel">
         <div class="dash-panel-title" style="margin-bottom:12px;">
-          â± Estado de todos los pedidos activos
+          ⏱ Estado de todos los pedidos activos
         </div>
         <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
 
-      <!-- Fila central: alertas + pipeline + satÃ©lites + calandra -->
+      <!-- Fila central: alertas + pipeline + satélites + calandra -->
       <div class="dash-grid">
 
-        <!-- Panel: Entregas prÃ³ximas -->
+        <!-- Panel: Entregas próximas -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            ðŸ”” Entregas prÃ³ximas
-            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver producciÃ³n â†’</a>
+            🔔 Entregas próximas
+            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver producción →</a>
           </div>
           <div class="dash-alert-list" id="dash-alertas">
-            <div class="dash-empty">Sin pedidos con fecha prÃ³xima</div>
+            <div class="dash-empty">Sin pedidos con fecha próxima</div>
           </div>
         </div>
 
         <!-- Panel: Pipeline de estados -->
         <div class="dash-panel">
-          <div class="dash-panel-title">ðŸ“Š Pipeline de producciÃ³n</div>
+          <div class="dash-panel-title">📊 Pipeline de producción</div>
           <div id="dash-pipeline">
             <div class="dash-empty">Sin pedidos</div>
           </div>
         </div>
 
-        <!-- Panel: SatÃ©lites -->
+        <!-- Panel: Satélites -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            ðŸ§µ SatÃ©lites â€” pendientes
-            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle â†’</a>
+            🧵 Satélites — pendientes
+            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle →</a>
           </div>
           <div id="dash-satelites">
             <div class="dash-empty">Sin movimientos</div>
@@ -204,8 +204,8 @@
         <!-- Panel: Calandra -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            ðŸ“ Calandra â€” esta semana
-            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle â†’</a>
+            📐 Calandra — esta semana
+            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle →</a>
           </div>
           <div id="dash-calandra">
             <div class="dash-empty">Sin registros esta semana</div>
@@ -214,7 +214,7 @@
 
       </div>
 
-      <!-- KPIs rÃ¡pidos (al final) -->
+      <!-- KPIs rápidos (al final) -->
       <div class="dash-metrics-top">
         <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
           <div class="dash-kpi-val" id="m-total">0</div>
@@ -222,11 +222,11 @@
         </div>
         <div class="dash-kpi" style="--kpi-color:#fb923c;">
           <div class="dash-kpi-val" id="m-diseno">0</div>
-          <div class="dash-kpi-label">DiseÃ±o</div>
+          <div class="dash-kpi-label">Diseño</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#67e8f9;">
           <div class="dash-kpi-val" id="m-produccion">0</div>
-          <div class="dash-kpi-label">ProducciÃ³n</div>
+          <div class="dash-kpi-label">Producción</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#4ade80;">
           <div class="dash-kpi-val" id="m-listos">0</div>
@@ -234,25 +234,25 @@
         </div>
         <div class="dash-kpi" style="--kpi-color:#a78bfa;">
           <div class="dash-kpi-val" id="m-cal-semana">0</div>
-          <div class="dash-kpi-label">mÂ² calandra</div>
+          <div class="dash-kpi-label">m² calandra</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#f472b6;">
           <div class="dash-kpi-val" id="m-sat-pend">0</div>
-          <div class="dash-kpi-label">Pend. satÃ©l.</div>
+          <div class="dash-kpi-label">Pend. satél.</div>
         </div>
       </div>
 
     </section>
 
-    <!-- â”€â”€â”€ BANDEJA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── BANDEJA ────────────────────────────────────────────── -->
     <section id="bandeja" class="section-content">
       <div style="margin-bottom:14px;">
-        <input type="search" id="buscar-pedidos" class="form-input" placeholder="ðŸ” Buscar por equipo o telÃ©fonoâ€¦" oninput="buscarPedidos(this.value)" style="max-width:400px;">
+        <input type="search" id="buscar-pedidos" class="form-input" placeholder="🔍 Buscar por equipo o teléfono…" oninput="buscarPedidos(this.value)" style="max-width:400px;">
       </div>
       <div class="bandeja-cols">
         <div class="bandeja-col bandeja-col-cotizar">
           <div class="bandeja-col-header">
-            <span style="font-size:1.1rem;">ðŸŽ¨</span>
+            <span style="font-size:1.1rem;">🎨</span>
             <div class="bandeja-col-title">Cotizaciones</div>
             <div class="bandeja-count" id="count-cotizar">0</div>
           </div>
@@ -260,7 +260,7 @@
         </div>
         <div class="bandeja-col bandeja-col-pedido">
           <div class="bandeja-col-header">
-            <span style="font-size:1.1rem;">âœ…</span>
+            <span style="font-size:1.1rem;">✅</span>
             <div class="bandeja-col-title">Pedidos confirmados</div>
             <div class="bandeja-count" id="count-pedido">0</div>
           </div>
@@ -269,12 +269,12 @@
       </div>
     </section>
 
-    <!-- â”€â”€â”€ DISEÃ‘O â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── DISEÑO ─────────────────────────────────────────────── -->
     <section id="diseno" class="section-content">
       <div class="kanban-board">
         <div class="kanban-col col-hacer-diseno">
           <div class="kanban-col-header">
-            <div class="kanban-col-title">Hacer diseÃ±o</div>
+            <div class="kanban-col-title">Hacer diseño</div>
             <div class="kanban-col-count" id="cnt-hacer-diseno">0</div>
           </div>
           <div class="kanban-cards" id="col-hacer-diseno"></div>
@@ -296,12 +296,12 @@
       </div>
     </section>
 
-    <!-- â”€â”€â”€ PRODUCCIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── PRODUCCIÓN ─────────────────────────────────────────── -->
     <section id="produccion" class="section-content">
       <div class="kanban-board">
         <div class="kanban-col col-llego-impresion">
           <div class="kanban-col-header">
-            <div class="kanban-col-title">LlegÃ³ impresiÃ³n</div>
+            <div class="kanban-col-title">Llegó impresión</div>
             <div class="kanban-col-count" id="cnt-llego-impresion">0</div>
           </div>
           <div class="kanban-cards" id="col-llego-impresion"></div>
@@ -344,22 +344,22 @@
       </div>
     </section>
 
-    <!-- â”€â”€â”€ WETRANSFER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── WETRANSFER ──────────────────────────────────────────── -->
     <section id="wetransfer" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
-        Control WeTransfer â€” Enviados y Descargados
+        Control WeTransfer — Enviados y Descargados
       </div>
       <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">ðŸ“¤ Registrar envÃ­o</button>
-        <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">âœ… Registrar descarga</button>
-        <button class="btn btn-glass btn-sm" onclick="cargarWT()">â†º Actualizar</button>
-        <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automÃ¡ticamente vÃ­a Gmail.</span>
+        <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">📤 Registrar envío</button>
+        <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">✅ Registrar descarga</button>
+        <button class="btn btn-glass btn-sm" onclick="cargarWT()">↺ Actualizar</button>
+        <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automáticamente vía Gmail.</span>
       </div>
 
-      <!-- Formulario rÃ¡pido -->
+      <!-- Formulario rápido -->
       <div id="form-wt" style="display:none;background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envÃ­o WeTransfer</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envío WeTransfer</div>
         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:12px;" id="wt-form-sub"></div>
         <div class="form-row">
           <div class="form-group">
@@ -377,13 +377,13 @@
         </div>
       </div>
 
-      <!-- Resumen del dÃ­a -->
+      <!-- Resumen del día -->
       <div id="wt-resumen-hoy" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;"></div>
 
       <div id="lista-wt"></div>
     </section>
 
-    <!-- â”€â”€â”€ ARREGLOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── ARREGLOS ──────────────────────────────────────────── -->
     <section id="arreglos" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
@@ -402,7 +402,7 @@
             <input type="text" class="form-input" id="ar-equipo" placeholder="Ej: Galaktiturkos">
           </div>
           <div class="form-group">
-            <label class="form-label">QuÃ© falta</label>
+            <label class="form-label">Qué falta</label>
             <input type="text" class="form-input" id="ar-faltante" placeholder="Ej: 2 camisetas talla M">
           </div>
         </div>
@@ -421,7 +421,7 @@
       <div id="lista-arreglos-manuales"></div>
     </section>
 
-    <!-- â”€â”€â”€ CALANDRA (METRAJE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── CALANDRA (METRAJE) ───────────────────────────────────── -->
     <section id="calandra" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span>
@@ -433,29 +433,29 @@
           <div class="metric-label">Esta semana</div>
           <div class="metric-value" id="cal-metros-semana">0.00</div>
           <div class="metric-sub">metros enviados</div>
-          <div class="metric-icon">ðŸ“</div>
+          <div class="metric-icon">📐</div>
         </div>
         <div class="metric-card metric-card-sm" style="--metric-color:#67e8f9;">
           <div class="metric-label">Hoy</div>
           <div class="metric-value" id="cal-metros-hoy">0.00</div>
           <div class="metric-sub">metros hoy</div>
-          <div class="metric-icon">ðŸ“…</div>
+          <div class="metric-icon">📅</div>
         </div>
         <div class="metric-card metric-card-sm" style="--metric-color:#4ade80;">
           <div class="metric-label">Archivos hoy</div>
           <div class="metric-value" id="cal-archivos-hoy">0</div>
           <div class="metric-sub">PDFs enviados</div>
-          <div class="metric-icon">ðŸ“„</div>
+          <div class="metric-icon">📄</div>
         </div>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envÃ­o</button>
+        <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envío</button>
         <div class="cal-ancho-bar">
           <span style="color:var(--text-muted);font-size:0.78rem;">Ancho de tela calandra:</span>
           <strong style="color:#a78bfa;" id="cal-ancho-label">1.50 m</strong>
           <select id="cal-ancho-sel" onchange="cambiarAnchoTela(this.value)"
-            title="Selecciona el ancho de la tela que usa la calandra (afecta el cÃ¡lculo de metros)"
+            title="Selecciona el ancho de la tela que usa la calandra (afecta el cálculo de metros)"
             style="background:var(--card-bg);border:1px solid rgba(167,139,250,0.3);color:var(--text);border-radius:5px;font-size:0.78rem;padding:4px 10px;outline:none;cursor:pointer;">
             <option value="1.40">1.40 m</option>
             <option value="1.50" selected>1.50 m</option>
@@ -466,7 +466,7 @@
       </div>
 
       <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#a78bfa;margin-bottom:12px;">Registrar envÃ­o a calandra</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#a78bfa;margin-bottom:12px;">Registrar envío a calandra</div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Equipo / Nombre del archivo</label>
@@ -478,7 +478,7 @@
           </div>
         </div>
         <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:10px;">
-          ðŸ’¡ Abre el PDF en Corel â†’ Propiedades del documento â†’ copia el alto en cm
+          💡 Abre el PDF en Corel → Propiedades del documento → copia el alto en cm
         </div>
         <div class="form-actions" style="margin-top:10px;padding-top:10px;">
           <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
@@ -489,27 +489,27 @@
       <div id="lista-calandra"></div>
     </section>
 
-    <!-- â”€â”€â”€ SATÃ‰LITES DE COSTURA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <!-- ─── SATÉLITES DE COSTURA ──────────────────────────────────── -->
     <section id="satelites" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>
-        Control de satÃ©lites â€” entrega y recepciÃ³n de uniformes
+        Control de satélites — entrega y recepción de uniformes
       </div>
 
       <div class="sat-resumen-grid" id="sat-resumen"></div>
 
       <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">ðŸ“¦ Registrar entrega</button>
-        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">âœ… Registrar recepciÃ³n</button>
+        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">📦 Registrar entrega</button>
+        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">✅ Registrar recepción</button>
       </div>
 
       <div id="form-sat" style="display:none;background:var(--card-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satÃ©lite</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satélite</div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">SatÃ©lite</label>
+            <label class="form-label">Satélite</label>
             <select class="form-select" id="sat-nombre">
-              <option value="">â€” Seleccionar â€”</option>
+              <option value="">— Seleccionar —</option>
               <option>Marcela</option>
               <option>Yamile</option>
               <option>Wilson</option>
@@ -527,12 +527,12 @@
             <select class="form-select" id="sat-prenda">
               <option>Camiseta</option>
               <option>Uniforme completo</option>
-              <option>PantalÃ³n</option>
+              <option>Pantalón</option>
               <option>Chaqueta</option>
               <option>Buso</option>
               <option>Sudadera</option>
               <option>Portero acolchado buso</option>
-              <option>Portero acolchado pantalÃ³n</option>
+              <option>Portero acolchado pantalón</option>
             </select>
           </div>
           <div class="form-group">
@@ -549,9 +549,9 @@
       <div id="lista-satelites"></div>
     </section>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    <!-- ═══════════════════════════════════════════════════════════
          COTIZACIONES / FACTURAS
-    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    ════════════════════════════════════════════════════════════ -->
     <section id="cotizaciones" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#f97316;box-shadow:0 0 6px #f97316;"></span>
@@ -560,15 +560,15 @@
 
       <!-- Botones principales -->
       <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
-        <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion')">ðŸ§¾ Nueva cotizaciÃ³n</button>
-        <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura')">ðŸ“„ Nueva factura</button>
+        <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion')">🧾 Nueva cotización</button>
+        <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura')">📄 Nueva factura</button>
       </div>
 
       <!-- Formulario -->
       <div id="form-doc" style="display:none;background:var(--card-bg);border:1px solid rgba(249,115,22,0.25);border-radius:var(--radius);padding:20px;margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div style="font-size:0.9rem;font-weight:700;color:#fb923c;" id="form-doc-titulo">Nueva cotizaciÃ³n</div>
-          <button class="btn btn-glass btn-xs" onclick="cerrarFormDoc()">âœ• Cerrar</button>
+          <div style="font-size:0.9rem;font-weight:700;color:#fb923c;" id="form-doc-titulo">Nueva cotización</div>
+          <button class="btn btn-glass btn-xs" onclick="cerrarFormDoc()">✕ Cerrar</button>
         </div>
 
         <!-- Datos cliente -->
@@ -579,7 +579,7 @@
             <input type="text" class="form-input" id="doc-cliente" placeholder="Ej: Colegio Parroquial">
           </div>
           <div class="form-group">
-            <label class="form-label">TelÃ©fono</label>
+            <label class="form-label">Teléfono</label>
             <input type="text" class="form-input" id="doc-telefono" placeholder="Ej: 321 235 19 41">
           </div>
         </div>
@@ -599,7 +599,7 @@
           <div class="form-group">
             <label class="form-label">Vendedora *</label>
             <select class="form-select" id="doc-vendedora">
-              <option value="">â€” Seleccionar â€”</option>
+              <option value="">— Seleccionar —</option>
               <option value="Betty Forero">Betty</option>
               <option value="Graciela Velandia">Graciela</option>
               <option value="Sneider Dominguez">Ney</option>
@@ -616,7 +616,7 @@
         <!-- Items -->
         <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin:16px 0 10px;">Items</div>
         <div id="doc-items-list"></div>
-        <button class="btn btn-glass btn-xs" style="margin-top:8px;" onclick="addItemDoc()">+ Agregar Ã­tem</button>
+        <button class="btn btn-glass btn-xs" style="margin-top:8px;" onclick="addItemDoc()">+ Agregar ítem</button>
 
         <!-- Totales -->
         <div id="doc-totales" style="margin-top:16px;padding:12px;background:rgba(249,115,22,0.06);border-radius:8px;text-align:right;font-size:0.85rem;"></div>
@@ -625,8 +625,8 @@
         <div style="margin-top:14px;">
           <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Cuenta Bancolombia</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="btn-cta1" class="btn btn-orange btn-xs" onclick="selCuenta(1)">Duvan D. â€” 215 0000 3773</button>
-            <button id="btn-cta2" class="btn btn-glass btn-xs" onclick="selCuenta(2)">William S. â€” 912 383 287 94</button>
+            <button id="btn-cta1" class="btn btn-orange btn-xs" onclick="selCuenta(1)">Duvan D. — 215 0000 3773</button>
+            <button id="btn-cta2" class="btn btn-glass btn-xs" onclick="selCuenta(2)">William S. — 912 383 287 94</button>
           </div>
         </div>
 
@@ -644,7 +644,7 @@
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Historial reciente</div>
         <div style="display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap;">
-          <input id="doc-buscar" type="text" placeholder="ðŸ” Buscar cliente o #..." oninput="renderDocHistorial()"
+          <input id="doc-buscar" type="text" placeholder="🔍 Buscar cliente o #..." oninput="renderDocHistorial()"
             style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 10px;outline:none;width:180px;">
           <select id="doc-filtro-tipo" onchange="renderDocHistorial()"
             style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 8px;outline:none;">
@@ -660,9 +660,9 @@
   </div><!-- end main-area -->
 </div><!-- end app-layout -->
 
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+<!-- ═══════════════════════════════════════════════════════════════════
      MODAL: COMPLETAR PEDIDO DESDE BANDEJA
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+════════════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="modal-completar">
   <div class="modal-box">
     <div class="modal-header">
@@ -670,12 +670,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2h11"/></svg>
         <span id="modal-completar-titulo">Completar pedido</span>
       </div>
-      <button class="modal-close" onclick="closeModal('modal-completar')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-completar')">✕</button>
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">TelÃ©fono</label>
+        <label class="form-label">Teléfono</label>
         <input type="text" class="form-input" id="comp-telefono" readonly>
       </div>
       <div class="form-group">
@@ -713,9 +713,9 @@
   </div>
 </div>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+<!-- ═══════════════════════════════════════════════════════════════════
      MODAL: NUEVO PEDIDO MANUAL
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+════════════════════════════════════════════════════════════════════ -->
 <div class="modal-overlay" id="modal-nuevo">
   <div class="modal-box">
     <div class="modal-header">
@@ -723,31 +723,31 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Nuevo pedido manual
       </div>
-      <button class="modal-close" onclick="closeModal('modal-nuevo')">âœ•</button>
+      <button class="modal-close" onclick="closeModal('modal-nuevo')">✕</button>
     </div>
 
     <div class="form-group">
       <label class="form-label">Tipo de entrada</label>
       <div class="tipo-toggle">
-        <div class="tipo-btn active-cotizar" id="tipo-cotizar" onclick="setTipo('cotizar')">ðŸŽ¨ CotizaciÃ³n</div>
-        <div class="tipo-btn" id="tipo-pedido" onclick="setTipo('pedido')">âœ… Pedido confirmado</div>
+        <div class="tipo-btn active-cotizar" id="tipo-cotizar" onclick="setTipo('cotizar')">🎨 Cotización</div>
+        <div class="tipo-btn" id="tipo-pedido" onclick="setTipo('pedido')">✅ Pedido confirmado</div>
       </div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Nombre del equipo / cliente</label>
-      <input type="text" class="form-input" id="nuevo-equipo" placeholder="Ej: Galaktiturkos, AtlÃ©tico FC...">
+      <input type="text" class="form-input" id="nuevo-equipo" placeholder="Ej: Galaktiturkos, Atlético FC...">
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">TelÃ©fono / WhatsApp</label>
+        <label class="form-label">Teléfono / WhatsApp</label>
         <input type="text" class="form-input" id="nuevo-telefono" placeholder="3001234567">
       </div>
       <div class="form-group">
         <label class="form-label">Vendedora</label>
         <select class="form-select" id="nuevo-vendedora">
-          <option value="">â€” Seleccionar â€”</option>
+          <option value="">— Seleccionar —</option>
           <option>Betty</option>
           <option>Graciela</option>
           <option>Ney</option>
@@ -793,7 +793,6 @@
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toasts"></div>
 
-<script src="/js/app.js"></script>
+<script src='/js/app.js' defer></script>
 </body>
 </html>
-

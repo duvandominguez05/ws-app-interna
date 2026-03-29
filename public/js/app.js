@@ -1,7 +1,7 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    CONSTANTES
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
-const PRENDAS = ['Camiseta','Uniforme completo','PantalÃ³n','Chaqueta','Buso','Sudadera','Portero acolchado buso','Portero acolchado pantalÃ³n','Camiseta adicional'];
+════════════════════════════════════════════════════════════════ */
+const PRENDAS = ['Camiseta','Uniforme completo','Pantalón','Chaqueta','Buso','Sudadera','Portero acolchado buso','Portero acolchado pantalón','Camiseta adicional'];
 const TELAS   = ['Normal','Antifluido','Dry Fit','Camuflada','Colmena','Cuadros'];
 
 const SIGUIENTE = {
@@ -18,10 +18,10 @@ const SIGUIENTE = {
 
 const ESTADO_LABELS = {
   'bandeja':           'Bandeja',
-  'hacer-diseno':      'Hacer diseÃ±o',
+  'hacer-diseno':      'Hacer diseño',
   'confirmado':        'Confirmado',
   'enviado-calandra':  'En calandra',
-  'llego-impresion':   'LlegÃ³ impresiÃ³n',
+  'llego-impresion':   'Llegó impresión',
   'corte':             'Corte',
   'calidad':           'Calidad',
   'costura':           'Costura',
@@ -42,9 +42,9 @@ const ESTADO_BADGE = {
   'enviado-final':     'badge-enviado',
 };
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    ESTADO
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
 let modalCompletarId = null;
@@ -55,9 +55,9 @@ const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function getMesActual() {
   const n = new Date();
   return `${n.getFullYear()}-${n.getMonth()}`;
@@ -84,22 +84,22 @@ function guardar() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pedidos, nextId })
-  }).catch(() => {}); // silencioso â€” no interrumpe si falla
+  }).catch(() => {}); // silencioso — no interrumpe si falla
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   NAVEGACIÃ“N
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════
+   NAVEGACIÓN
+════════════════════════════════════════════════════════════════ */
 const HEADER_INFO = {
-  'vista-general': { icon: 'ðŸ“Š', title: 'Vista general' },
-  'bandeja':       { icon: 'ðŸ’¼', title: 'Ventas' },
-  'diseno':        { icon: 'ðŸŽ¨', title: 'DiseÃ±o' },
-  'produccion':    { icon: 'ðŸ­', title: 'ProducciÃ³n' },
-  'wetransfer':    { icon: 'ðŸ“¤', title: 'WeTransfer â€” envÃ­os a calandra' },
-  'arreglos':      { icon: 'ðŸ”§', title: 'Control de arreglos' },
-  'calandra':      { icon: 'ðŸ“', title: 'Metraje â€” Control Calandra' },
-  'satelites':     { icon: 'ðŸ§µ', title: 'SatÃ©lites de costura' },
-  'cotizaciones':  { icon: 'ðŸ§¾', title: 'Facturas y Cotizaciones' },
+  'vista-general': { icon: '📊', title: 'Vista general' },
+  'bandeja':       { icon: '💼', title: 'Ventas' },
+  'diseno':        { icon: '🎨', title: 'Diseño' },
+  'produccion':    { icon: '🏭', title: 'Producción' },
+  'wetransfer':    { icon: '📤', title: 'WeTransfer — envíos a calandra' },
+  'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
+  'calandra':      { icon: '📐', title: 'Metraje — Control Calandra' },
+  'satelites':     { icon: '🧵', title: 'Satélites de costura' },
+  'cotizaciones':  { icon: '🧾', title: 'Facturas y Cotizaciones' },
 };
 
 function showSection(id, navEl) {
@@ -135,9 +135,9 @@ function closeSidebar() {
   document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    RENDER PRINCIPAL
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function render() {
   renderMetricas();
   renderDashboard();
@@ -159,7 +159,7 @@ function render() {
   renderSatelites();
 }
 
-/* â”€â”€â”€ MÃ©tricas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Métricas ────────────────────────────────────────────────── */
 function renderMetricas() {
   const total     = pedidos.filter(p => p.estado !== 'enviado-final').length;
   const enProd    = pedidos.filter(p => ['llego-impresion','corte','calidad','costura'].includes(p.estado)).length;
@@ -172,9 +172,9 @@ function renderMetricas() {
   document.getElementById('m-diseno').textContent     = enDiseno;
 }
 
-/* â”€â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Dashboard ──────────────────────────────────────────────── */
 function renderDashboard() {
-  // KPIs calandra y satÃ©lites
+  // KPIs calandra y satélites
   const semanaKey = getSemanaKey(new Date());
   const semLista  = calandraRegistros.filter(r => r.semana === semanaKey);
   const totalMetros = semLista.reduce((a, r) => a + (r.metros || 0), 0);
@@ -187,7 +187,7 @@ function renderDashboard() {
   }, 0);
   document.getElementById('m-sat-pend').textContent = pendTotalSat;
 
-  // Panel alertas entregas prÃ³ximas
+  // Panel alertas entregas próximas
   const hoy   = new Date(); hoy.setHours(0,0,0,0);
   const activos = pedidos.filter(p => p.estado !== 'enviado-final' && p.fechaEntrega);
   const conFecha = activos.map(p => {
@@ -198,7 +198,7 @@ function renderDashboard() {
 
   const contAlertas = document.getElementById('dash-alertas');
   if (!conFecha.length) {
-    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los prÃ³ximos 2 dÃ­as</div>';
+    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los próximos 2 días</div>';
   } else {
     contAlertas.innerHTML = conFecha.map(p => {
       const cls   = p.diff <= 1 ? 'red' : 'yellow';
@@ -208,7 +208,7 @@ function renderDashboard() {
         <div class="dash-alert-dias ${cls}">${tipo}</div>
         <div class="dash-alert-info">
           <div class="dash-alert-equipo">#${p.id} ${esc(p.equipo || p.telefono)}</div>
-          <div class="dash-alert-estado">${esc(p.vendedora || 'â€”')} Â· ${estad}</div>
+          <div class="dash-alert-estado">${esc(p.vendedora || '—')} · ${estad}</div>
         </div>
       </div>`;
     }).join('');
@@ -217,10 +217,10 @@ function renderDashboard() {
   // Panel pipeline conteos
   const PIPE_ESTADOS = [
     { key: 'bandeja',          label: 'Ventas / Cotizaciones', color: '#94a3b8' },
-    { key: 'hacer-diseno',     label: 'Hacer diseÃ±o',          color: '#818cf8' },
+    { key: 'hacer-diseno',     label: 'Hacer diseño',          color: '#818cf8' },
     { key: 'confirmado',       label: 'Confirmado',            color: '#fb923c' },
     { key: 'enviado-calandra', label: 'Enviado calandra',      color: '#06b6d4' },
-    { key: 'llego-impresion',  label: 'LlegÃ³ impresiÃ³n',       color: '#38bdf8' },
+    { key: 'llego-impresion',  label: 'Llegó impresión',       color: '#38bdf8' },
     { key: 'corte',            label: 'Corte',                 color: '#a78bfa' },
     { key: 'calidad',          label: 'Control calidad',       color: '#fbbf24' },
     { key: 'costura',          label: 'Costura',               color: '#f472b6' },
@@ -237,7 +237,7 @@ function renderDashboard() {
   }).join('');
   contPipe.innerHTML = rowsPipe || '<div class="dash-empty">Sin pedidos activos</div>';
 
-  // Panel satÃ©lites
+  // Panel satélites
   const contSat = document.getElementById('dash-satelites');
   contSat.innerHTML = SATELITES.map(s => {
     const ent = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
@@ -251,8 +251,8 @@ function renderDashboard() {
         <div class="dash-sat-label">pend.</div>
       </div>
       <div style="font-size:0.72rem;color:var(--text-muted);text-align:right;">
-        <div>â†‘${ent} entregado</div>
-        <div>â†“${rec} recibido</div>
+        <div>↑${ent} entregado</div>
+        <div>↓${rec} recibido</div>
       </div>
     </div>`;
   }).join('');
@@ -272,17 +272,17 @@ function renderDashboard() {
       </div>
       <div class="dash-cal-stat">
         <div class="dash-cal-stat-val">${numEnvios}</div>
-        <div class="dash-cal-stat-label">envÃ­os registrados</div>
+        <div class="dash-cal-stat-label">envíos registrados</div>
       </div>
     </div>
     <div style="margin-top:10px;font-size:0.75rem;color:var(--text-muted);">
-      Ãšltimo: <span style="color:var(--text);">${esc(ultimoEnvio.equipo || 'â€”')}</span>
-      Â· ${ultimoEnvio.metros}m Â· ${ultimoEnvio.fecha || ''}
+      Último: <span style="color:var(--text);">${esc(ultimoEnvio.equipo || '—')}</span>
+      · ${ultimoEnvio.metros}m · ${ultimoEnvio.fecha || ''}
     </div>`;
   }
 }
 
-/* â”€â”€â”€ Badges sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Badges sidebar ─────────────────────────────────────────── */
 function renderBadges() {
   const bandeja  = pedidos.filter(p => p.estado === 'bandeja').length;
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
@@ -294,13 +294,13 @@ function renderBadges() {
   document.getElementById('badge-prod').textContent    = prod;
 }
 
-/* â”€â”€â”€ Tabla recientes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Tabla recientes ────────────────────────────────────────── */
 const TL_ETAPAS = [
   { key: 'bandeja',          label: 'Bandeja'    },
-  { key: 'hacer-diseno',     label: 'DiseÃ±o'     },
+  { key: 'hacer-diseno',     label: 'Diseño'     },
   { key: 'confirmado',       label: 'Confirmado' },
   { key: 'enviado-calandra', label: 'Calandra'   },
-  { key: 'llego-impresion',  label: 'ImpresiÃ³n'  },
+  { key: 'llego-impresion',  label: 'Impresión'  },
   { key: 'corte',            label: 'Corte'      },
   { key: 'calidad',          label: 'Calidad'    },
   { key: 'arreglo',          label: 'Arreglo'    },
@@ -315,7 +315,7 @@ function renderTablaRecientes() {
   const lista = pedidos.filter(p => p.estado !== 'enviado-final').sort((a, b) => a.id - b.id);
 
   if (!lista.length) {
-    cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin pedidos aÃºn</div>`;
+    cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin pedidos aún</div>`;
     return;
   }
 
@@ -324,10 +324,10 @@ function renderTablaRecientes() {
   const resto   = lista.length - MAX;
 
   cont.innerHTML = visible.map(p => {
-    const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : 'â€”';
-    const fecha  = p.fechaEntrega ? `ðŸ“… ${fmtFecha(p.fechaEntrega)}` : '';
+    const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
+    const fecha  = p.fechaEntrega ? `📅 ${fmtFecha(p.fechaEntrega)}` : '';
     // Para el timeline, si el pedido tiene arreglo registrado tratamos la etapa 'arreglo'
-    // como activa cuando estÃ¡ en calidad (esperando que llegue), o done cuando ya pasÃ³ de calidad
+    // como activa cuando está en calidad (esperando que llegue), o done cuando ya pasó de calidad
     const curIdx = TL_ORDER.indexOf(p.estado);
     const arregloIdx = TL_ORDER.indexOf('arreglo');
 
@@ -336,15 +336,15 @@ function renderTablaRecientes() {
       if (etapa.key === 'arreglo') {
         if (p.arreglo && p.estado === 'calidad') cls = 'active';
         else if (p.arreglo && curIdx > arregloIdx) cls = 'done';
-        else if (curIdx > arregloIdx) cls = 'done'; // pasÃ³ calidad sin arreglo
+        else if (curIdx > arregloIdx) cls = 'done'; // pasó calidad sin arreglo
       } else {
-        // Ã­ndice real del estado actual (saltando 'arreglo' que no es estado real)
+        // índice real del estado actual (saltando 'arreglo' que no es estado real)
         const estadoIdx = curIdx >= arregloIdx ? curIdx + 1 : curIdx; // ajuste por etapa virtual
         if (i < arregloIdx) {
           if (i < curIdx) cls = 'done';
           if (i === curIdx) cls = 'active';
         } else if (i > arregloIdx) {
-          const realI = i - 1; // Ã­ndice real sin la etapa virtual
+          const realI = i - 1; // índice real sin la etapa virtual
           if (realI < curIdx) cls = 'done';
           if (realI === curIdx) cls = 'active';
         }
@@ -358,7 +358,7 @@ function renderTablaRecientes() {
           <div class="pedido-row-id">#${p.id}</div>
           <div class="pedido-row-nombre">${esc(p.equipo || p.telefono)}</div>
           <div class="pedido-row-meta">
-            <span>${esc(p.vendedora || 'â€”')}</span>
+            <span>${esc(p.vendedora || '—')}</span>
             <span style="color:var(--text-muted);font-size:0.68rem;">${items}</span>
           </div>
           ${fecha ? `<div class="pedido-row-fecha">${fecha}</div>` : ''}
@@ -372,13 +372,13 @@ function renderTablaRecientes() {
     cont.innerHTML += `
       <div style="text-align:center;padding:12px;">
         <button class="btn btn-glass btn-sm" onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">
-          Ver ${resto} pedido${resto>1?'s':''} mÃ¡s â†’
+          Ver ${resto} pedido${resto>1?'s':''} más →
         </button>
       </div>`;
   }
 }
 
-/* â”€â”€â”€ Bandeja â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Bandeja ────────────────────────────────────────────────── */
 let busquedaActual = '';
 
 function buscarPedidos(q) {
@@ -404,28 +404,28 @@ function renderBandeja() {
 }
 
 function renderBandejaCotizaciones(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">ðŸ“­</div><div class="empty-text">Sin entradas</div></div>`;
+  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
   return arr.map(p => `
     <div class="bandeja-card">
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">âœŽ</span></div>
-          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">ðŸ“± ${esc(p.telefono)}</div>` : ''}
+          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
+          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div class="bandeja-id">#${p.id}</div>
       </div>
       <div class="bandeja-meta">
         <span>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${esc(p.vendedora || 'â€”')}
+          ${esc(p.vendedora || '—')}
         </span>
         <span>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          ${esc(p.creadoEn || 'â€”')}
+          ${esc(p.creadoEn || '—')}
         </span>
       </div>
       <div class="bandeja-actions">
-        <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">Completar â†’</button>
+        <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">Completar →</button>
       </div>
     </div>
   `).join('');
@@ -465,7 +465,7 @@ function irAlPedido(id) {
 
 function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
-  if (!confirm(`Â¿Eliminar pedido #${id}?`)) return;
+  if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
   guardar();
   render();
@@ -473,7 +473,7 @@ function eliminarPedidoBandeja(id, event) {
 }
 
 function renderBandejaPedidos(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">ðŸ“­</div><div class="empty-text">Sin entradas</div></div>`;
+  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
   return arr.map(p => {
     const etiqueta = ESTADO_LABELS[p.estado] || p.estado;
     const color    = ETAPA_COLOR[p.estado] || '#64748b';
@@ -483,8 +483,8 @@ function renderBandejaPedidos(arr) {
       : 'Sin prendas';
 
     const fechaHtml = p.fechaEntrega
-      ? `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Clic para cambiar fecha" style="cursor:pointer;color:#fde047;">ðŸ“… ${fmtFecha(p.fechaEntrega)} <span style="opacity:0.5;font-size:0.65rem;">âœŽ</span></span>`
-      : `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Agregar fecha de entrega" style="cursor:pointer;color:var(--text-muted);">ðŸ“… Agregar fecha</span>`;
+      ? `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Clic para cambiar fecha" style="cursor:pointer;color:#fde047;">📅 ${fmtFecha(p.fechaEntrega)} <span style="opacity:0.5;font-size:0.65rem;">✎</span></span>`
+      : `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Agregar fecha de entrega" style="cursor:pointer;color:var(--text-muted);">📅 Agregar fecha</span>`;
 
     const esNavegable = p.estado !== 'bandeja';
 
@@ -492,33 +492,33 @@ function renderBandejaPedidos(arr) {
     <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">âœŽ</span>` : ''}</div>
-          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">ðŸ“± ${esc(p.telefono)}</div>` : ''}
+          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
+          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bandeja-id">#${p.id}</div>
-          <button onclick="eliminarPedidoBandeja(${p.id}, event)" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 6px;font-size:0.7rem;cursor:pointer;line-height:1.4;">âœ•</button>
+          <button onclick="eliminarPedidoBandeja(${p.id}, event)" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 6px;font-size:0.7rem;cursor:pointer;line-height:1.4;">✕</button>
         </div>
       </div>
       <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">${itemsTxt}</div>
       <div class="bandeja-meta">
         <span>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${esc(p.vendedora || 'â€”')}
+          ${esc(p.vendedora || '—')}
         </span>
         ${fechaHtml}
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}55;">â— ${etiqueta}</span>
-        ${esNavegable ? `<span style="font-size:0.65rem;color:var(--text-muted);">â†’ ver pedido</span>` : ''}
-        <button onclick="openModalCompletar(${p.id});event.stopPropagation();" style="margin-left:auto;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;border-radius:4px;padding:2px 8px;font-size:0.68rem;cursor:pointer;">âœ Editar prendas</button>
+        <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}55;">● ${etiqueta}</span>
+        ${esNavegable ? `<span style="font-size:0.65rem;color:var(--text-muted);">→ ver pedido</span>` : ''}
+        <button onclick="openModalCompletar(${p.id});event.stopPropagation();" style="margin-left:auto;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;border-radius:4px;padding:2px 8px;font-size:0.68rem;cursor:pointer;">✏ Editar prendas</button>
       </div>
     </div>
   `;
   }).join('');
 }
 
-/* â”€â”€â”€ Kanban â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Kanban ─────────────────────────────────────────────────── */
 function renderKanban(estado) {
   const col = document.getElementById(`col-${estado}`);
   const cnt = document.getElementById(`cnt-${estado}`);
@@ -528,7 +528,7 @@ function renderKanban(estado) {
   if (cnt) cnt.textContent = items.length;
 
   if (!items.length) {
-    col.innerHTML = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">â—‹</div><div class="empty-text">VacÃ­o</div></div>`;
+    col.innerHTML = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
     return;
   }
 
@@ -541,11 +541,11 @@ function renderKanbanCardDiseno(p) {
   const disenadorTxt = p.disenadorAsignado || '';
 
   const disenadorHtml = disenadorTxt
-    ? `<div style="font-size:0.78rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">ðŸŽ¨ ${esc(disenadorTxt)}</div>`
-    : `<div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">ðŸŽ¨ Sin asignar</div>`;
+    ? `<div style="font-size:0.78rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">🎨 ${esc(disenadorTxt)}</div>`
+    : `<div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">🎨 Sin asignar</div>`;
 
   const notasHtml = p.notas
-    ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;font-style:italic;">ðŸ“ ${esc(p.notas)}</div>`
+    ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;font-style:italic;">📝 ${esc(p.notas)}</div>`
     : '';
 
   let actionHtml = '';
@@ -562,8 +562,8 @@ function renderKanbanCardDiseno(p) {
     } else {
       actionHtml = `
         <div style="display:flex;gap:6px;">
-          <button onclick="marcarDisenoListo(${p.id})" style="flex:1;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#4ade80;border-radius:6px;padding:6px;font-size:0.78rem;cursor:pointer;font-weight:600;">âœ“ Listo</button>
-          <button onclick="liberarPedidoDiseno(${p.id})" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:6px 10px;font-size:0.75rem;cursor:pointer;" title="Liberar pedido">âœ•</button>
+          <button onclick="marcarDisenoListo(${p.id})" style="flex:1;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#4ade80;border-radius:6px;padding:6px;font-size:0.78rem;cursor:pointer;font-weight:600;">✓ Listo</button>
+          <button onclick="liberarPedidoDiseno(${p.id})" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:6px 10px;font-size:0.75rem;cursor:pointer;" title="Liberar pedido">✕</button>
         </div>`;
     }
   } else if (p.estado === 'confirmado') {
@@ -574,7 +574,7 @@ function renderKanbanCardDiseno(p) {
   } else if (p.estado === 'enviado-calandra') {
     actionHtml = `
       <div class="kanban-card-actions">
-        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">LlegÃ³ impresiÃ³n</button>
+        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Llegó impresión</button>
       </div>`;
   }
 
@@ -585,8 +585,8 @@ function renderKanbanCardDiseno(p) {
       </div>
       <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-        <span style="background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.35);color:#fde047;border-radius:5px;padding:2px 8px;font-size:0.73rem;font-weight:700;">ðŸ“… ${fechaTxt}</span>
-        <span style="font-size:0.73rem;color:var(--text-muted);">ðŸ‘¤ ${esc(p.vendedora || '-')}</span>
+        <span style="background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.35);color:#fde047;border-radius:5px;padding:2px 8px;font-size:0.73rem;font-weight:700;">📅 ${fechaTxt}</span>
+        <span style="font-size:0.73rem;color:var(--text-muted);">👤 ${esc(p.vendedora || '-')}</span>
       </div>
       ${notasHtml}
       ${disenadorHtml}
@@ -598,13 +598,13 @@ function renderKanbanCardDiseno(p) {
 function tomarPedidoDiseno(id) {
   const sel = document.getElementById(`sel-dis-${id}`);
   const nombre = sel ? sel.value : '';
-  if (!nombre) { toast('Selecciona un diseÃ±ador', 'error'); return; }
+  if (!nombre) { toast('Selecciona un diseñador', 'error'); return; }
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.disenadorAsignado = nombre;
   guardar();
   render();
-  toast(`${nombre} tomÃ³ el pedido #${id}`, 'ok');
+  toast(`${nombre} tomó el pedido #${id}`, 'ok');
 }
 
 function marcarDisenoListo(id) {
@@ -626,7 +626,7 @@ function editarFecha(id) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:280px;text-align:center;">
-      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">ðŸ“… Fecha de entrega â€” #${p.id} ${esc(p.equipo||'')}</div>
+      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">📅 Fecha de entrega — #${p.id} ${esc(p.equipo||'')}</div>
       <input type="date" id="fecha-edit-input" value="${p.fechaEntrega||''}" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;">
       <div style="display:flex;gap:8px;justify-content:center;">
         <button onclick="confirmarFecha(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
@@ -656,7 +656,7 @@ function editarEquipo(id) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:300px;text-align:center;">
-      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">âœï¸ Nombre del equipo â€” #${p.id}</div>
+      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">✏️ Nombre del equipo — #${p.id}</div>
       <input type="text" id="equipo-edit-input" value="${esc(p.equipo||'')}" placeholder="Nombre del equipo / cliente" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;box-sizing:border-box;">
       <div style="display:flex;gap:8px;justify-content:center;">
         <button onclick="confirmarEquipo(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
@@ -673,7 +673,7 @@ function confirmarEquipo(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   const val = document.getElementById('equipo-edit-input').value.trim();
-  if (!val) { toast('El nombre no puede estar vacÃ­o', 'error'); return; }
+  if (!val) { toast('El nombre no puede estar vacío', 'error'); return; }
   p.equipo = val;
   guardar();
   render();
@@ -682,7 +682,7 @@ function confirmarEquipo(id) {
 }
 
 function liberarPedidoDiseno(id) {
-  if (!confirm('Â¿Liberar este pedido para que otro diseÃ±ador lo tome?')) return;
+  if (!confirm('¿Liberar este pedido para que otro diseñador lo tome?')) return;
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.disenadorAsignado = '';
@@ -697,19 +697,19 @@ function renderKanbanCard(p) {
 
   const siguiente = SIGUIENTE[p.estado];
   const itemsTxt = p.items && p.items.length
-    ? p.items.map(i => `<span>${esc(i.prenda)}</span> Â· <span style="opacity:.7">${esc(i.tela)}</span>`).join('<br>')
+    ? p.items.map(i => `<span>${esc(i.prenda)}</span> · <span style="opacity:.7">${esc(i.tela)}</span>`).join('<br>')
     : '<span style="opacity:.5">Sin prendas</span>';
 
   const fechaHtml = p.fechaEntrega
-    ? `<div class="kanban-card-date" onclick="editarFecha(${p.id})" title="Clic para cambiar fecha" style="cursor:pointer;">ðŸ“… ${fmtFecha(p.fechaEntrega)} âœŽ</div>`
-    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;cursor:pointer;" onclick="editarFecha(${p.id})" title="Agregar fecha de entrega">ðŸ“… Sin fecha â€” agregar</div>`;
+    ? `<div class="kanban-card-date" onclick="editarFecha(${p.id})" title="Clic para cambiar fecha" style="cursor:pointer;">📅 ${fmtFecha(p.fechaEntrega)} ✎</div>`
+    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;cursor:pointer;" onclick="editarFecha(${p.id})" title="Agregar fecha de entrega">📅 Sin fecha — agregar</div>`;
 
   const notasHtml = p.notas
     ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-style:italic;">"${esc(p.notas)}"</div>`
     : '';
 
   const arregloInfoHtml = (p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'calidad')
-    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">âš  Arreglo: ${esc(p.arreglo)}</div>`
+    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">⚠ Arreglo: ${esc(p.arreglo)}</div>`
     : '';
 
   let actionsHtml = '';
@@ -718,25 +718,25 @@ function renderKanbanCard(p) {
     if (p.arreglo) {
       const descActual = (p.arreglo === 'pendiente') ? '' : esc(p.arreglo);
       actionsHtml = `
-        <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">âš  Â¿QuÃ© hay que arreglar?</div>
-        <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo (Enter = nueva lÃ­nea)..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
+        <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">⚠ ¿Qué hay que arreglar?</div>
+        <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo (Enter = nueva línea)..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
         <div class="kanban-card-actions">
-          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">âœ“ LlegÃ³</button>
+          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">✓ Llegó</button>
           <button class="btn btn-xs" onclick="guardarDescArreglo(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.72rem;padding:4px 8px;border-radius:5px;cursor:pointer;">Guardar</button>
         </div>
       `;
     } else {
       actionsHtml = `
         <div class="kanban-card-actions">
-          <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">â†’ Costura</button>
-          <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">ðŸ”§</button>
+          <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">→ Costura</button>
+          <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">🔧</button>
         </div>
       `;
     }
   } else if (p.estado === 'listo') {
     actionsHtml = `
-      <button onclick="copiarMsgListo(${p.id})" style="width:100%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;color:#4ade80;font-size:0.75rem;font-weight:600;padding:6px 10px;cursor:pointer;margin-bottom:8px;">ðŸ“‹ Copiar mensaje para cliente</button>
-      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Â¿CÃ³mo se envÃ­a?</div>
+      <button onclick="copiarMsgListo(${p.id})" style="width:100%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;color:#4ade80;font-size:0.75rem;font-weight:600;padding:6px 10px;cursor:pointer;margin-bottom:8px;">📋 Copiar mensaje para cliente</button>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">¿Cómo se envía?</div>
       <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;">
         ${METODOS_ENVIO.map(m => `<button onclick="registrarEnvioDirecto(${p.id},'${esc(m)}')" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--text);font-size:0.72rem;padding:5px 8px;cursor:pointer;text-align:left;">${esc(m)}</button>`).join('')}
       </div>
@@ -757,13 +757,13 @@ function renderKanbanCard(p) {
       <div class="kanban-card-id">#${p.id}</div>
       <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;">
         ${esc(p.equipo || p.telefono)}
-        ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">âœŽ</span>` : ''}
+        ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}
       </div>
-      ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">ðŸ“± ${esc(p.telefono)}</div>` : ''}
+      ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">📱 ${esc(p.telefono)}</div>` : ''}
       <div class="kanban-card-items">${itemsTxt}</div>
       <div class="kanban-card-vendor">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        ${esc(p.vendedora || 'â€”')}
+        ${esc(p.vendedora || '—')}
       </div>
       ${fechaHtml}
       ${notasHtml}
@@ -775,31 +775,31 @@ function renderKanbanCard(p) {
 
 function getBotonLabel(estado) {
   const labels = {
-    'hacer-diseno':     'âœ“ Confirmado',
-    'confirmado':       'â†’ Calandra',
-    'enviado-calandra': 'â†’ LlegÃ³ impresiÃ³n',
-    'llego-impresion':  'â†’ Corte',
-    'corte':            'â†’ Calidad',
-    'costura':          'â†’ Listo',
-    'listo':            'â†’ Enviar',
+    'hacer-diseno':     '✓ Confirmado',
+    'confirmado':       '→ Calandra',
+    'enviado-calandra': '→ Llegó impresión',
+    'llego-impresion':  '→ Corte',
+    'corte':            '→ Calidad',
+    'costura':          '→ Listo',
+    'listo':            '→ Enviar',
   };
-  return labels[estado] || 'â†’ Siguiente';
+  return labels[estado] || '→ Siguiente';
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    ACCIONES
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 const NOTIF_ICONS = {
-  'bandeja':          'ðŸ’¼',
-  'hacer-diseno':     'ðŸŽ¨',
-  'confirmado':       'âœ…',
-  'enviado-calandra': 'ðŸ“¤',
-  'llego-impresion':  'ðŸ–¨ï¸',
-  'corte':            'âœ‚ï¸',
-  'calidad':          'ðŸ”',
-  'costura':          'ðŸ§µ',
-  'listo':            'ðŸ“¦',
-  'enviado-final':    'ðŸš€',
+  'bandeja':          '💼',
+  'hacer-diseno':     '🎨',
+  'confirmado':       '✅',
+  'enviado-calandra': '📤',
+  'llego-impresion':  '🖨️',
+  'corte':            '✂️',
+  'calidad':          '🔍',
+  'costura':          '🧵',
+  'listo':            '📦',
+  'enviado-final':    '🚀',
 };
 
 function avanzar(id) {
@@ -811,22 +811,22 @@ function avanzar(id) {
   p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
-  toast(`#${id} â†’ ${ESTADO_LABELS[sig]}`, 'success');
+  toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
 
-  const icono = NOTIF_ICONS[sig] || 'âž¡ï¸';
+  const icono = NOTIF_ICONS[sig] || '➡️';
   const nombre = p.equipo || p.telefono;
   if (sig === 'listo') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> estÃ¡ <strong>listo para entregar</strong> â€” vendedora: ${esc(p.vendedora || 'â€”')}`, 'success', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> está <strong>listo para entregar</strong> — vendedora: ${esc(p.vendedora || '—')}`, 'success', id);
   } else if (sig === 'calidad') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegÃ³ a <strong>control calidad</strong>`, 'info', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó a <strong>control calidad</strong>`, 'info', id);
   } else if (sig === 'enviado-calandra') {
     crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> enviado a <strong>calandra</strong>`, 'info', id);
   } else if (sig === 'llego-impresion') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegÃ³ impresiÃ³n â€” pasa a <strong>corte</strong>`, 'info', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>corte</strong>`, 'info', id);
   } else if (sig === 'enviado-final') {
-    crearNotif('ðŸš€', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> â€” pedido completado`, 'success', id);
+    crearNotif('🚀', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> — pedido completado`, 'success', id);
   } else {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> avanzÃ³ a <strong>${ESTADO_LABELS[sig]}</strong>`, 'info', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> avanzó a <strong>${ESTADO_LABELS[sig]}</strong>`, 'info', id);
   }
 }
 
@@ -838,8 +838,8 @@ function avanzarNormal(id) {
   p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
-  toast(`#${id} pasÃ³ a Costura`, 'success');
-  crearNotif('ðŸ§µ', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> â€” arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
+  toast(`#${id} pasó a Costura`, 'success');
+  crearNotif('🧵', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
 }
 
 function registrarArreglo(id) {
@@ -848,8 +848,8 @@ function registrarArreglo(id) {
   p.arreglo = 'pendiente';
   guardar();
   render();
-  toast(`#${id} marcado con arreglo â€” escribe la descripciÃ³n`, 'info');
-  crearNotif('âš ï¸', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> â€” tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
+  toast(`#${id} marcado con arreglo — escribe la descripción`, 'info');
+  crearNotif('⚠️', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
 }
 
 function guardarDescArreglo(id) {
@@ -857,13 +857,13 @@ function guardarDescArreglo(id) {
   if (!p) return;
   const el = document.getElementById(`arreglo-edit-${id}`);
   const val = el ? el.value.trim() : '';
-  if (!val) { toast('Escribe quÃ© hay que arreglar', 'error'); return; }
+  if (!val) { toast('Escribe qué hay que arreglar', 'error'); return; }
   p.arreglo = val;
   guardar();
-  // No re-renderizar para no destruir el textarea â€” solo actualizar badges
+  // No re-renderizar para no destruir el textarea — solo actualizar badges
   renderBadges();
   renderMetricas();
-  toast(`âœ“ Arreglo guardado`, 'success');
+  toast(`✓ Arreglo guardado`, 'success');
 }
 
 function llegoFaltante(id) {
@@ -873,34 +873,34 @@ function llegoFaltante(id) {
   p.estado  = 'costura';
   guardar();
   render();
-  toast(`#${id} â†’ Costura (faltante llegÃ³)`, 'success');
+  toast(`#${id} → Costura (faltante llegó)`, 'success');
 }
 
 function eliminarPedido(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   if (p.estado !== 'enviado-final') {
-    toast(`#${id} solo se puede eliminar cuando estÃ© enviado`, 'info');
+    toast(`#${id} solo se puede eliminar cuando esté enviado`, 'info');
     return;
   }
-  if (!confirm(`Â¿Eliminar pedido #${id}?`)) return;
+  if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
   guardar();
   render();
   toast(`Pedido #${id} eliminado`, 'info');
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    MODAL COMPLETAR
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function openModalCompletar(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   modalCompletarId = id;
 
-  // Ajustar tÃ­tulo segÃºn tipo
+  // Ajustar título según tipo
   const titulo = document.getElementById('modal-completar-titulo');
-  if (titulo) titulo.textContent = p.tipoBandeja === 'cotizar' ? 'Confirmar cotizaciÃ³n' : 'Completar pedido';
+  if (titulo) titulo.textContent = p.tipoBandeja === 'cotizar' ? 'Confirmar cotización' : 'Completar pedido';
 
   document.getElementById('comp-telefono').value = p.telefono || '';
   document.getElementById('comp-vendedora').value = p.vendedora || '';
@@ -926,11 +926,11 @@ function addItemCompConValor(prenda = PRENDAS[0], tela = TELAS[0]) {
     <select>
       ${PRENDAS.map(pr => `<option ${pr === prenda ? 'selected' : ''}>${pr}</option>`).join('')}
     </select>
-    <span class="item-sep">Â·</span>
+    <span class="item-sep">·</span>
     <select>
       ${TELAS.map(t => `<option ${t === tela ? 'selected' : ''}>${t}</option>`).join('')}
     </select>
-    <button class="item-remove" onclick="this.parentElement.remove()">Ã—</button>
+    <button class="item-remove" onclick="this.parentElement.remove()">×</button>
   `;
   lista.appendChild(row);
 }
@@ -953,16 +953,16 @@ function guardarCompletar() {
   p.notas        = notas;
   p.items        = items;
 
-  // CotizaciÃ³n completada â†’ se convierte en pedido confirmado
+  // Cotización completada → se convierte en pedido confirmado
   // Estado pasa a 'hacer-diseno' y tipoBandeja a 'pedido'
-  // A partir de aquÃ­ aparece en la columna "Pedidos confirmados" con su etapa visible
+  // A partir de aquí aparece en la columna "Pedidos confirmados" con su etapa visible
   p.tipoBandeja = 'pedido';
   p.estado      = 'hacer-diseno';
 
   guardar();
   closeModal('modal-completar');
   render();
-  toast(`#${p.id} confirmado â€” en cola de diseÃ±o`, 'success');
+  toast(`#${p.id} confirmado — en cola de diseño`, 'success');
 }
 
 function avanzarDesdeBandeja(id) {
@@ -973,27 +973,27 @@ function avanzarDesdeBandeja(id) {
   p.estado = sig;
   guardar();
   render();
-  toast(`#${id} â†’ ${ESTADO_LABELS[sig]}`, 'success');
+  toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
 }
 
 function getBandejaBotonLabel(estado) {
   const labels = {
-    'bandeja':           'â†’ Iniciar diseÃ±o',
-    'hacer-diseno':      'â†’ DiseÃ±o listo',
-    'confirmado':        'â†’ Enviar a calandra',
-    'enviado-calandra':  'â†’ LlegÃ³ impresiÃ³n',
-    'llego-impresion':   'â†’ Corte',
-    'corte':             'â†’ Calidad',
-    'calidad':           'â†’ Costura',
-    'costura':           'â†’ Listo',
-    'listo':             'â†’ Entregar / Enviar',
+    'bandeja':           '→ Iniciar diseño',
+    'hacer-diseno':      '→ Diseño listo',
+    'confirmado':        '→ Enviar a calandra',
+    'enviado-calandra':  '→ Llegó impresión',
+    'llego-impresion':   '→ Corte',
+    'corte':             '→ Calidad',
+    'calidad':           '→ Costura',
+    'costura':           '→ Listo',
+    'listo':             '→ Entregar / Enviar',
   };
-  return labels[estado] || 'â†’ Siguiente';
+  return labels[estado] || '→ Siguiente';
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    MODAL NUEVO PEDIDO
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function openModalNuevo() {
   tipoNuevo = 'cotizar';
   document.getElementById('nuevo-telefono').value = '';
@@ -1033,11 +1033,11 @@ function addItemNuevoConValor(prenda = PRENDAS[0], tela = TELAS[0]) {
     <select>
       ${PRENDAS.map(pr => `<option ${pr === prenda ? 'selected' : ''}>${pr}</option>`).join('')}
     </select>
-    <span class="item-sep">Â·</span>
+    <span class="item-sep">·</span>
     <select>
       ${TELAS.map(t => `<option ${t === tela ? 'selected' : ''}>${t}</option>`).join('')}
     </select>
-    <button class="item-remove" onclick="this.parentElement.remove()">Ã—</button>
+    <button class="item-remove" onclick="this.parentElement.remove()">×</button>
   `;
   lista.appendChild(row);
 }
@@ -1072,7 +1072,7 @@ function guardarNuevo() {
       const sels = row.querySelectorAll('select');
       return { prenda: sels[0].value, tela: sels[1].value };
     });
-    // Pedido directo entra confirmado, va directo a diseÃ±o
+    // Pedido directo entra confirmado, va directo a diseño
     pedido.estado = 'hacer-diseno';
   }
 
@@ -1083,15 +1083,15 @@ function guardarNuevo() {
   toast(`Pedido #${pedido.id} creado en bandeja`, 'success');
 
   if (tipoNuevo === 'pedido') {
-    crearNotif('âœ…', `Nuevo pedido <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> confirmado â€” vendedora: ${esc(pedido.vendedora)}`, 'success', pedido.id);
+    crearNotif('✅', `Nuevo pedido <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> confirmado — vendedora: ${esc(pedido.vendedora)}`, 'success', pedido.id);
   } else {
-    crearNotif('ðŸ’¼', `Nueva cotizaciÃ³n <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> â€” vendedora: ${esc(pedido.vendedora)}`, 'info', pedido.id);
+    crearNotif('💼', `Nueva cotización <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> — vendedora: ${esc(pedido.vendedora)}`, 'info', pedido.id);
   }
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    MODALES HELPERS
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
@@ -1110,11 +1110,11 @@ document.addEventListener('keydown', e => {
   }
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    TOAST
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function toast(msg, type = 'info') {
-  const icons = { success: 'âœ“', error: 'âœ•', info: 'â„¹' };
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
   const container = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
@@ -1123,9 +1123,9 @@ function toast(msg, type = 'info') {
   setTimeout(() => el.remove(), 3000);
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    UTILIDADES
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function esc(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -1135,21 +1135,21 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Formatea "YYYY-MM-DD" â†’ "Lun 26/03"
+// Formatea "YYYY-MM-DD" → "Lun 26/03"
 function fmtFecha(iso) {
   if (!iso) return '';
   // Parsear sin desfase de zona horaria
   const [y, m, d] = iso.split('-').map(Number);
   const date = new Date(y, m - 1, d);
-  const dias = ['Dom','Lun','Mar','MiÃ©','Jue','Vie','SÃ¡b'];
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   const dd = String(d).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   return `${dias[date.getDay()]} ${dd}/${mm}`;
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    FECHA HEADER
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 function updateDate() {
   const now = new Date();
   const opts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
@@ -1164,34 +1164,34 @@ function arregloLlego(id) {
   p.estado  = 'costura';
   guardar();
   render();
-  toast(`#${id} â†’ Costura`, 'success');
+  toast(`#${id} → Costura`, 'success');
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ENVÃOS
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
-const METODOS_ENVIO = ['InterrapidÃ­simo', 'Bus / Encomienda terminal', 'RecogiÃ³ en fÃ¡brica'];
+/* ════════════════════════════════════════════════════════════════
+   ENVÍOS
+════════════════════════════════════════════════════════════════ */
+const METODOS_ENVIO = ['Interrapidísimo', 'Bus / Encomienda terminal', 'Recogió en fábrica'];
 
 function registrarEnvio(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   const sel = document.getElementById(`metodo-${id}`);
   const metodo = sel ? sel.value : '';
-  if (!metodo) { toast('Selecciona el mÃ©todo de envÃ­o', 'error'); return; }
+  if (!metodo) { toast('Selecciona el método de envío', 'error'); return; }
   p.metodoEnvio = metodo;
   p.estado      = 'enviado-final';
   guardar();
   render();
-  toast(`#${id} enviado â€” ${metodo}`, 'success');
+  toast(`#${id} enviado — ${metodo}`, 'success');
 }
 
 function copiarMsgListo(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   const nombre = p.equipo || p.telefono || 'cliente';
-  const msg = `Hola! ðŸ‘‹ Le informamos que su pedido *${nombre}* ya estÃ¡ listo para despacho. ðŸŽ‰\n\nPor favor enviar el saldo restante para proceder con el envÃ­o.\n\nÂ¡Gracias por su compra! ðŸ™`;
+  const msg = `Hola! 👋 Le informamos que su pedido *${nombre}* ya está listo para despacho. 🎉\n\nPor favor enviar el saldo restante para proceder con el envío.\n\n¡Gracias por su compra! 🙏`;
   navigator.clipboard.writeText(msg).then(() => {
-    toast('Mensaje copiado â€” pÃ©galo en WhatsApp', 'success');
+    toast('Mensaje copiado — pégalo en WhatsApp', 'success');
   }).catch(() => {
     prompt('Copia este mensaje:', msg);
   });
@@ -1204,12 +1204,12 @@ function registrarEnvioDirecto(id, metodo) {
   p.estado      = 'enviado-final';
   guardar();
   render();
-  toast(`#${id} enviado â€” ${metodo}`, 'success');
+  toast(`#${id} enviado — ${metodo}`, 'success');
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    WETRANSFER
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 let wtRegistros = []; // cargados del servidor
 let _wtTipo = 'enviado'; // tipo activo en formulario
 
@@ -1227,10 +1227,10 @@ function registrarWT(tipo) {
   document.getElementById('wt-archivo').value = '';
   document.getElementById('wt-equipo').value = '';
   document.getElementById('wt-form-title').textContent =
-    tipo === 'descargado' ? 'âœ… Registrar descarga WeTransfer' : 'ðŸ“¤ Registrar envÃ­o WeTransfer';
+    tipo === 'descargado' ? '✅ Registrar descarga WeTransfer' : '📤 Registrar envío WeTransfer';
   document.getElementById('wt-form-sub').textContent =
-    tipo === 'descargado' ? 'Mauricio confirmÃ³ que descargÃ³ el archivo' : 'Se enviÃ³ el diseÃ±o por WeTransfer a calandra';
-  document.getElementById('wt-btn-guardar').textContent = tipo === 'descargado' ? 'Guardar descarga' : 'Guardar envÃ­o';
+    tipo === 'descargado' ? 'Mauricio confirmó que descargó el archivo' : 'Se envió el diseño por WeTransfer a calandra';
+  document.getElementById('wt-btn-guardar').textContent = tipo === 'descargado' ? 'Guardar descarga' : 'Guardar envío';
   document.getElementById('form-wt').style.display = 'block';
   document.getElementById('wt-archivo').focus();
 }
@@ -1249,7 +1249,7 @@ async function guardarWT() {
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
     document.getElementById('form-wt').style.display = 'none';
-    toast(_wtTipo === 'descargado' ? `Descarga registrada: ${archivo}` : `EnvÃ­o registrado: ${archivo}`, 'success');
+    toast(_wtTipo === 'descargado' ? `Descarga registrada: ${archivo}` : `Envío registrado: ${archivo}`, 'success');
     await cargarWT();
   } catch (e) {
     toast('Error al guardar: ' + e.message, 'error');
@@ -1274,14 +1274,14 @@ function renderWT() {
   if (resumen) {
     resumen.innerHTML = `
       <div style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
-        <span style="font-size:1.1rem;">ðŸ“¤</span>
+        <span style="font-size:1.1rem;">📤</span>
         <div>
           <div style="font-size:1.3rem;font-weight:800;color:#67e8f9;line-height:1;">${envHoy}</div>
           <div style="font-size:0.68rem;color:var(--text-muted);">Enviados hoy</div>
         </div>
       </div>
       <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
-        <span style="font-size:1.1rem;">âœ…</span>
+        <span style="font-size:1.1rem;">✅</span>
         <div>
           <div style="font-size:1.3rem;font-weight:800;color:#4ade80;line-height:1;">${descHoy}</div>
           <div style="font-size:0.68rem;color:var(--text-muted);">Descargados hoy</div>
@@ -1293,12 +1293,12 @@ function renderWT() {
   // Agrupar: unir enviado + descargado del mismo archivo
   function renderFila(e, dim) {
     const esBadge = e.tipo === 'descargado'
-      ? `<span style="font-size:0.65rem;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:2px 8px;white-space:nowrap;">âœ… Descargado</span>`
-      : `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 8px;white-space:nowrap;">ðŸ“¤ Enviado</span>`;
+      ? `<span style="font-size:0.65rem;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:2px 8px;white-space:nowrap;">✅ Descargado</span>`
+      : `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 8px;white-space:nowrap;">📤 Enviado</span>`;
     const autoTag = e.auto ? `<span style="font-size:0.62rem;background:rgba(167,139,250,0.12);color:#a78bfa;border:1px solid rgba(167,139,250,0.25);border-radius:10px;padding:1px 6px;">auto</span>` : '';
     return `
       <div style="background:var(--card-bg);border:1px solid ${e.tipo==='descargado'?'rgba(34,197,94,0.2)':'rgba(6,182,212,0.15)'};border-radius:var(--radius);padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;${dim?'opacity:0.6;':''}">
-        <span style="font-size:1.1rem;">${e.tipo==='descargado'?'âœ…':'ðŸ“¤'}</span>
+        <span style="font-size:1.1rem;">${e.tipo==='descargado'?'✅':'📤'}</span>
         <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e.archivo)}</div>
           ${e.equipo ? `<div style="font-size:0.72rem;color:var(--text-muted);">Equipo: ${esc(e.equipo)}</div>` : ''}
@@ -1315,21 +1315,21 @@ function renderWT() {
     html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin registros hoy</div>`;
   } else {
     html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hoy</div>`;
-    // Ordenar: mÃ¡s reciente primero
+    // Ordenar: más reciente primero
     html += [...hoy_list].reverse().map(e => renderFila(e, false)).join('');
   }
 
   if (hist.length) {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">DÃ­as anteriores</div>`;
+    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
     html += [...hist].reverse().slice(0, 30).map(e => renderFila(e, true)).join('');
   }
 
   cont.innerHTML = html;
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    ARREGLOS MANUALES
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 let arreglosManuales = JSON.parse(localStorage.getItem('ws_arreglos_manuales') || '[]');
 
 function guardarArreglos_store() {
@@ -1373,7 +1373,7 @@ function guardarArregloManual() {
   const equipo   = document.getElementById('ar-equipo').value.trim();
   const faltante = document.getElementById('ar-faltante').value.trim();
   if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
-  if (!faltante) { toast('Ingresa quÃ© falta', 'error'); return; }
+  if (!faltante) { toast('Ingresa qué falta', 'error'); return; }
   arreglosManuales.unshift({ id: Date.now(), equipo, faltante, fecha: new Date().toLocaleDateString('es-CO'), resuelto: false });
   guardarArreglos_store();
   document.getElementById('form-arreglo').style.display = 'none';
@@ -1409,7 +1409,7 @@ function renderArreglos() {
           <span style="font-weight:700;font-size:0.88rem;">${esc(p.equipo || p.telefono)}</span>
           <span style="font-size:0.68rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">calidad</span>
         </div>
-        <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">ðŸ”§ ${esc(p.arreglo)}</div>
+        <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">🔧 ${esc(p.arreglo)}</div>
       </div>
     `).join('');
   }
@@ -1428,17 +1428,17 @@ function renderArreglos() {
         <span style="font-weight:700;font-size:0.88rem;">${esc(a.equipo)}</span>
         <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);">${a.fecha}</span>
       </div>
-      <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">ðŸ”§ ${esc(a.faltante)}</div>
-      ${!a.resuelto ? `<button class="btn btn-success btn-xs" onclick="resolverArregloManual(${a.id})">âœ“ Resuelto</button>` : `<span style="font-size:0.7rem;color:#6ee7b7;">âœ“ Resuelto</span>`}
+      <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">🔧 ${esc(a.faltante)}</div>
+      ${!a.resuelto ? `<button class="btn btn-success btn-xs" onclick="resolverArregloManual(${a.id})">✓ Resuelto</button>` : `<span style="font-size:0.7rem;color:#6ee7b7;">✓ Resuelto</span>`}
     </div>
   `).join('');
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    INIT
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 limpiarEnviadosDelMesPasado();
-// MigraciÃ³n: limpiar valores rotos de p.arreglo (false, "", 0) y normalizar tipoBandeja
+// Migración: limpiar valores rotos de p.arreglo (false, "", 0) y normalizar tipoBandeja
 pedidos.forEach(p => {
   if (p.arreglo !== null && p.arreglo !== undefined && !p.arreglo) {
     p.arreglo = null;
@@ -1452,7 +1452,7 @@ if (pedidos.length > 0) guardar();
 updateDate();
 render();
 
-// Sincronizar desde servidor â€” el servidor es fuente de verdad
+// Sincronizar desde servidor — el servidor es fuente de verdad
 function syncConServidor(silencioso = false) {
   fetch('/api/pedidos')
     .then(r => r.json())
@@ -1499,7 +1499,7 @@ function syncConServidor(silencioso = false) {
         localStorage.setItem('ws_nextId3', String(nextId));
         guardar();
         render();
-        if (!silencioso) toast('ðŸ”„ Pedidos sincronizados', 'info');
+        if (!silencioso) toast('🔄 Pedidos sincronizados', 'info');
       }
     })
     .catch(() => {});
@@ -1508,21 +1508,21 @@ function syncConServidor(silencioso = false) {
 // Sync al cargar
 syncConServidor(false);
 
-// Polling automÃ¡tico cada 15 segundos
+// Polling automático cada 15 segundos
 setInterval(() => syncConServidor(true), 15000);
 
 // Sync calandra Drive al cargar y cada 2 minutos
 setTimeout(sincronizarCalandraServidor, 500);
 setInterval(sincronizarCalandraServidor, 120000);
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   CALANDRA â€” CONTROL DE METRAJE
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════
+   CALANDRA — CONTROL DE METRAJE
+════════════════════════════════════════════════════════════════ */
 function guardarCalandra_store() {
   localStorage.setItem('ws_calandra', JSON.stringify(calandraRegistros));
 }
 
-// Sincroniza registros de Drive (vienen del servidor vÃ­a n8n) con los locales
+// Sincroniza registros de Drive (vienen del servidor vía n8n) con los locales
 async function sincronizarCalandraServidor() {
   try {
     const r = await fetch('/api/calandra');
@@ -1554,7 +1554,7 @@ async function sincronizarCalandraServidor() {
       renderCalandra();
       renderDashboard();
       nuevos.forEach(r => {
-        crearNotif('ðŸ“„', `<strong>Drive:</strong> PDF <em>${esc(r.archivo || r.equipo)}</em> registrado â€” <strong>${r.metros.toFixed(2)} m</strong>`, 'info');
+        crearNotif('📄', `<strong>Drive:</strong> PDF <em>${esc(r.archivo || r.equipo)}</em> registrado — <strong>${r.metros.toFixed(2)} m</strong>`, 'info');
       });
     }
   } catch {}
@@ -1580,11 +1580,11 @@ function guardarCalandra() {
   if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
   if (!alto || alto <= 0) { toast('Ingresa el alto del PDF en cm', 'error'); return; }
 
-  // alto en cm Ã— ancho en m â†’ metros lineales
-  // (alto / 100) = alto en metros; metros lineales = alto_m (el ancho ya estÃ¡ fijo por la tela)
+  // alto en cm × ancho en m → metros lineales
+  // (alto / 100) = alto en metros; metros lineales = alto_m (el ancho ya está fijo por la tela)
   const altoCm   = alto;
   const metros   = parseFloat(((altoCm / 100)).toFixed(3)); // metros lineales del rollo
-  const metros2  = parseFloat(((altoCm / 100) * calandraAncho).toFixed(3)); // mÂ²
+  const metros2  = parseFloat(((altoCm / 100) * calandraAncho).toFixed(3)); // m²
 
   const hoy = new Date().toLocaleDateString('es-CO');
   const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
@@ -1604,7 +1604,7 @@ function guardarCalandra() {
   guardarCalandra_store();
   document.getElementById('form-calandra').style.display = 'none';
   renderCalandra();
-  toast(`Registrado: ${equipo} â€” ${metros} m lineales`, 'success');
+  toast(`Registrado: ${equipo} — ${metros} m lineales`, 'success');
 }
 
 function getSemanaKey(date) {
@@ -1634,7 +1634,7 @@ function renderCalandra() {
   const lbl = document.getElementById('cal-ancho-label');
   if (lbl) lbl.textContent = calandraAncho.toFixed(2) + ' m';
 
-  // MÃ©tricas
+  // Métricas
   const elSemana = document.getElementById('cal-metros-semana');
   const elHoy    = document.getElementById('cal-metros-hoy');
   const elArch   = document.getElementById('cal-archivos-hoy');
@@ -1649,13 +1649,13 @@ function renderCalandra() {
   let html = '';
 
   if (!hoyList.length) {
-    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envÃ­os registrados hoy</div>`;
+    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envíos registrados hoy</div>`;
   } else {
-    html += `<div class="cal-semana-header">Hoy â€” ${hoyList.length} archivos Â· ${metrosHoy.toFixed(2)} m lineales</div>`;
+    html += `<div class="cal-semana-header">Hoy — ${hoyList.length} archivos · ${metrosHoy.toFixed(2)} m lineales</div>`;
     html += hoyList.map(r => renderCalItem(r)).join('');
   }
 
-  // Agrupar histÃ³rico por semana (solo mostramos la semana actual para no saturar)
+  // Agrupar histórico por semana (solo mostramos la semana actual para no saturar)
   const historicoSemana = historico.filter(r => r.semana === semanaKey);
   if (historicoSemana.length) {
     const porSemana = {};
@@ -1665,7 +1665,7 @@ function renderCalandra() {
     });
     Object.entries(porSemana).forEach(([sem, items]) => {
       const total = items.reduce((s, r) => s + r.metros, 0);
-      html += `<div class="cal-semana-header">Semana del ${sem} â€” ${items.length} archivos Â· ${total.toFixed(2)} m lineales</div>`;
+      html += `<div class="cal-semana-header">Semana del ${sem} — ${items.length} archivos · ${total.toFixed(2)} m lineales</div>`;
       html += items.map(r => renderCalItem(r, true)).join('');
     });
   }
@@ -1675,38 +1675,38 @@ function renderCalandra() {
 
 function renderCalItem(r, opaco = false) {
   const esDrive = r.origen === 'drive';
-  const icono   = esDrive ? 'ðŸŒ' : 'ðŸ“„';
+  const icono   = esDrive ? '🌐' : '📄';
   const extra   = esDrive && r.archivo
-    ? `<span style="font-size:0.7rem;color:#a78bfa;margin-left:6px;" title="${esc(r.archivo)}">Drive Â· ${esc(r.disenador || '')}</span>`
+    ? `<span style="font-size:0.7rem;color:#a78bfa;margin-left:6px;" title="${esc(r.archivo)}">Drive · ${esc(r.disenador || '')}</span>`
     : '';
   return `
     <div class="cal-item" style="${opaco ? 'opacity:0.65;' : ''}">
       <span style="font-size:1.3rem;">${icono}</span>
       <div class="cal-item-info">
         <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
-        <div class="cal-item-meta">${r.alto || r.altoCm || 0} cm alto Â· ${r.fecha} ${r.hora || ''}</div>
+        <div class="cal-item-meta">${r.alto || r.altoCm || 0} cm alto · ${r.fecha} ${r.hora || ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="cal-item-metros">${r.metros <= 0.01 ? '<span style="color:var(--orange);font-size:0.75em;font-weight:700;">âš ï¸ Sin mÃ©trica</span>' : r.metros.toFixed(2) + ' m'}</div>
-        <button onclick="borrarCalItem('${r.id}')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 7px;font-size:0.8rem;cursor:pointer;line-height:1.4;" title="Borrar">âœ•</button>
+        <div class="cal-item-metros">${r.metros <= 0.01 ? '<span style="color:var(--orange);font-size:0.75em;font-weight:700;">⚠️ Sin métrica</span>' : r.metros.toFixed(2) + ' m'}</div>
+        <button onclick="borrarCalItem('${r.id}')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 7px;font-size:0.8rem;cursor:pointer;line-height:1.4;" title="Borrar">✕</button>
       </div>
     </div>
   `;
 }
 
 async function borrarCalItem(id) {
-  if (!confirm('Â¿Borrar este registro?')) return;
+  if (!confirm('¿Borrar este registro?')) return;
   calandraRegistros = calandraRegistros.filter(r => String(r.id) !== String(id));
   guardarCalandra_store();
   renderCalandra();
   renderDashboard();
-  // TambiÃ©n borra del servidor para que no vuelva a aparecer
+  // También borra del servidor para que no vuelva a aparecer
   try { await fetch('/api/calandra/' + id, { method: 'DELETE' }); } catch {}
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   SATÃ‰LITES â€” CONTROL COSTURA
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════
+   SATÉLITES — CONTROL COSTURA
+════════════════════════════════════════════════════════════════ */
 function guardarSat_store() {
   localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
   fetch('/api/satelites', {
@@ -1743,7 +1743,7 @@ function abrirFormSat(tipo) {
   document.getElementById('sat-equipo').value   = '';
   document.getElementById('sat-cantidad').value = '';
   const titulo = document.getElementById('form-sat-titulo');
-  if (titulo) titulo.textContent = tipo === 'entrega' ? 'ðŸ“¦ Registrar entrega a satÃ©lite' : 'âœ… Registrar recepciÃ³n de satÃ©lite';
+  if (titulo) titulo.textContent = tipo === 'entrega' ? '📦 Registrar entrega a satélite' : '✅ Registrar recepción de satélite';
   document.getElementById('form-sat').style.display = 'block';
   document.getElementById('sat-nombre').focus();
 }
@@ -1754,7 +1754,7 @@ function guardarSat() {
   const prenda   = document.getElementById('sat-prenda').value;
   const cantidad = parseInt(document.getElementById('sat-cantidad').value);
 
-  if (!nombre)           { toast('Selecciona el satÃ©lite', 'error'); return; }
+  if (!nombre)           { toast('Selecciona el satélite', 'error'); return; }
   if (!equipo)           { toast('Ingresa el equipo o pedido', 'error'); return; }
   if (!cantidad || cantidad <= 0) { toast('Ingresa la cantidad', 'error'); return; }
 
@@ -1792,7 +1792,7 @@ function renderSatelites() {
   const badge = document.getElementById('badge-satelites');
   if (badge) badge.textContent = pendTotal;
 
-  // Colores Ãºnicos por satÃ©lite
+  // Colores únicos por satélite
   const SAT_COLORS = {
     'Marcela':  { border: 'rgba(139,92,246,0.35)', header: '#a78bfa', dot: '#7c3aed' },
     'Yamile':   { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
@@ -1800,7 +1800,7 @@ function renderSatelites() {
     'Cristina': { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
   };
 
-  // Resumen por satÃ©lite
+  // Resumen por satélite
   contResumen.innerHTML = SATELITES.map(s => {
     const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
     const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
@@ -1839,10 +1839,10 @@ function renderSatelites() {
     <div class="cal-semana-header" style="color:var(--text-muted);">Movimientos recientes</div>
     ${satMovimientos.slice(0, 40).map(m => `
       <div class="sat-item ${m.tipo}">
-        <span style="font-size:1.1rem;">${m.tipo === 'entrega' ? 'ðŸ“¦' : 'âœ…'}</span>
+        <span style="font-size:1.1rem;">${m.tipo === 'entrega' ? '📦' : '✅'}</span>
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.satelite)} â€” ${esc(m.equipo)}</div>
-          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(m.prenda)} Â· ${m.fecha} ${m.hora}</div>
+          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.satelite)} — ${esc(m.equipo)}</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(m.prenda)} · ${m.fecha} ${m.hora}</div>
         </div>
         <span class="sat-tipo-badge" style="${m.tipo === 'entrega' ? 'background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);' : 'background:rgba(16,185,129,0.15);color:#4ade80;border:1px solid rgba(16,185,129,0.3);'}">${m.tipo === 'entrega' ? '+' : '-'}${m.cantidad}</span>
       </div>
@@ -1850,13 +1850,13 @@ function renderSatelites() {
   `;
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════
    SISTEMA DE NOTIFICACIONES
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════ */
 let notificaciones = JSON.parse(localStorage.getItem('ws_notifs') || '[]');
 
 function guardarNotifs() {
-  // MÃ¡ximo 60 notificaciones guardadas
+  // Máximo 60 notificaciones guardadas
   if (notificaciones.length > 60) notificaciones = notificaciones.slice(0, 60);
   localStorage.setItem('ws_notifs', JSON.stringify(notificaciones));
 }
@@ -1893,7 +1893,7 @@ function renderNotifs() {
   }
 
   if (!notificaciones.length) {
-    lista.innerHTML = '<div class="notif-empty">ðŸ”• Sin notificaciones</div>';
+    lista.innerHTML = '<div class="notif-empty">🔕 Sin notificaciones</div>';
     return;
   }
 
@@ -1947,7 +1947,7 @@ function borrarNotifs() {
 function toggleNotifPanel() {
   const panel = document.getElementById('notif-panel');
   panel.classList.toggle('open');
-  // Al abrir, marcar como leÃ­das
+  // Al abrir, marcar como leídas
   if (panel.classList.contains('open')) {
     setTimeout(() => {
       notificaciones.forEach(n => n.leida = true);
@@ -1966,7 +1966,7 @@ document.addEventListener('click', e => {
   }
 });
 
-// Verificar alertas de fechas prÃ³ximas (se llama cada hora y al cargar)
+// Verificar alertas de fechas próximas (se llama cada hora y al cargar)
 function verificarAlertasFechas() {
   const hoy  = new Date(); hoy.setHours(0,0,0,0);
   const hoyStr = hoy.toLocaleDateString('es-CO');
@@ -1976,21 +1976,21 @@ function verificarAlertasFechas() {
     const diff = Math.round((d - hoy) / 86400000);
     const clave = `alerta-fecha-${p.id}-${hoyStr}`;
 
-    // Solo una alerta por pedido por dÃ­a
+    // Solo una alerta por pedido por día
     if (localStorage.getItem(clave)) return;
 
     if (diff === 0) {
       localStorage.setItem(clave, '1');
-      crearNotif('ðŸš¨', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> â€” entrega HOY`, 'danger', p.id);
+      crearNotif('🚨', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega HOY`, 'danger', p.id);
     } else if (diff === 1) {
       localStorage.setItem(clave, '1');
-      crearNotif('âš ï¸', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> â€” entrega maÃ±ana`, 'warning', p.id);
+      crearNotif('⚠️', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega mañana`, 'warning', p.id);
     } else if (diff === 2) {
       localStorage.setItem(clave, '1');
-      crearNotif('ðŸ“…', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> â€” entrega en 2 dÃ­as`, 'info', p.id);
+      crearNotif('📅', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega en 2 días`, 'info', p.id);
     } else if (diff < 0) {
       localStorage.setItem(clave, '1');
-      crearNotif('ðŸ”´', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> â€” entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
+      crearNotif('🔴', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
     }
   });
 }
@@ -2001,9 +2001,9 @@ setTimeout(verificarAlertasFechas, 1000);
 setInterval(verificarAlertasFechas, 3600000); // cada hora
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   MÃ“DULO COTIZACIONES / FACTURAS
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════
+   MÓDULO COTIZACIONES / FACTURAS
+════════════════════════════════════════════════════════════════ */
 const LOGO_WYS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? '/logos wys.png'
   : 'https://' + location.hostname + '/logos%20wys.png';
@@ -2071,7 +2071,7 @@ async function cargarDocsServidor() {
 function abrirFormDoc(tipo) {
   docTipo = tipo;
   docItems = [{ cant: 1, desc: '', precio: 0 }];
-  document.getElementById('form-doc-titulo').textContent = tipo === 'cotizacion' ? 'Nueva cotizaciÃ³n' : 'Nueva factura';
+  document.getElementById('form-doc-titulo').textContent = tipo === 'cotizacion' ? 'Nueva cotización' : 'Nueva factura';
   document.getElementById('doc-cliente').value = '';
   document.getElementById('doc-telefono').value = '';
   document.getElementById('doc-nit').value = '';
@@ -2108,14 +2108,14 @@ function renderDocItems() {
     <div class="doc-item-row">
       <input type="number" class="form-input" min="1" value="${it.cant}"
         oninput="docItems[${i}].cant=+this.value;renderDocTotales()">
-      <input type="text" class="form-input" value="${esc(it.desc)}" placeholder="DescripciÃ³n (ej: CAMISETAS NIÃ‘O)"
+      <input type="text" class="form-input" value="${esc(it.desc)}" placeholder="Descripción (ej: CAMISETAS NIÑO)"
         oninput="docItems[${i}].desc=this.value">
       <input type="number" class="form-input" min="0" value="${it.precio}" placeholder="Precio unit."
         oninput="docItems[${i}].precio=+this.value;renderDocTotales()">
       <div style="font-size:0.78rem;color:var(--text-muted);text-align:right;padding-right:4px;">
         ${fmtPeso(it.cant * it.precio)}
       </div>
-      <button class="btn btn-glass btn-xs" onclick="removeItemDoc(${i})">âœ•</button>
+      <button class="btn btn-glass btn-xs" onclick="removeItemDoc(${i})">✕</button>
     </div>
   `).join('');
 }
@@ -2151,7 +2151,7 @@ function generarPDF() {
   const vendedora = document.getElementById('doc-vendedora').value;
   if (!cliente)   return toast('Ingresa el nombre del cliente', 'warning');
   if (!vendedora) return toast('Selecciona la vendedora', 'warning');
-  if (docItems.every(it => !it.desc)) return toast('Agrega al menos un Ã­tem', 'warning');
+  if (docItems.every(it => !it.desc)) return toast('Agrega al menos un ítem', 'warning');
 
   const telefono = document.getElementById('doc-telefono').value.trim();
   const nit      = document.getElementById('doc-nit').value.trim();
@@ -2192,7 +2192,7 @@ function generarPDF() {
   const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
     <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
     TELA<br>
-    microfibra poliÃ©ster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
+    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
     BONOS<br>
     por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
     por compra de +100 uniformes obsequiamos descuento del 5%
@@ -2203,7 +2203,27 @@ function generarPDF() {
 <head>
 <meta charset="UTF-8">
 <title>${titulo} #${numStr}</title>
-<link rel="stylesheet" href="/css/style.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:12px;color:#333;background:white}
+  .page{width:800px;margin:0 auto;padding:30px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+  .empresa-info{font-size:11px;line-height:1.7}
+  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
+  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
+  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+  .campo{color:#999;min-width:60px;display:inline-block}
+  table{width:100%;border-collapse:collapse}
+  thead tr{background:${color1}}
+  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
+  tbody tr:nth-child(even){background:${color2}}
+  tbody tr{border-bottom:1px solid #e8d8b8}
+  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
+  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
+  .cuenta{text-align:center;font-size:10px;line-height:1.7}
+  .cuenta strong{font-size:11px;text-transform:uppercase}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
 </head>
 <body>
 <div class="page">
@@ -2214,7 +2234,7 @@ function generarPDF() {
         <strong>W&S DEPORTIVO</strong><br>
         1030675743-0<br>
         CARRERA 90A # 4-40<br>
-        BogotÃ¡ D.C<br>
+        Bogotá D.C<br>
         (350) 697-4711<br>
         301 663 94 30
       </div>
@@ -2235,7 +2255,7 @@ function generarPDF() {
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
     <div style="font-size:11px;line-height:1.8;">
       <span class="campo">Nombre</span> ${esc(cliente)}<br>
-      <span class="campo">TelÃ©fono</span> ${telefono || 'â€”'}<br>
+      <span class="campo">Teléfono</span> ${telefono || '—'}<br>
       ${nit ? `<span class="campo">NIT/CC</span> ${nit}<br>` : ''}
       ${correo ? `<span class="campo">Correo</span> ${correo}<br>` : ''}
     </div>
@@ -2268,7 +2288,7 @@ function generarPDF() {
   </table>
 
   <div class="footer-text">
-    UNIFORME DE NIÃ‘O VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
+    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
     SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
   </div>
 
@@ -2315,7 +2335,7 @@ function generarPDF() {
   const url  = URL.createObjectURL(blob);
   const win  = window.open(url, '_blank');
   if (win) setTimeout(() => win.print(), 1200);
-  else window.location.href = url; // fallback celular bloqueÃ³ popup
+  else window.location.href = url; // fallback celular bloqueó popup
 
   toast(titulo + ' #' + numStr + ' generada', 'success');
   cerrarFormDoc();
@@ -2338,7 +2358,7 @@ function renderDocHistorial() {
 
   if (!lista.length) {
     cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">' +
-      (docHistorial.length ? 'Sin resultados para esa bÃºsqueda.' : 'No hay documentos generados aÃºn.') + '</div>';
+      (docHistorial.length ? 'Sin resultados para esa búsqueda.' : 'No hay documentos generados aún.') + '</div>';
     return;
   }
   cont.innerHTML = lista.slice(0, 30).map(d => `
@@ -2396,7 +2416,7 @@ function buildDocHTML(d) {
   const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
     <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
     TELA<br>
-    microfibra poliÃ©ster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
+    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
     BONOS<br>
     por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
     por compra de +100 uniformes obsequiamos descuento del 5%
@@ -2406,12 +2426,32 @@ function buildDocHTML(d) {
   const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
 
   return `<!DOCTYPE html><html style="background:white;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
-<link rel="stylesheet" href="/css/style.css"></head><body>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{font-family:Arial,sans-serif;font-size:12px;color:#333 !important;background:white !important;color-scheme:light !important}
+  .page{width:800px;margin:0 auto;padding:30px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+  .empresa-info{font-size:11px;line-height:1.7}
+  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
+  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
+  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+  .campo{color:#999;min-width:60px;display:inline-block}
+  table{width:100%;border-collapse:collapse}
+  thead tr{background:${color1}}
+  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
+  tbody tr:nth-child(even){background:${color2}}
+  tbody tr{border-bottom:1px solid #e8d8b8}
+  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
+  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
+  .cuenta{text-align:center;font-size:10px;line-height:1.7}
+  .cuenta strong{font-size:11px;text-transform:uppercase}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
 <div class="page">
   <div class="header">
     <div>
       <div class="empresa-info">
-        <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>BogotÃ¡ D.C<br>(350) 697-4711<br>301 663 94 30
+        <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
       </div>
     </div>
     <div class="titulo-doc">
@@ -2427,7 +2467,7 @@ function buildDocHTML(d) {
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
     <div style="font-size:11px;line-height:1.8;">
       <span class="campo">Nombre</span> ${esc(d.cliente)}<br>
-      ${d.telefono ? `<span class="campo">TelÃ©fono</span> ${d.telefono}<br>` : ''}
+      ${d.telefono ? `<span class="campo">Teléfono</span> ${d.telefono}<br>` : ''}
     </div>
   </div>
   <table>
@@ -2450,7 +2490,7 @@ function buildDocHTML(d) {
     </tbody>
   </table>
   <div class="footer-text">
-    UNIFORME DE NIÃ‘O VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
+    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
     SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
   </div>
   <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
@@ -2495,7 +2535,7 @@ async function imgToBase64(src) {
 async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
-  const tipo   = d.tipo === 'cotizacion' ? 'CotizaciÃ³n' : 'Factura';
+  const tipo   = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
   const nombre = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
 
   toast('Generando PDF...', 'info');
@@ -2553,7 +2593,7 @@ async function compartirDocWA(id) {
   }
 }
 
-// Hook showSection para renderizar historial al abrir la secciÃ³n
+// Hook showSection para renderizar historial al abrir la sección
 (function() {
   const _orig = showSection;
   showSection = function(id, navEl) {
@@ -2564,7 +2604,7 @@ async function compartirDocWA(id) {
   };
 })();
 
-// Sync inicial con servidor para todos los mÃ³dulos
+// Sync inicial con servidor para todos los módulos
 setTimeout(cargarDocsServidor, 1500);
 setTimeout(sincronizarArreglosServidor, 2000);
 setTimeout(sincronizarSatelitesServidor, 2500);
