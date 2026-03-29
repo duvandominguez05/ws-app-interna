@@ -1,0 +1,37 @@
+🚀 Iniciando Bot Local de W&S Textil...
+{"level":30,"time":"2026-03-29T15:48:12.047Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","browser":["Mac OS","Edge","10.15.7"],"helloMsg":{"clientHello":{"ephemeral":"IaJ986Z35iPQsHil4en5b9daimBErG0H4YYVyapwr0g="}},"msg":"connected to WA"}
+{"level":30,"time":"2026-03-29T15:48:12.132Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","node":{"username":"573133064614","passive":true,"userAgent":{"platform":"MACOS","appVersion":{"primary":2,"secondary":2329,"tertiary":9},"mcc":"000","mnc":"000","osVersion":"0.1","manufacturer":"","device":"Desktop","osBuildNumber":"0.1","releaseChannel":"RELEASE","localeLanguageIso6391":"en","localeCountryIso31661Alpha2":"US"},"connectType":"WIFI_UNKNOWN","connectReason":"USER_ACTIVATED","device":6},"msg":"logging in..."}
+{"level":30,"time":"2026-03-29T15:48:12.370Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","msg":"23 pre-keys found on server"}
+{"level":30,"time":"2026-03-29T15:48:12.448Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","msg":"opened connection to WA"}
+✅ Bot Conectado — revisando cola pendiente...
+{"level":30,"time":"2026-03-29T15:48:12.830Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","msg":"handled 4 offline messages/notifications"}
+{"level":50,"time":"2026-03-29T15:48:12.843Z","pid":16856,"hostname":"DESKTOP-MA8I23B","class":"baileys","err":{"type":"Error","message":"bad-request","stack":"Error: bad-request\n    at assertNodeErrorFree (C:\\CLAUDE\\ws-app-interna\\node_modules\\@whiskeysockets\\baileys\\lib\\WABinary\\generic-utils.js:56:15)\n    at query (C:\\CLAUDE\\ws-app-interna\\node_modules\\@whiskeysockets\\baileys\\lib\\Socket\\socket.js:140:48)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async fetchProps (C:\\CLAUDE\\ws-app-interna\\node_modules\\@whiskeysockets\\baileys\\lib\\Socket\\chats.js:623:28)\n    at async Promise.all (index 1)\n    at async executeInitQueries (C:\\CLAUDE\\ws-app-interna\\node_modules\\@whiskeysockets\\baileys\\lib\\Socket\\chats.js:698:9)","data":400,"isBoom":true,"isServer":true,"output":{"statusCode":500,"payload":{"statusCode":500,"error":"Internal Server Error","message":"An internal server error occurred"},"headers":{}}},"msg":"unexpected error in 'init queries'"}
+Closing stale open session for new outgoing prekey bundle
+Closing session: SessionEntry {
+  _chains: {
+    Be5tYhN3AbkzQv0hgkQBUZYPRiho3XR3ANSLAHq4ivZa: { chainKey: [Object], chainType: 1, messageKeys: {} }
+  },
+  registrationId: 1399806847,
+  currentRatchet: {
+    ephemeralKeyPair: {
+      pubKey: <Buffer 05 ee 6d 62 13 77 01 b9 33 42 fd 21 82 44 01 51 96 0f 46 28 68 dd 74 77 00 d4 8b 00 7a b8 8a f6 5a>,
+      privKey: <Buffer 20 e1 fd 75 f4 33 fb 42 12 19 e5 7a c2 b3 1c b2 f5 5b f4 f1 9b 6c fd db 5f 30 40 fc 14 1c 3b 50>
+    },
+    lastRemoteEphemeralKey: <Buffer 05 9b 3c 71 96 3a e9 5b a2 38 df 61 e8 22 02 b9 34 10 fa 0d b5 2f 84 c0 68 12 04 48 87 6e 66 12 2d>,
+    previousCounter: 0,
+    rootKey: <Buffer 30 ee 2c df 03 23 5b 1e 0a c2 08 ba 53 8f a5 1c d4 ba 1c 96 ba 4d e9 a8 1c 1b 3c af 20 10 cb c8>
+  },
+  indexInfo: {
+    baseKey: <Buffer 05 b9 65 1b 03 2f 43 df c8 8a 8e 85 d3 3e 86 21 6a a0 74 d6 9d ba 09 4c 87 4f 59 9d c9 31 38 70 46>,
+    baseKeyType: 1,
+    closed: -1,
+    used: 1774758035260,
+    created: 1774758035260,
+    remoteIdentityKey: <Buffer 05 8d 93 da b1 f4 14 0a 14 7b fa 18 33 2f ef 53 72 6f d7 de 72 ac a3 e5 92 0d e7 c9 0c b6 31 be 3e>
+  },
+  pendingPreKey: {
+    signedKeyId: 4882117,
+    baseKey: <Buffer 05 b9 65 1b 03 2f 43 df c8 8a 8e 85 d3 3e 86 21 6a a0 74 d6 9d ba 09 4c 87 4f 59 9d c9 31 38 70 46>,
+    preKeyId: 6172
+  }
+}

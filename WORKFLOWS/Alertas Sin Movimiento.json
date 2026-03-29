@@ -1,0 +1,165 @@
+{
+  "name": "Alertas Sin Movimiento",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/pedidos",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "d2242ded-cd4f-4c87-b28d-3ecc097a776a",
+      "name": "Obtener Pedidos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { pedidos } = $('Obtener Pedidos').item.json;\n\nconst ahora = new Date();\nconst DIAS = 3;\n\nconst inactivos = pedidos.filter(p => {\n  if (p.estado === 'enviado-final') return false;\n  if (p.estado === 'bandeja') return false;\n  const ref = p.ultimoMovimiento || p.ultimaActWebhook || null;\n  if (!ref) return true; // sin fecha = lleva mucho tiempo\n  const diff = (ahora - new Date(ref)) / (1000 * 60 * 60 * 24);\n  return diff >= DIAS;\n});\n\nreturn inactivos.map(p => ({ json: p }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "89e158c1-d51e-4dd4-a678-05dfa6631ab3",
+      "name": "Filtrar Inactivos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "15e153e6-aa0b-4a6c-8618-777f62af8772",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "4af735d6-4821-440a-81d8-e0417b0b494d",
+      "name": "Hay Inactivos?"
+    },
+    {
+      "parameters": {
+        "chatId": "-1003751103154",
+        "text": "=🔴 *Pedidos sin movimiento +3 días*\n\n{{ $input.all().map(i => `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — estado: ${i.json.estado}`).join('\\n') }}\n\n¡Revisar y avanzar! 👆\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        832,
+        -96
+      ],
+      "id": "13d7d95c-9f2f-4cdd-a1cb-6c90a8f1db15",
+      "name": "Notificar Produccion",
+      "webhookId": "ec582abd-09e4-4e53-b12d-13808b8afc94",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 19
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2f9a4fb3-01e3-4b81-bc54-5281528927dd",
+      "name": "Revisar cada hora"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Obtener Pedidos": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Inactivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Inactivos": {
+      "main": [
+        [
+          {
+            "node": "Hay Inactivos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Inactivos?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Produccion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revisar cada hora": {
+      "main": [
+        [
+          {
+            "node": "Obtener Pedidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ffaaf7e6-b129-4336-b8d5-4e81c893b7dc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "vek27OkpCaPXxB6L",
+  "tags": []
+}

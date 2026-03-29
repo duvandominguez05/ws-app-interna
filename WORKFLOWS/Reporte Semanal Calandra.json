@@ -1,0 +1,122 @@
+{
+  "name": "Reporte Semanal Calandra",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 15 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3ff5ccb3-e03b-48cc-a08d-ce7ff1949edf",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/calandra",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "559930b0-49fb-4825-9a73-cc195f6f302f",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const registros = $input.first().json.registros || [];\n\n// Calcular rango de la semana actual (lunes a domingo)\nconst hoy = new Date();\nconst diaSemana = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;\nconst lunes = new Date(hoy);\nlunes.setDate(hoy.getDate() - diaSemana);\nlunes.setHours(0,0,0,0);\nconst domingo = new Date(lunes);\ndomingo.setDate(lunes.getDate() + 6);\ndomingo.setHours(23,59,59,999);\n\n// Filtrar registros de la semana\nconst diasNombre = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];\nconst mesesNombre = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];\n\nconst deSemana = registros.filter(r => {\n  const [d,m,y] = r.fecha.split('/');\n  const fecha = new Date(+y, +m-1, +d);\n  return fecha >= lunes && fecha <= domingo;\n});\n\nconst totalMetros = deSemana.reduce((s, r) => s + (r.metros || 0), 0);\nconst totalArchivos = deSemana.length;\n\n// Agrupar por día\nconst porDia = {};\ndeSemana.forEach(r => {\n  const [d,m,y] = r.fecha.split('/');\n  const fecha = new Date(+y, +m-1, +d);\n  const key = r.fecha;\n  if (!porDia[key]) porDia[key] = { metros: 0, archivos: 0, fecha };\n  porDia[key].metros += r.metros || 0;\n  porDia[key].archivos++;\n});\n\n// Armar líneas por día\nconst diasTexto = Object.entries(porDia)\n  .sort((a,b) => a[1].fecha - b[1].fecha)\n  .map(([fecha, d]) => {\n    const nombre = diasNombre[d.fecha.getDay()];\n    const dia = d.fecha.getDate();\n    const mes = mesesNombre[d.fecha.getMonth()];\n    return `• ${nombre} ${dia} ${mes}: ${d.metros.toFixed(2)} m — ${d.archivos} archivo${d.archivos>1?'s':''}`;\n  }).join('\\n');\n\n// Fechas del encabezado\nconst fechaIni = `${lunes.getDate()} ${mesesNombre[lunes.getMonth()]}`;\nconst fechaFin = `${domingo.getDate()} ${mesesNombre[domingo.getMonth()]} ${domingo.getFullYear()}`;\n\n// Archivo más enviado\nlet masEnviado = '';\nif (deSemana.length) {\n  const porEquipo = {};\n  deSemana.forEach(r => {\n    if (!porEquipo[r.equipo]) porEquipo[r.equipo] = 0;\n    porEquipo[r.equipo] += r.metros || 0;\n  });\n  const top = Object.entries(porEquipo).sort((a,b) => b[1]-a[1])[0];\n  masEnviado = `\\n🏆 Más enviado: ${top[0]} (${top[1].toFixed(2)} m)`;\n}\n\nconst mensaje = totalArchivos === 0\n  ? `📊 Reporte Semanal Calandra — W&S Textil\\nSemana ${fechaIni} - ${fechaFin}\\n\\nSin envíos registrados esta semana.`\n  : `📊 Reporte Semanal Calandra — W&S Textil\\nSemana ${fechaIni} - ${fechaFin}\\n\\n📐 Total metros: ${totalMetros.toFixed(2)} m\\n📁 Total archivos: ${totalArchivos} PDF${totalArchivos>1?'s':''}\\n\\n📅 Por día:\\n${diasTexto}${masEnviado}`;\n\nreturn [{ json: { mensaje } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "142f768c-6ba6-4b5f-8991-e26dd9d99f30",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "-5135765805",
+        "text": "={{ $json.mensaje }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "6c7c6d69-30b6-47a8-b662-4662ffe0a3f3",
+      "name": "Send a text message",
+      "webhookId": "5a4dbd9b-3ec4-45de-be99-19f4dbba263d",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "94be1f67-a210-42db-9a48-68877ac30a1b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "4lzhCTM1r71Dozqt",
+  "tags": []
+}

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>W&S Textil — App Interna</title>
+  <title>W&S Textil â€” App Interna</title>
   <link rel="icon" type="image/png" href="/icon.png">
   <link rel="apple-touch-icon" href="/icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,1768 +11,7 @@
   <meta name="theme-color" content="#7c3aed">
   <link rel="manifest" href="/manifest.json">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <style>
-    /* ─── RESET & BASE ─────────────────────────────────────────────────── */
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --bg:         #0a0b0f;
-      --sidebar-bg: #0d0e14;
-      --card-bg:    #12141c;
-      --card-border: rgba(255,255,255,0.06);
-      --accent:     #7c3aed;
-      --accent2:    #06b6d4;
-      --orange:     #f97316;
-      --green:      #10b981;
-      --red:        #ef4444;
-      --yellow:     #eab308;
-      --text:       #f1f5f9;
-      --text-muted: #64748b;
-      --radius:     10px;
-      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    html, body {
-      height: 100%;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      overflow: hidden;
-    }
-
-    /* ─── SCROLLBAR ────────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.4); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.7); }
-
-    /* ─── LAYOUT ───────────────────────────────────────────────────────── */
-    .app-layout {
-      display: flex;
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    /* ─── SIDEBAR ──────────────────────────────────────────────────────── */
-    .sidebar {
-      width: 220px;
-      min-width: 220px;
-      background: var(--sidebar-bg);
-      border-right: 1px solid rgba(255,255,255,0.05);
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      position: relative;
-      z-index: 10;
-    }
-
-    .sidebar::after {
-      content: '';
-      position: absolute;
-      top: 0; right: 0;
-      width: 1px; height: 100%;
-      background: linear-gradient(to bottom, transparent, rgba(124,58,237,0.5), rgba(6,182,212,0.3), transparent);
-    }
-
-    .sidebar-logo {
-      padding: 24px 20px 20px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .logo-text {
-      font-size: 1.3rem;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      background: linear-gradient(135deg, #7c3aed, #06b6d4);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .logo-text span.bolt { -webkit-text-fill-color: #f97316; }
-
-    .logo-sub {
-      font-size: 0.68rem;
-      color: var(--text-muted);
-      margin-top: 3px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-    }
-
-    .sidebar-nav {
-      flex: 1;
-      padding: 16px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .nav-label {
-      font-size: 0.6rem;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: var(--text-muted);
-      padding: 8px 10px 4px;
-    }
-
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      color: var(--text-muted);
-      font-size: 0.875rem;
-      font-weight: 500;
-      border-left: 3px solid transparent;
-      transition: var(--transition);
-      user-select: none;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .nav-item::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(124,58,237,0.0);
-      transition: var(--transition);
-      border-radius: 8px;
-    }
-
-    .nav-item:hover {
-      background: rgba(124,58,237,0.12);
-      border-left: 3px solid var(--accent);
-      color: var(--text);
-      box-shadow: inset 0 0 20px rgba(124,58,237,0.08);
-    }
-
-    .nav-item.active {
-      background: rgba(124,58,237,0.18);
-      border-left: 3px solid var(--accent);
-      color: #c4b5fd;
-      box-shadow: inset 0 0 20px rgba(124,58,237,0.12);
-    }
-
-    .nav-item .nav-icon {
-      font-size: 1rem;
-      width: 20px;
-      text-align: center;
-      flex-shrink: 0;
-    }
-
-    .nav-item .nav-badge {
-      margin-left: auto;
-      background: var(--accent);
-      color: white;
-      font-size: 0.65rem;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 20px;
-      min-width: 18px;
-      text-align: center;
-    }
-
-    .sidebar-footer {
-      padding: 16px 10px;
-      border-top: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .btn-new-pedido {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 10px;
-      background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(6,182,212,0.2));
-      border: 1px solid rgba(124,58,237,0.4);
-      border-radius: 8px;
-      color: #c4b5fd;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--transition);
-      letter-spacing: 0.3px;
-    }
-
-    .btn-new-pedido:hover {
-      background: linear-gradient(135deg, rgba(124,58,237,0.5), rgba(6,182,212,0.3));
-      box-shadow: 0 0 20px rgba(124,58,237,0.4), 0 0 40px rgba(124,58,237,0.15);
-      color: white;
-    }
-
-    /* ─── MAIN AREA ────────────────────────────────────────────────────── */
-    .main-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-    }
-
-    /* ─── HEADER ───────────────────────────────────────────────────────── */
-    .main-header {
-      background: rgba(13,14,20,0.8);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      padding: 0 28px;
-      height: 60px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      backdrop-filter: blur(10px);
-      flex-shrink: 0;
-      position: relative;
-      z-index: 5;
-    }
-
-    .header-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .header-title .section-icon {
-      font-size: 1.1rem;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .header-date {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      padding: 5px 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 20px;
-    }
-
-    /* ─── SECTIONS ─────────────────────────────────────────────────────── */
-    .section-content {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 28px;
-      display: none;
-      position: relative;
-    }
-
-    .section-content.active {
-      display: block;
-    }
-
-    .section-content.section-bg {
-      background: radial-gradient(ellipse at top left, rgba(124,58,237,0.06) 0%, transparent 60%);
-    }
-
-    /* ─── GLASS UTILITY ────────────────────────────────────────────────── */
-    .glass {
-      background: rgba(255,255,255,0.04);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: var(--radius);
-    }
-
-    /* ─── BUTTONS ──────────────────────────────────────────────────────── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: 7px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: var(--transition);
-      letter-spacing: 0.2px;
-      white-space: nowrap;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #7c3aed, #5b21b6);
-      color: white;
-      border: 1px solid rgba(124,58,237,0.5);
-    }
-
-    .btn-primary:hover {
-      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-      box-shadow: 0 0 20px rgba(124,58,237,0.6), 0 0 40px rgba(124,58,237,0.3);
-      transform: translateY(-1px);
-    }
-
-    .btn-success {
-      background: linear-gradient(135deg, #059669, #047857);
-      color: white;
-      border: 1px solid rgba(16,185,129,0.4);
-    }
-
-    .btn-success:hover {
-      box-shadow: 0 0 20px rgba(16,185,129,0.6);
-      transform: translateY(-1px);
-    }
-
-    .btn-danger {
-      background: rgba(239,68,68,0.12);
-      color: #fca5a5;
-      border: 1px solid rgba(239,68,68,0.25);
-    }
-
-    .btn-danger:hover {
-      background: rgba(239,68,68,0.22);
-      box-shadow: 0 0 20px rgba(239,68,68,0.5);
-    }
-
-    .btn-glass {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      backdrop-filter: blur(8px);
-      color: var(--text);
-    }
-
-    .btn-glass:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: rgba(255,255,255,0.2);
-    }
-
-    .btn-orange {
-      background: linear-gradient(135deg, #f97316, #ea580c);
-      color: white;
-      border: 1px solid rgba(249,115,22,0.4);
-    }
-
-    .btn-orange:hover {
-      box-shadow: 0 0 20px rgba(249,115,22,0.6), 0 0 40px rgba(249,115,22,0.25);
-      transform: translateY(-1px);
-    }
-
-    .btn-sm {
-      padding: 5px 10px;
-      font-size: 0.75rem;
-    }
-
-    .btn-xs {
-      padding: 3px 8px;
-      font-size: 0.7rem;
-    }
-
-    /* ─── CARDS ────────────────────────────────────────────────────────── */
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 20px;
-      position: relative;
-      overflow: hidden;
-      transition: var(--transition);
-    }
-
-    .card:hover {
-      border-color: rgba(255,255,255,0.1);
-      transform: translateY(-1px);
-    }
-
-    /* ─── VISTA GENERAL ────────────────────────────────────────────────── */
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-
-    .metric-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 22px 20px;
-      position: relative;
-      overflow: hidden;
-      transition: var(--transition);
-    }
-
-    .metric-card-sm {
-      padding: 12px 14px;
-    }
-    .metric-card-sm .metric-value { font-size: 1.6rem; margin-bottom: 2px; }
-    .metric-card-sm .metric-label { margin-bottom: 4px; }
-    .metric-card-sm .metric-icon  { font-size: 1.2rem; top: 10px; right: 10px; }
-
-    .metric-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 2px;
-      background: var(--metric-color, var(--accent));
-    }
-
-    .metric-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-      border-color: rgba(255,255,255,0.1);
-    }
-
-    .metric-label {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      margin-bottom: 10px;
-    }
-
-    .metric-value {
-      font-size: 2.4rem;
-      font-weight: 800;
-      line-height: 1;
-      color: var(--metric-color, var(--accent));
-      margin-bottom: 6px;
-    }
-
-    .metric-sub {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-    }
-
-    .metric-icon {
-      position: absolute;
-      top: 18px; right: 18px;
-      font-size: 1.8rem;
-      opacity: 0.15;
-    }
-
-    .section-heading {
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .section-heading .dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 6px var(--accent);
-    }
-
-    /* ─── TIMELINE PEDIDOS ─────────────────────────────────────────────── */
-    .pedidos-lista {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-
-    .pedido-row {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 14px 18px;
-      transition: var(--transition);
-    }
-    .pedido-row:hover {
-      border-color: rgba(124,58,237,0.3);
-      box-shadow: 0 0 20px rgba(124,58,237,0.07);
-    }
-
-    .pedido-row-top {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .pedido-row-id {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      font-weight: 700;
-      min-width: 28px;
-    }
-
-    .pedido-row-nombre {
-      font-size: 0.88rem;
-      font-weight: 700;
-      color: var(--text);
-      flex: 1;
-    }
-
-    .pedido-row-meta {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-    }
-
-    .pedido-row-fecha {
-      font-size: 0.72rem;
-      color: #fb923c;
-      font-weight: 600;
-    }
-
-    /* ── Timeline bar ── */
-    .timeline-bar {
-      display: flex;
-      align-items: center;
-      position: relative;
-      gap: 0;
-    }
-
-    .tl-step {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      flex: 1;
-      position: relative;
-    }
-
-    /* línea entre pasos */
-    .tl-step:not(:last-child)::after {
-      content: '';
-      position: absolute;
-      top: 9px;
-      left: 50%;
-      width: 100%;
-      height: 2px;
-      background: rgba(255,255,255,0.08);
-      z-index: 0;
-    }
-    .tl-step.done:not(:last-child)::after,
-    .tl-step.active:not(:last-child)::after {
-      background: linear-gradient(90deg, rgba(124,58,237,0.6), rgba(255,255,255,0.08));
-    }
-    .tl-step.done:not(:last-child)::after {
-      background: linear-gradient(90deg, rgba(124,58,237,0.7), rgba(124,58,237,0.4));
-    }
-
-    .tl-dot {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid rgba(255,255,255,0.12);
-      background: var(--card-bg);
-      z-index: 1;
-      position: relative;
-      transition: var(--transition);
-      flex-shrink: 0;
-    }
-
-    .tl-step.done .tl-dot {
-      background: var(--accent);
-      border-color: var(--accent);
-      box-shadow: 0 0 8px rgba(124,58,237,0.6);
-    }
-
-    .tl-step.active .tl-dot {
-      background: transparent;
-      border-color: #f97316;
-      box-shadow: 0 0 10px rgba(249,115,22,0.8), 0 0 20px rgba(249,115,22,0.3);
-      animation: pulseDot 1.5s ease-in-out infinite;
-    }
-    .tl-step.active .tl-dot::after {
-      content: '';
-      position: absolute;
-      inset: 3px;
-      border-radius: 50%;
-      background: #f97316;
-    }
-
-    @keyframes pulseDot {
-      0%, 100% { box-shadow: 0 0 10px rgba(249,115,22,0.8), 0 0 20px rgba(249,115,22,0.3); }
-      50%       { box-shadow: 0 0 16px rgba(249,115,22,1),   0 0 32px rgba(249,115,22,0.5); }
-    }
-
-    .tl-label {
-      font-size: 0.58rem;
-      color: var(--text-muted);
-      margin-top: 5px;
-      text-align: center;
-      white-space: nowrap;
-      letter-spacing: 0.3px;
-    }
-    .tl-step.done  .tl-label { color: #a78bfa; }
-    .tl-step.active .tl-label { color: #fb923c; font-weight: 700; }
-
-    @media (max-width: 600px) {
-      .tl-label { display: none; }
-      .tl-step.active .tl-label {
-        display: block;
-        position: absolute;
-        top: 18px;
-        white-space: nowrap;
-        font-size: 0.6rem;
-        font-weight: 700;
-        color: #fb923c;
-        background: rgba(249,115,22,0.12);
-        border: 1px solid rgba(249,115,22,0.3);
-        border-radius: 4px;
-        padding: 1px 5px;
-        z-index: 2;
-      }
-      .tl-dot   { width: 12px; height: 12px; }
-      .tl-step:not(:last-child)::after { top: 5px; }
-    }
-
-    /* ─── TABLE ────────────────────────────────────────────────────────── */
-    .table-wrap {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.82rem;
-    }
-
-    thead tr {
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-
-    thead th {
-      padding: 12px 16px;
-      text-align: left;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    tbody tr {
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      transition: background 0.2s;
-    }
-
-    tbody tr:last-child { border-bottom: none; }
-
-    tbody tr:hover { background: rgba(255,255,255,0.03); }
-
-    tbody td {
-      padding: 12px 16px;
-      color: var(--text);
-    }
-
-    /* ─── BADGES ───────────────────────────────────────────────────────── */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 3px 9px;
-      border-radius: 20px;
-      font-size: 0.68rem;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-    }
-
-    .badge-bandeja   { background: rgba(124,58,237,0.2);  color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
-    .badge-diseno    { background: rgba(6,182,212,0.2);   color: #67e8f9; border: 1px solid rgba(6,182,212,0.3); }
-    .badge-produccion{ background: rgba(249,115,22,0.2);  color: #fdba74; border: 1px solid rgba(249,115,22,0.3); }
-    .badge-listo     { background: rgba(16,185,129,0.2);  color: #4ade80; border: 1px solid rgba(16,185,129,0.3); }
-    .badge-enviado   { background: rgba(100,116,139,0.2); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
-    .badge-calidad   { background: rgba(234,179,8,0.2);   color: #fde047; border: 1px solid rgba(234,179,8,0.3); }
-
-    /* ─── BANDEJA ──────────────────────────────────────────────────────── */
-    .bandeja-cols {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .bandeja-col {
-      border-radius: var(--radius);
-      padding: 20px;
-      border: 1px solid var(--card-border);
-      min-height: 400px;
-    }
-
-    .bandeja-col-cotizar {
-      background: linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(18,20,28,1) 50%);
-    }
-
-    .bandeja-col-pedido {
-      background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(18,20,28,1) 50%);
-    }
-
-    .bandeja-col-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .bandeja-col-title {
-      font-size: 0.88rem;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .bandeja-count {
-      margin-left: auto;
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      background: rgba(255,255,255,0.05);
-      padding: 2px 8px;
-      border-radius: 12px;
-    }
-
-    .bandeja-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 8px;
-      padding: 14px;
-      margin-bottom: 10px;
-      transition: var(--transition);
-    }
-
-    .bandeja-card:hover {
-      background: rgba(255,255,255,0.05);
-      border-color: rgba(255,255,255,0.1);
-    }
-
-    .bandeja-card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-
-    .bandeja-phone {
-      font-size: 0.88rem;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .bandeja-id {
-      font-size: 0.68rem;
-      color: var(--text-muted);
-    }
-
-    .bandeja-meta {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-bottom: 10px;
-      display: flex;
-      gap: 12px;
-    }
-
-    .bandeja-meta span { display: flex; align-items: center; gap: 4px; }
-
-    .bandeja-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    /* ─── KANBAN ───────────────────────────────────────────────────────── */
-    .kanban-board {
-      display: flex;
-      gap: 14px;
-      overflow-x: auto;
-      padding-bottom: 16px;
-      min-height: calc(100vh - 180px);
-      align-items: flex-start;
-    }
-
-    .kanban-col {
-      min-width: 220px;
-      max-width: 220px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.05);
-      border-radius: var(--radius);
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-
-    .kanban-col-header {
-      padding: 12px 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .kanban-col-title {
-      font-size: 0.78rem;
-      font-weight: 700;
-      flex: 1;
-    }
-
-    .kanban-col-count {
-      font-size: 0.68rem;
-      background: rgba(255,255,255,0.08);
-      color: var(--text-muted);
-      padding: 2px 7px;
-      border-radius: 12px;
-    }
-
-    .kanban-cards {
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-height: 80px;
-    }
-
-    .kanban-card {
-      background: var(--card-bg);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 8px;
-      padding: 12px;
-      transition: var(--transition);
-      position: relative;
-    }
-
-    .kanban-card:hover {
-      border-color: rgba(255,255,255,0.14);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-
-    .kanban-card.arreglo {
-      border-color: rgba(239,68,68,0.4);
-      background: linear-gradient(135deg, rgba(239,68,68,0.06), var(--card-bg));
-    }
-
-    .kanban-card-id {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-    }
-
-    .kanban-card-phone {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 4px;
-    }
-
-    .kanban-card-items {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-      line-height: 1.5;
-    }
-
-    .kanban-card-vendor {
-      font-size: 0.7rem;
-      color: var(--accent);
-      margin-bottom: 4px;
-    }
-
-    .kanban-card-date {
-      font-size: 0.68rem;
-      color: #fb923c;
-      margin-bottom: 8px;
-    }
-
-    .kanban-card-actions {
-      display: flex;
-      gap: 5px;
-      flex-wrap: wrap;
-    }
-
-    .arreglo-input {
-      width: 100%;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      color: var(--text);
-      font-size: 0.72rem;
-      padding: 5px 8px;
-      margin-bottom: 6px;
-      outline: none;
-      transition: var(--transition);
-    }
-
-    .arreglo-input:focus {
-      border-color: rgba(124,58,237,0.5);
-      background: rgba(124,58,237,0.05);
-    }
-
-    .arreglo-tag {
-      font-size: 0.68rem;
-      background: rgba(239,68,68,0.15);
-      color: #fca5a5;
-      border: 1px solid rgba(239,68,68,0.3);
-      border-radius: 4px;
-      padding: 2px 6px;
-      margin-bottom: 6px;
-      display: inline-block;
-    }
-
-    /* KANBAN COLUMN COLORS */
-    .col-hacer-diseno    .kanban-col-header { background: rgba(124,58,237,0.2); }
-    .col-hacer-diseno    .kanban-col-title  { color: #a78bfa; }
-    .col-confirmado      .kanban-col-header { background: rgba(16,185,129,0.15); }
-    .col-confirmado      .kanban-col-title  { color: #34d399; }
-    .col-enviado-calandra .kanban-col-header{ background: rgba(6,182,212,0.15); }
-    .col-enviado-calandra .kanban-col-title { color: #67e8f9; }
-    .col-llego-impresion .kanban-col-header { background: rgba(249,115,22,0.15); }
-    .col-llego-impresion .kanban-col-title  { color: #fdba74; }
-    .col-corte           .kanban-col-header { background: rgba(239,68,68,0.15); }
-    .col-corte           .kanban-col-title  { color: #fca5a5; }
-    .col-calidad         .kanban-col-header { background: rgba(234,179,8,0.15); }
-    .col-calidad         .kanban-col-title  { color: #fde047; }
-    .col-costura         .kanban-col-header { background: rgba(16,185,129,0.15); }
-    .col-costura         .kanban-col-title  { color: #6ee7b7; }
-    .col-listo           .kanban-col-header { background: rgba(16,185,129,0.25); }
-    .col-listo           .kanban-col-title  { color: #4ade80; }
-    .col-enviado-final   .kanban-col-header { background: rgba(100,116,139,0.15); }
-    .col-enviado-final   .kanban-col-title  { color: #94a3b8; }
-
-    /* ─── MODAL ────────────────────────────────────────────────────────── */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(4px);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.2s ease;
-    }
-
-    .modal-overlay.open {
-      display: flex;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
-
-    @keyframes slideUp {
-      from { transform: translateY(20px) scale(0.97); opacity: 0; }
-      to   { transform: translateY(0) scale(1); opacity: 1; }
-    }
-
-    .modal-box {
-      background: rgba(15,17,26,0.95);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 14px;
-      padding: 28px;
-      width: 92%;
-      max-width: 520px;
-      max-height: 90vh;
-      overflow-y: auto;
-      position: relative;
-      animation: slideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,58,237,0.1);
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 24px;
-    }
-
-    .modal-title {
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .modal-close {
-      width: 30px; height: 30px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      color: var(--text-muted);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-      transition: var(--transition);
-    }
-
-    .modal-close:hover {
-      background: rgba(239,68,68,0.2);
-      color: var(--red);
-      border-color: rgba(239,68,68,0.3);
-    }
-
-    /* ─── FORM ─────────────────────────────────────────────────────────── */
-    .form-group {
-      margin-bottom: 16px;
-    }
-
-    .form-label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.7px;
-      margin-bottom: 6px;
-    }
-
-    .form-input, .form-select, .form-textarea {
-      width: 100%;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 7px;
-      color: var(--text);
-      font-size: 0.85rem;
-      padding: 9px 12px;
-      outline: none;
-      transition: var(--transition);
-      font-family: inherit;
-    }
-
-    .form-input:focus, .form-select:focus, .form-textarea:focus {
-      border-color: rgba(124,58,237,0.6);
-      background: rgba(124,58,237,0.05);
-      box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
-    }
-
-    .form-input[readonly] {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .form-select option {
-      background: #12141c;
-      color: var(--text);
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .form-actions {
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      margin-top: 24px;
-      padding-top: 18px;
-      border-top: 1px solid rgba(255,255,255,0.06);
-    }
-
-    /* ITEMS LIST */
-    .items-section {
-      margin-bottom: 16px;
-    }
-
-    .items-section-title {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.7px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .item-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 7px;
-      padding: 8px 10px;
-    }
-
-    .item-row select {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: var(--text);
-      font-size: 0.8rem;
-      outline: none;
-      cursor: pointer;
-    }
-
-    .item-row select option {
-      background: #12141c;
-    }
-
-    .item-sep {
-      color: var(--text-muted);
-      font-size: 0.75rem;
-    }
-
-    .item-remove {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 1rem;
-      padding: 2px 4px;
-      border-radius: 4px;
-      transition: var(--transition);
-      line-height: 1;
-    }
-
-    .item-remove:hover {
-      color: var(--red);
-      background: rgba(239,68,68,0.1);
-    }
-
-    .tipo-toggle {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-
-    .tipo-btn {
-      flex: 1;
-      padding: 9px;
-      border-radius: 7px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.03);
-      color: var(--text-muted);
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--transition);
-      text-align: center;
-    }
-
-    .tipo-btn.active-cotizar {
-      background: rgba(124,58,237,0.2);
-      border-color: rgba(124,58,237,0.5);
-      color: #c4b5fd;
-    }
-
-    .tipo-btn.active-pedido {
-      background: rgba(16,185,129,0.2);
-      border-color: rgba(16,185,129,0.5);
-      color: #6ee7b7;
-    }
-
-    /* ─── EMPTY STATE ──────────────────────────────────────────────────── */
-    .empty-state {
-      text-align: center;
-      padding: 14px 10px;
-      color: var(--text-muted);
-    }
-
-    .empty-icon {
-      font-size: 1.4rem;
-      margin-bottom: 4px;
-      opacity: 0.35;
-    }
-
-    .empty-text {
-      font-size: 0.75rem;
-    }
-
-    /* ─── ANIMATIONS ───────────────────────────────────────────────────── */
-    @keyframes borderRotate {
-      0%   { background-position: 0% 50%; }
-      50%  { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    .pulse {
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-
-    /* ─── TOAST ────────────────────────────────────────────────────────── */
-    .toast-container {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .toast {
-      background: rgba(18,20,28,0.95);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 0.82rem;
-      color: var(--text);
-      animation: slideUp 0.25s ease;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      max-width: 280px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-    }
-
-    .toast.success { border-left: 3px solid var(--green); }
-    .toast.error   { border-left: 3px solid var(--red); }
-    .toast.info    { border-left: 3px solid var(--accent); }
-
-    /* ─── DIVIDER ──────────────────────────────────────────────────────── */
-    .divider {
-      height: 1px;
-      background: rgba(255,255,255,0.05);
-      margin: 8px 0;
-    }
-
-    /* ─── RESPONSIVE scroll on kanban ─────────────────────────────────── */
-    #produccion .kanban-board {
-      min-height: calc(100vh - 200px);
-    }
-
-    .badge-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      display: inline-block;
-      margin-right: 5px;
-    }
-
-    /* ─── HAMBURGER BUTTON ─────────────────────────────────────────── */
-    .btn-hamburger {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      width: 38px;
-      height: 38px;
-      background: rgba(124,58,237,0.12);
-      border: 1px solid rgba(124,58,237,0.3);
-      border-radius: 8px;
-      cursor: pointer;
-      color: #c4b5fd;
-      flex-shrink: 0;
-      transition: var(--transition);
-    }
-    .btn-hamburger:hover {
-      background: rgba(124,58,237,0.25);
-      box-shadow: 0 0 14px rgba(124,58,237,0.4);
-    }
-
-    /* ─── OVERLAY (toca para cerrar sidebar en móvil) ─────────────── */
-    .sidebar-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.6);
-      z-index: 19;
-      backdrop-filter: blur(2px);
-    }
-    .sidebar-overlay.open { display: block; }
-
-    /* ─── RESPONSIVE ───────────────────────────────────────────────── */
-    @media (max-width: 768px) {
-      .btn-hamburger { display: flex; }
-
-      .sidebar {
-        position: fixed;
-        top: 0; left: 0;
-        height: 100vh;
-        z-index: 20;
-        transform: translateX(-100%);
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      .sidebar.open {
-        transform: translateX(0);
-      }
-
-      .main-header {
-        padding: 0 14px;
-      }
-
-      /* Ocultar el botón "Nuevo pedido" del header en móvil (ya está en sidebar) */
-      .header-actions .btn-orange { display: none; }
-
-      .header-date { font-size: 0.72rem; }
-
-      .section-content { padding: 14px 12px; }
-
-      .metrics-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-      }
-
-      .bandeja-cols {
-        grid-template-columns: 1fr !important;
-      }
-
-      .kanban-board {
-        grid-template-columns: repeat(2, minmax(200px, 1fr)) !important;
-      }
-    }
-
-    @media (max-width: 400px) {
-      .metrics-grid { grid-template-columns: 1fr 1fr; }
-      .kanban-board { grid-template-columns: 1fr !important; }
-    }
-
-    /* ─── CALANDRA ──────────────────────────────────────────────────── */
-    .cal-metrics {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-bottom: 20px;
-    }
-    .cal-ancho-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      flex-wrap: wrap;
-    }
-    .cal-item {
-      background: var(--card-bg);
-      border: 1px solid rgba(167,139,250,0.2);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .cal-item-info { flex: 1; min-width: 0; }
-    .cal-item-equipo { font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cal-item-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
-    .cal-item-metros { font-size: 1rem; font-weight: 800; color: #a78bfa; white-space: nowrap; }
-    .cal-semana-header {
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin: 18px 0 8px;
-    }
-
-    /* ─── SATÉLITES ─────────────────────────────────────────────────── */
-    .sat-resumen-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-      margin-bottom: 20px;
-    }
-    .sat-card {
-      background: var(--card-bg);
-      border: 1px solid rgba(16,185,129,0.2);
-      border-radius: var(--radius);
-      padding: 16px 18px;
-    }
-    .sat-card-nombre { font-weight: 800; font-size: 1rem; margin-bottom: 10px; color: #4ade80; }
-    .sat-stat-row { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 4px; }
-    .sat-stat-label { color: var(--text-muted); }
-    .sat-stat-val { font-weight: 700; }
-    .sat-pendiente { color: #fca5a5; }
-    .sat-entregado { color: #67e8f9; }
-    .sat-recibido  { color: #4ade80; }
-    .sat-item {
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 0.82rem;
-    }
-    .sat-item.entrega { border: 1px solid rgba(6,182,212,0.2); }
-    .sat-item.recepcion { border: 1px solid rgba(16,185,129,0.2); }
-    .sat-tipo-badge {
-      font-size: 0.65rem;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 10px;
-      white-space: nowrap;
-    }
-
-    @media (max-width: 768px) {
-      .cal-metrics { grid-template-columns: 1fr 1fr; }
-      .sat-resumen-grid { grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 400px) {
-      .cal-metrics { grid-template-columns: 1fr 1fr; }
-      .sat-resumen-grid { grid-template-columns: 1fr; }
-    }
-
-    /* ─── DASHBOARD ─────────────────────────────────────────────── */
-    .dash-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-    .dash-panel {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-    }
-    .dash-panel-title {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .dash-panel-title a {
-      margin-left: auto;
-      font-size: 0.68rem;
-      color: var(--accent);
-      cursor: pointer;
-      text-decoration: none;
-      letter-spacing: 0;
-    }
-    .dash-panel-title a:hover { color: #a78bfa; }
-    /* Alertas urgentes */
-    .dash-alert-list { display: flex; flex-direction: column; gap: 7px; }
-    .dash-alert-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(239,68,68,0.07);
-      border: 1px solid rgba(239,68,68,0.2);
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 0.8rem;
-    }
-    .dash-alert-item.warn {
-      background: rgba(234,179,8,0.07);
-      border-color: rgba(234,179,8,0.2);
-    }
-    .dash-alert-dias {
-      font-weight: 800;
-      font-size: 1rem;
-      min-width: 28px;
-      text-align: center;
-    }
-    .dash-alert-dias.red  { color: var(--red); }
-    .dash-alert-dias.yellow { color: var(--yellow); }
-    .dash-alert-info { flex: 1; }
-    .dash-alert-equipo { font-weight: 700; color: var(--text); }
-    .dash-alert-estado { font-size: 0.68rem; color: var(--text-muted); }
-    /* Satélites mini */
-    .dash-sat-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      font-size: 0.82rem;
-    }
-    .dash-sat-row:last-child { border-bottom: none; }
-    .dash-sat-nombre { flex: 1; color: var(--text); font-weight: 600; }
-    .dash-sat-pend {
-      font-weight: 800;
-      font-size: 1rem;
-      min-width: 28px;
-      text-align: right;
-    }
-    .dash-sat-pend.ok { color: var(--green); }
-    .dash-sat-pend.warn { color: var(--yellow); }
-    .dash-sat-pend.high { color: var(--red); }
-    .dash-sat-label { font-size: 0.65rem; color: var(--text-muted); }
-    /* Calandra mini */
-    .dash-cal-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .dash-cal-stat {
-      text-align: center;
-      padding: 10px;
-      background: rgba(124,58,237,0.08);
-      border-radius: 8px;
-    }
-    .dash-cal-stat-val {
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: #a78bfa;
-      line-height: 1;
-    }
-    .dash-cal-stat-label {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      margin-top: 3px;
-    }
-    /* Flujo pipeline mini */
-    .dash-pipe-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 5px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      font-size: 0.8rem;
-    }
-    .dash-pipe-row:last-child { border-bottom: none; }
-    .dash-pipe-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .dash-pipe-label { flex: 1; color: var(--text-muted); }
-    .dash-pipe-count {
-      font-weight: 700;
-      font-size: 0.9rem;
-    }
-    /* métricas top */
-    .dash-metrics-top {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    .dash-kpi {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 10px 12px;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .dash-kpi::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 2px;
-      background: var(--kpi-color, var(--accent));
-    }
-    .dash-kpi-val {
-      font-size: 1.6rem;
-      font-weight: 800;
-      color: var(--kpi-color, var(--accent));
-      line-height: 1;
-    }
-    .dash-kpi-label {
-      font-size: 0.62rem;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-    /* Panel timelines */
-    .dash-timelines-panel {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      margin-bottom: 16px;
-    }
-    /* vacia */
-    .dash-empty {
-      color: var(--text-muted);
-      font-size: 0.78rem;
-      text-align: center;
-      padding: 16px 0;
-    }
-
-    @media (max-width: 768px) {
-      .dash-grid { grid-template-columns: 1fr; }
-      .dash-metrics-top { grid-template-columns: repeat(3, 1fr); }
-    }
-    @media (max-width: 400px) {
-      .dash-metrics-top { grid-template-columns: repeat(2, 1fr); }
-      .dash-cal-stats { grid-template-columns: 1fr 1fr; }
-    }
-
-    /* ─── NOTIFICACIONES ────────────────────────────────────────── */
-    .notif-btn {
-      position: relative;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px;
-      width: 36px; height: 36px;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      color: var(--text-muted);
-      transition: var(--transition);
-      flex-shrink: 0;
-    }
-    .notif-btn:hover { background: rgba(124,58,237,0.15); color: var(--text); border-color: rgba(124,58,237,0.3); }
-    .notif-badge {
-      position: absolute;
-      top: -4px; right: -4px;
-      background: var(--red);
-      color: #fff;
-      font-size: 0.58rem;
-      font-weight: 800;
-      min-width: 16px; height: 16px;
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      padding: 0 3px;
-      display: none;
-    }
-    .notif-badge.visible { display: flex; }
-
-    .notif-panel {
-      position: fixed;
-      top: 64px; right: 16px;
-      width: 340px;
-      max-height: 70vh;
-      background: #161820;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .notif-panel.open { display: flex; }
-    .notif-panel-header {
-      padding: 14px 16px 10px;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-    .notif-panel-title {
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--text);
-      flex: 1;
-    }
-    .notif-clear-btn {
-      font-size: 0.68rem;
-      color: var(--text-muted);
-      cursor: pointer;
-      background: none;
-      border: none;
-      padding: 3px 7px;
-      border-radius: 5px;
-      transition: var(--transition);
-    }
-    .notif-clear-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
-    .notif-list {
-      overflow-y: auto;
-      flex: 1;
-      padding: 8px;
-    }
-    .notif-item {
-      display: flex;
-      gap: 10px;
-      padding: 10px 10px;
-      border-radius: 8px;
-      margin-bottom: 4px;
-      cursor: pointer;
-      transition: background 0.15s;
-      position: relative;
-    }
-    .notif-item:hover { background: rgba(255,255,255,0.04); }
-    .notif-item.unread { background: rgba(124,58,237,0.08); }
-    .notif-item.unread::before {
-      content: '';
-      position: absolute;
-      left: 0; top: 50%;
-      transform: translateY(-50%);
-      width: 3px; height: 60%;
-      background: var(--accent);
-      border-radius: 2px;
-    }
-    .notif-icon {
-      font-size: 1.1rem;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-    .notif-body { flex: 1; min-width: 0; }
-    .notif-msg {
-      font-size: 0.78rem;
-      color: var(--text);
-      line-height: 1.4;
-    }
-    .notif-msg strong { color: var(--accent); }
-    .notif-time {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      margin-top: 3px;
-    }
-    .notif-empty {
-      text-align: center;
-      padding: 32px 16px;
-      color: var(--text-muted);
-      font-size: 0.78rem;
-    }
-
-    @media (max-width: 768px) {
-      .notif-panel { width: calc(100vw - 24px); right: 12px; top: 60px; }
-    }
-
-    /* ─── COTIZACIONES / FACTURAS ──────────────────────────────── */
-    .doc-item-row {
-      display: grid;
-      grid-template-columns: 80px 1fr 120px 110px 28px;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .doc-item-row input { font-size: 0.8rem; }
-    .doc-totales-row {
-      display: flex;
-      justify-content: flex-end;
-      gap: 16px;
-      padding: 4px 0;
-      font-size: 0.82rem;
-    }
-    .doc-totales-row .lbl { color: var(--text-muted); }
-    .doc-totales-row .val { font-weight: 700; min-width: 100px; text-align: right; }
-    .doc-totales-row.total-final .val { color: var(--orange); font-size: 1rem; }
-    .doc-hist-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      margin-bottom: 6px;
-      font-size: 0.8rem;
-    }
-    .doc-hist-row .doc-num { font-weight: 700; color: var(--orange); min-width: 70px; }
-    .doc-hist-row .doc-cliente { flex: 1; }
-    .doc-hist-row .doc-total { font-weight: 600; color: var(--green); min-width: 90px; text-align: right; }
-    .doc-hist-row .doc-fecha { color: var(--text-muted); font-size: 0.72rem; }
-    .doc-badge-cot { background: rgba(249,115,22,0.15); color: #fb923c; padding: 2px 7px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; }
-    .doc-badge-fac { background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; }
-    @media (max-width: 600px) {
-      .doc-item-row {
-        grid-template-columns: 65px 1fr 80px 26px;
-        grid-template-rows: auto auto;
-        gap: 4px;
-      }
-      /* descripción ocupa toda la fila */
-      .doc-item-row input:nth-child(2) {
-        grid-column: 1 / -1;
-      }
-      /* cant — col 1, precio — col 2-3, total — col 3, x — col 4 */
-    }
-  </style>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
@@ -1780,19 +19,19 @@
 
 <div class="app-layout">
 
-  <!-- ═══════════════════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        SIDEBAR
-  ════════════════════════════════════════════════════════════ -->
+  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="logo-text">
-        <span class="bolt">⚡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
+        <span class="bolt">âš¡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
       </div>
-      <div class="logo-sub">Producción textil</div>
+      <div class="logo-sub">ProducciÃ³n textil</div>
     </div>
 
     <nav class="sidebar-nav">
-      <div class="nav-label">Navegación</div>
+      <div class="nav-label">NavegaciÃ³n</div>
 
       <div class="nav-item active" onclick="showSection('vista-general', this)">
         <span class="nav-icon">
@@ -1814,7 +53,7 @@
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r="0.5"/><circle cx="17.5" cy="10.5" r="0.5"/><circle cx="8.5" cy="7.5" r="0.5"/><circle cx="6.5" cy="12.5" r="0.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
         </span>
-        <span>Diseño</span>
+        <span>DiseÃ±o</span>
         <span class="nav-badge" id="badge-diseno">0</span>
       </div>
 
@@ -1822,7 +61,7 @@
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7-6H4a2 2 0 0 0-2 2z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M8 18v-1"/><path d="M16 18v-3"/></svg>
         </span>
-        <span>Producción</span>
+        <span>ProducciÃ³n</span>
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
@@ -1830,33 +69,33 @@
       <div class="nav-label">Control</div>
 
       <div class="nav-item" onclick="showSection('wetransfer', this)">
-        <span class="nav-icon">📤</span>
+        <span class="nav-icon">ðŸ“¤</span>
         <span>WeTransfer</span>
         <span class="nav-badge" id="badge-wt">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('arreglos', this)">
-        <span class="nav-icon">🔧</span>
+        <span class="nav-icon">ðŸ”§</span>
         <span>Arreglos</span>
         <span class="nav-badge" id="badge-arreglos">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('calandra', this)">
-        <span class="nav-icon">📐</span>
+        <span class="nav-icon">ðŸ“</span>
         <span>Calandra</span>
         <span class="nav-badge" id="badge-calandra">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('satelites', this)">
-        <span class="nav-icon">🧵</span>
-        <span>Satélites</span>
+        <span class="nav-icon">ðŸ§µ</span>
+        <span>SatÃ©lites</span>
         <span class="nav-badge" id="badge-satelites">0</span>
       </div>
 
       <div class="nav-label">Comercial</div>
 
       <div class="nav-item" onclick="showSection('cotizaciones', this)">
-        <span class="nav-icon">🧾</span>
+        <span class="nav-icon">ðŸ§¾</span>
         <span>Facturas</span>
       </div>
 
@@ -1870,22 +109,22 @@
     </div>
   </aside>
 
-  <!-- ═══════════════════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        MAIN
-  ════════════════════════════════════════════════════════════ -->
+  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <div class="main-area">
 
     <!-- HEADER -->
     <header class="main-header">
       <div class="header-title">
-        <button class="btn-hamburger" onclick="toggleSidebar()" aria-label="Menú">
+        <button class="btn-hamburger" onclick="toggleSidebar()" aria-label="MenÃº">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="3" y1="6" x2="21" y2="6"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <span class="section-icon" id="header-icon">📊</span>
+        <span class="section-icon" id="header-icon">ðŸ“Š</span>
         <span id="header-title-text">Vista general</span>
       </div>
       <div class="header-actions">
@@ -1908,9 +147,9 @@
     <!-- Panel notificaciones -->
     <div class="notif-panel" id="notif-panel">
       <div class="notif-panel-header">
-        <span style="font-size:1rem;">🔔</span>
+        <span style="font-size:1rem;">ðŸ””</span>
         <div class="notif-panel-title">Notificaciones</div>
-        <button class="notif-clear-btn" onclick="marcarTodasLeidas()">Marcar leídas</button>
+        <button class="notif-clear-btn" onclick="marcarTodasLeidas()">Marcar leÃ­das</button>
         <button class="notif-clear-btn" onclick="borrarNotifs()" style="color:#ef4444;">Borrar</button>
       </div>
       <div class="notif-list" id="notif-list">
@@ -1918,44 +157,44 @@
       </div>
     </div>
 
-    <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
+    <!-- â”€â”€â”€ VISTA GENERAL / DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="vista-general" class="section-content active section-bg">
 
       <!-- Timelines de todos los pedidos activos (primero) -->
       <div class="dash-timelines-panel">
         <div class="dash-panel-title" style="margin-bottom:12px;">
-          ⏱ Estado de todos los pedidos activos
+          â± Estado de todos los pedidos activos
         </div>
         <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
 
-      <!-- Fila central: alertas + pipeline + satélites + calandra -->
+      <!-- Fila central: alertas + pipeline + satÃ©lites + calandra -->
       <div class="dash-grid">
 
-        <!-- Panel: Entregas próximas -->
+        <!-- Panel: Entregas prÃ³ximas -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            🔔 Entregas próximas
-            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver producción →</a>
+            ðŸ”” Entregas prÃ³ximas
+            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver producciÃ³n â†’</a>
           </div>
           <div class="dash-alert-list" id="dash-alertas">
-            <div class="dash-empty">Sin pedidos con fecha próxima</div>
+            <div class="dash-empty">Sin pedidos con fecha prÃ³xima</div>
           </div>
         </div>
 
         <!-- Panel: Pipeline de estados -->
         <div class="dash-panel">
-          <div class="dash-panel-title">📊 Pipeline de producción</div>
+          <div class="dash-panel-title">ðŸ“Š Pipeline de producciÃ³n</div>
           <div id="dash-pipeline">
             <div class="dash-empty">Sin pedidos</div>
           </div>
         </div>
 
-        <!-- Panel: Satélites -->
+        <!-- Panel: SatÃ©lites -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            🧵 Satélites — pendientes
-            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle →</a>
+            ðŸ§µ SatÃ©lites â€” pendientes
+            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle â†’</a>
           </div>
           <div id="dash-satelites">
             <div class="dash-empty">Sin movimientos</div>
@@ -1965,8 +204,8 @@
         <!-- Panel: Calandra -->
         <div class="dash-panel">
           <div class="dash-panel-title">
-            📐 Calandra — esta semana
-            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle →</a>
+            ðŸ“ Calandra â€” esta semana
+            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle â†’</a>
           </div>
           <div id="dash-calandra">
             <div class="dash-empty">Sin registros esta semana</div>
@@ -1975,7 +214,7 @@
 
       </div>
 
-      <!-- KPIs rápidos (al final) -->
+      <!-- KPIs rÃ¡pidos (al final) -->
       <div class="dash-metrics-top">
         <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
           <div class="dash-kpi-val" id="m-total">0</div>
@@ -1983,11 +222,11 @@
         </div>
         <div class="dash-kpi" style="--kpi-color:#fb923c;">
           <div class="dash-kpi-val" id="m-diseno">0</div>
-          <div class="dash-kpi-label">Diseño</div>
+          <div class="dash-kpi-label">DiseÃ±o</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#67e8f9;">
           <div class="dash-kpi-val" id="m-produccion">0</div>
-          <div class="dash-kpi-label">Producción</div>
+          <div class="dash-kpi-label">ProducciÃ³n</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#4ade80;">
           <div class="dash-kpi-val" id="m-listos">0</div>
@@ -1995,25 +234,25 @@
         </div>
         <div class="dash-kpi" style="--kpi-color:#a78bfa;">
           <div class="dash-kpi-val" id="m-cal-semana">0</div>
-          <div class="dash-kpi-label">m² calandra</div>
+          <div class="dash-kpi-label">mÂ² calandra</div>
         </div>
         <div class="dash-kpi" style="--kpi-color:#f472b6;">
           <div class="dash-kpi-val" id="m-sat-pend">0</div>
-          <div class="dash-kpi-label">Pend. satél.</div>
+          <div class="dash-kpi-label">Pend. satÃ©l.</div>
         </div>
       </div>
 
     </section>
 
-    <!-- ─── BANDEJA ────────────────────────────────────────────── -->
+    <!-- â”€â”€â”€ BANDEJA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="bandeja" class="section-content">
       <div style="margin-bottom:14px;">
-        <input type="search" id="buscar-pedidos" class="form-input" placeholder="🔍 Buscar por equipo o teléfono…" oninput="buscarPedidos(this.value)" style="max-width:400px;">
+        <input type="search" id="buscar-pedidos" class="form-input" placeholder="ðŸ” Buscar por equipo o telÃ©fonoâ€¦" oninput="buscarPedidos(this.value)" style="max-width:400px;">
       </div>
       <div class="bandeja-cols">
         <div class="bandeja-col bandeja-col-cotizar">
           <div class="bandeja-col-header">
-            <span style="font-size:1.1rem;">🎨</span>
+            <span style="font-size:1.1rem;">ðŸŽ¨</span>
             <div class="bandeja-col-title">Cotizaciones</div>
             <div class="bandeja-count" id="count-cotizar">0</div>
           </div>
@@ -2021,7 +260,7 @@
         </div>
         <div class="bandeja-col bandeja-col-pedido">
           <div class="bandeja-col-header">
-            <span style="font-size:1.1rem;">✅</span>
+            <span style="font-size:1.1rem;">âœ…</span>
             <div class="bandeja-col-title">Pedidos confirmados</div>
             <div class="bandeja-count" id="count-pedido">0</div>
           </div>
@@ -2030,12 +269,12 @@
       </div>
     </section>
 
-    <!-- ─── DISEÑO ─────────────────────────────────────────────── -->
+    <!-- â”€â”€â”€ DISEÃ‘O â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="diseno" class="section-content">
       <div class="kanban-board">
         <div class="kanban-col col-hacer-diseno">
           <div class="kanban-col-header">
-            <div class="kanban-col-title">Hacer diseño</div>
+            <div class="kanban-col-title">Hacer diseÃ±o</div>
             <div class="kanban-col-count" id="cnt-hacer-diseno">0</div>
           </div>
           <div class="kanban-cards" id="col-hacer-diseno"></div>
@@ -2057,12 +296,12 @@
       </div>
     </section>
 
-    <!-- ─── PRODUCCIÓN ─────────────────────────────────────────── -->
+    <!-- â”€â”€â”€ PRODUCCIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="produccion" class="section-content">
       <div class="kanban-board">
         <div class="kanban-col col-llego-impresion">
           <div class="kanban-col-header">
-            <div class="kanban-col-title">Llegó impresión</div>
+            <div class="kanban-col-title">LlegÃ³ impresiÃ³n</div>
             <div class="kanban-col-count" id="cnt-llego-impresion">0</div>
           </div>
           <div class="kanban-cards" id="col-llego-impresion"></div>
@@ -2105,22 +344,22 @@
       </div>
     </section>
 
-    <!-- ─── WETRANSFER ──────────────────────────────────────────── -->
+    <!-- â”€â”€â”€ WETRANSFER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="wetransfer" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
-        Control WeTransfer — Enviados y Descargados
+        Control WeTransfer â€” Enviados y Descargados
       </div>
       <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">📤 Registrar envío</button>
-        <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">✅ Registrar descarga</button>
-        <button class="btn btn-glass btn-sm" onclick="cargarWT()">↺ Actualizar</button>
-        <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automáticamente vía Gmail.</span>
+        <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">ðŸ“¤ Registrar envÃ­o</button>
+        <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">âœ… Registrar descarga</button>
+        <button class="btn btn-glass btn-sm" onclick="cargarWT()">â†º Actualizar</button>
+        <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automÃ¡ticamente vÃ­a Gmail.</span>
       </div>
 
-      <!-- Formulario rápido -->
+      <!-- Formulario rÃ¡pido -->
       <div id="form-wt" style="display:none;background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envío WeTransfer</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envÃ­o WeTransfer</div>
         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:12px;" id="wt-form-sub"></div>
         <div class="form-row">
           <div class="form-group">
@@ -2138,13 +377,13 @@
         </div>
       </div>
 
-      <!-- Resumen del día -->
+      <!-- Resumen del dÃ­a -->
       <div id="wt-resumen-hoy" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;"></div>
 
       <div id="lista-wt"></div>
     </section>
 
-    <!-- ─── ARREGLOS ──────────────────────────────────────────── -->
+    <!-- â”€â”€â”€ ARREGLOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="arreglos" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
@@ -2163,7 +402,7 @@
             <input type="text" class="form-input" id="ar-equipo" placeholder="Ej: Galaktiturkos">
           </div>
           <div class="form-group">
-            <label class="form-label">Qué falta</label>
+            <label class="form-label">QuÃ© falta</label>
             <input type="text" class="form-input" id="ar-faltante" placeholder="Ej: 2 camisetas talla M">
           </div>
         </div>
@@ -2182,7 +421,7 @@
       <div id="lista-arreglos-manuales"></div>
     </section>
 
-    <!-- ─── CALANDRA (METRAJE) ───────────────────────────────────── -->
+    <!-- â”€â”€â”€ CALANDRA (METRAJE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="calandra" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span>
@@ -2194,29 +433,29 @@
           <div class="metric-label">Esta semana</div>
           <div class="metric-value" id="cal-metros-semana">0.00</div>
           <div class="metric-sub">metros enviados</div>
-          <div class="metric-icon">📐</div>
+          <div class="metric-icon">ðŸ“</div>
         </div>
         <div class="metric-card metric-card-sm" style="--metric-color:#67e8f9;">
           <div class="metric-label">Hoy</div>
           <div class="metric-value" id="cal-metros-hoy">0.00</div>
           <div class="metric-sub">metros hoy</div>
-          <div class="metric-icon">📅</div>
+          <div class="metric-icon">ðŸ“…</div>
         </div>
         <div class="metric-card metric-card-sm" style="--metric-color:#4ade80;">
           <div class="metric-label">Archivos hoy</div>
           <div class="metric-value" id="cal-archivos-hoy">0</div>
           <div class="metric-sub">PDFs enviados</div>
-          <div class="metric-icon">📄</div>
+          <div class="metric-icon">ðŸ“„</div>
         </div>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envío</button>
+        <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envÃ­o</button>
         <div class="cal-ancho-bar">
           <span style="color:var(--text-muted);font-size:0.78rem;">Ancho de tela calandra:</span>
           <strong style="color:#a78bfa;" id="cal-ancho-label">1.50 m</strong>
           <select id="cal-ancho-sel" onchange="cambiarAnchoTela(this.value)"
-            title="Selecciona el ancho de la tela que usa la calandra (afecta el cálculo de metros)"
+            title="Selecciona el ancho de la tela que usa la calandra (afecta el cÃ¡lculo de metros)"
             style="background:var(--card-bg);border:1px solid rgba(167,139,250,0.3);color:var(--text);border-radius:5px;font-size:0.78rem;padding:4px 10px;outline:none;cursor:pointer;">
             <option value="1.40">1.40 m</option>
             <option value="1.50" selected>1.50 m</option>
@@ -2227,7 +466,7 @@
       </div>
 
       <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#a78bfa;margin-bottom:12px;">Registrar envío a calandra</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#a78bfa;margin-bottom:12px;">Registrar envÃ­o a calandra</div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Equipo / Nombre del archivo</label>
@@ -2239,7 +478,7 @@
           </div>
         </div>
         <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:10px;">
-          💡 Abre el PDF en Corel → Propiedades del documento → copia el alto en cm
+          ðŸ’¡ Abre el PDF en Corel â†’ Propiedades del documento â†’ copia el alto en cm
         </div>
         <div class="form-actions" style="margin-top:10px;padding-top:10px;">
           <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
@@ -2250,27 +489,27 @@
       <div id="lista-calandra"></div>
     </section>
 
-    <!-- ─── SATÉLITES DE COSTURA ──────────────────────────────────── -->
+    <!-- â”€â”€â”€ SATÃ‰LITES DE COSTURA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <section id="satelites" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>
-        Control de satélites — entrega y recepción de uniformes
+        Control de satÃ©lites â€” entrega y recepciÃ³n de uniformes
       </div>
 
       <div class="sat-resumen-grid" id="sat-resumen"></div>
 
       <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">📦 Registrar entrega</button>
-        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">✅ Registrar recepción</button>
+        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">ðŸ“¦ Registrar entrega</button>
+        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">âœ… Registrar recepciÃ³n</button>
       </div>
 
       <div id="form-sat" style="display:none;background:var(--card-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satélite</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satÃ©lite</div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Satélite</label>
+            <label class="form-label">SatÃ©lite</label>
             <select class="form-select" id="sat-nombre">
-              <option value="">— Seleccionar —</option>
+              <option value="">â€” Seleccionar â€”</option>
               <option>Marcela</option>
               <option>Yamile</option>
               <option>Wilson</option>
@@ -2288,12 +527,12 @@
             <select class="form-select" id="sat-prenda">
               <option>Camiseta</option>
               <option>Uniforme completo</option>
-              <option>Pantalón</option>
+              <option>PantalÃ³n</option>
               <option>Chaqueta</option>
               <option>Buso</option>
               <option>Sudadera</option>
               <option>Portero acolchado buso</option>
-              <option>Portero acolchado pantalón</option>
+              <option>Portero acolchado pantalÃ³n</option>
             </select>
           </div>
           <div class="form-group">
@@ -2310,9 +549,9 @@
       <div id="lista-satelites"></div>
     </section>
 
-    <!-- ═══════════════════════════════════════════════════════════
+    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
          COTIZACIONES / FACTURAS
-    ════════════════════════════════════════════════════════════ -->
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
     <section id="cotizaciones" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#f97316;box-shadow:0 0 6px #f97316;"></span>
@@ -2321,15 +560,15 @@
 
       <!-- Botones principales -->
       <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
-        <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion')">🧾 Nueva cotización</button>
-        <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura')">📄 Nueva factura</button>
+        <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion')">ðŸ§¾ Nueva cotizaciÃ³n</button>
+        <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura')">ðŸ“„ Nueva factura</button>
       </div>
 
       <!-- Formulario -->
       <div id="form-doc" style="display:none;background:var(--card-bg);border:1px solid rgba(249,115,22,0.25);border-radius:var(--radius);padding:20px;margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div style="font-size:0.9rem;font-weight:700;color:#fb923c;" id="form-doc-titulo">Nueva cotización</div>
-          <button class="btn btn-glass btn-xs" onclick="cerrarFormDoc()">✕ Cerrar</button>
+          <div style="font-size:0.9rem;font-weight:700;color:#fb923c;" id="form-doc-titulo">Nueva cotizaciÃ³n</div>
+          <button class="btn btn-glass btn-xs" onclick="cerrarFormDoc()">âœ• Cerrar</button>
         </div>
 
         <!-- Datos cliente -->
@@ -2340,7 +579,7 @@
             <input type="text" class="form-input" id="doc-cliente" placeholder="Ej: Colegio Parroquial">
           </div>
           <div class="form-group">
-            <label class="form-label">Teléfono</label>
+            <label class="form-label">TelÃ©fono</label>
             <input type="text" class="form-input" id="doc-telefono" placeholder="Ej: 321 235 19 41">
           </div>
         </div>
@@ -2360,7 +599,7 @@
           <div class="form-group">
             <label class="form-label">Vendedora *</label>
             <select class="form-select" id="doc-vendedora">
-              <option value="">— Seleccionar —</option>
+              <option value="">â€” Seleccionar â€”</option>
               <option value="Betty Forero">Betty</option>
               <option value="Graciela Velandia">Graciela</option>
               <option value="Sneider Dominguez">Ney</option>
@@ -2377,7 +616,7 @@
         <!-- Items -->
         <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin:16px 0 10px;">Items</div>
         <div id="doc-items-list"></div>
-        <button class="btn btn-glass btn-xs" style="margin-top:8px;" onclick="addItemDoc()">+ Agregar ítem</button>
+        <button class="btn btn-glass btn-xs" style="margin-top:8px;" onclick="addItemDoc()">+ Agregar Ã­tem</button>
 
         <!-- Totales -->
         <div id="doc-totales" style="margin-top:16px;padding:12px;background:rgba(249,115,22,0.06);border-radius:8px;text-align:right;font-size:0.85rem;"></div>
@@ -2386,8 +625,8 @@
         <div style="margin-top:14px;">
           <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Cuenta Bancolombia</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="btn-cta1" class="btn btn-orange btn-xs" onclick="selCuenta(1)">Duvan D. — 215 0000 3773</button>
-            <button id="btn-cta2" class="btn btn-glass btn-xs" onclick="selCuenta(2)">William S. — 912 383 287 94</button>
+            <button id="btn-cta1" class="btn btn-orange btn-xs" onclick="selCuenta(1)">Duvan D. â€” 215 0000 3773</button>
+            <button id="btn-cta2" class="btn btn-glass btn-xs" onclick="selCuenta(2)">William S. â€” 912 383 287 94</button>
           </div>
         </div>
 
@@ -2405,7 +644,7 @@
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Historial reciente</div>
         <div style="display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap;">
-          <input id="doc-buscar" type="text" placeholder="🔍 Buscar cliente o #..." oninput="renderDocHistorial()"
+          <input id="doc-buscar" type="text" placeholder="ðŸ” Buscar cliente o #..." oninput="renderDocHistorial()"
             style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 10px;outline:none;width:180px;">
           <select id="doc-filtro-tipo" onchange="renderDocHistorial()"
             style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 8px;outline:none;">
@@ -2421,9 +660,9 @@
   </div><!-- end main-area -->
 </div><!-- end app-layout -->
 
-<!-- ═══════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MODAL: COMPLETAR PEDIDO DESDE BANDEJA
-════════════════════════════════════════════════════════════════════ -->
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="modal-completar">
   <div class="modal-box">
     <div class="modal-header">
@@ -2431,12 +670,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2h11"/></svg>
         <span id="modal-completar-titulo">Completar pedido</span>
       </div>
-      <button class="modal-close" onclick="closeModal('modal-completar')">✕</button>
+      <button class="modal-close" onclick="closeModal('modal-completar')">âœ•</button>
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Teléfono</label>
+        <label class="form-label">TelÃ©fono</label>
         <input type="text" class="form-input" id="comp-telefono" readonly>
       </div>
       <div class="form-group">
@@ -2474,9 +713,9 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
      MODAL: NUEVO PEDIDO MANUAL
-════════════════════════════════════════════════════════════════════ -->
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
 <div class="modal-overlay" id="modal-nuevo">
   <div class="modal-box">
     <div class="modal-header">
@@ -2484,31 +723,31 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Nuevo pedido manual
       </div>
-      <button class="modal-close" onclick="closeModal('modal-nuevo')">✕</button>
+      <button class="modal-close" onclick="closeModal('modal-nuevo')">âœ•</button>
     </div>
 
     <div class="form-group">
       <label class="form-label">Tipo de entrada</label>
       <div class="tipo-toggle">
-        <div class="tipo-btn active-cotizar" id="tipo-cotizar" onclick="setTipo('cotizar')">🎨 Cotización</div>
-        <div class="tipo-btn" id="tipo-pedido" onclick="setTipo('pedido')">✅ Pedido confirmado</div>
+        <div class="tipo-btn active-cotizar" id="tipo-cotizar" onclick="setTipo('cotizar')">ðŸŽ¨ CotizaciÃ³n</div>
+        <div class="tipo-btn" id="tipo-pedido" onclick="setTipo('pedido')">âœ… Pedido confirmado</div>
       </div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Nombre del equipo / cliente</label>
-      <input type="text" class="form-input" id="nuevo-equipo" placeholder="Ej: Galaktiturkos, Atlético FC...">
+      <input type="text" class="form-input" id="nuevo-equipo" placeholder="Ej: Galaktiturkos, AtlÃ©tico FC...">
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Teléfono / WhatsApp</label>
+        <label class="form-label">TelÃ©fono / WhatsApp</label>
         <input type="text" class="form-input" id="nuevo-telefono" placeholder="3001234567">
       </div>
       <div class="form-group">
         <label class="form-label">Vendedora</label>
         <select class="form-select" id="nuevo-vendedora">
-          <option value="">— Seleccionar —</option>
+          <option value="">â€” Seleccionar â€”</option>
           <option>Betty</option>
           <option>Graciela</option>
           <option>Ney</option>
@@ -2554,2618 +793,7 @@
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toasts"></div>
 
-<script>
-/* ════════════════════════════════════════════════════════════════
-   CONSTANTES
-════════════════════════════════════════════════════════════════ */
-const PRENDAS = ['Camiseta','Uniforme completo','Pantalón','Chaqueta','Buso','Sudadera','Portero acolchado buso','Portero acolchado pantalón','Camiseta adicional'];
-const TELAS   = ['Normal','Antifluido','Dry Fit','Camuflada','Colmena','Cuadros'];
-
-const SIGUIENTE = {
-  'bandeja':          'hacer-diseno',
-  'hacer-diseno':     'confirmado',
-  'confirmado':       'enviado-calandra',
-  'enviado-calandra': 'llego-impresion',
-  'llego-impresion':  'corte',
-  'corte':            'calidad',
-  'calidad':          'costura',
-  'costura':          'listo',
-  'listo':            'enviado-final',
-};
-
-const ESTADO_LABELS = {
-  'bandeja':           'Bandeja',
-  'hacer-diseno':      'Hacer diseño',
-  'confirmado':        'Confirmado',
-  'enviado-calandra':  'En calandra',
-  'llego-impresion':   'Llegó impresión',
-  'corte':             'Corte',
-  'calidad':           'Calidad',
-  'costura':           'Costura',
-  'listo':             'Listo',
-  'enviado-final':     'Enviado',
-};
-
-const ESTADO_BADGE = {
-  'bandeja':           'badge-bandeja',
-  'hacer-diseno':      'badge-diseno',
-  'confirmado':        'badge-diseno',
-  'enviado-calandra':  'badge-diseno',
-  'llego-impresion':   'badge-produccion',
-  'corte':             'badge-produccion',
-  'calidad':           'badge-calidad',
-  'costura':           'badge-produccion',
-  'listo':             'badge-listo',
-  'enviado-final':     'badge-enviado',
-};
-
-/* ════════════════════════════════════════════════════════════════
-   ESTADO
-════════════════════════════════════════════════════════════════ */
-let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
-let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
-let modalCompletarId = null;
-let tipoNuevo = 'cotizar';
-let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
-let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
-const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
-let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
-let satTipoActual  = 'entrega';
-
-/* ════════════════════════════════════════════════════════════════
-   PERSISTENCIA
-════════════════════════════════════════════════════════════════ */
-function getMesActual() {
-  const n = new Date();
-  return `${n.getFullYear()}-${n.getMonth()}`;
-}
-
-function limpiarEnviadosDelMesPasado() {
-  const mesGuardado = localStorage.getItem('ws_mes') || getMesActual();
-  const mesActual   = getMesActual();
-  if (mesGuardado !== mesActual) {
-    // Nuevo mes: borrar todos los pedidos en enviado-final
-    pedidos = pedidos.filter(p => p.estado !== 'enviado-final');
-    localStorage.setItem('ws_mes', mesActual);
-    guardar();
-  } else {
-    localStorage.setItem('ws_mes', mesActual);
-  }
-}
-
-function guardar() {
-  localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
-  localStorage.setItem('ws_nextId3', String(nextId));
-  // Sincronizar con servidor para que n8n pueda leer y actualizar pedidos
-  fetch('/api/pedidos', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pedidos, nextId })
-  }).catch(() => {}); // silencioso — no interrumpe si falla
-}
-
-/* ════════════════════════════════════════════════════════════════
-   NAVEGACIÓN
-════════════════════════════════════════════════════════════════ */
-const HEADER_INFO = {
-  'vista-general': { icon: '📊', title: 'Vista general' },
-  'bandeja':       { icon: '💼', title: 'Ventas' },
-  'diseno':        { icon: '🎨', title: 'Diseño' },
-  'produccion':    { icon: '🏭', title: 'Producción' },
-  'wetransfer':    { icon: '📤', title: 'WeTransfer — envíos a calandra' },
-  'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
-  'calandra':      { icon: '📐', title: 'Metraje — Control Calandra' },
-  'satelites':     { icon: '🧵', title: 'Satélites de costura' },
-  'cotizaciones':  { icon: '🧾', title: 'Facturas y Cotizaciones' },
-};
-
-function showSection(id, navEl) {
-  document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (navEl) navEl.classList.add('active');
-
-  const info = HEADER_INFO[id] || {};
-  document.getElementById('header-icon').textContent      = info.icon || '';
-  document.getElementById('header-title-text').textContent = info.title || '';
-
-  closeSidebar();
-  render();
-}
-
-function toggleSidebar() {
-  const sidebar  = document.getElementById('sidebar');
-  const overlay  = document.getElementById('sidebarOverlay');
-  const isOpen   = sidebar.classList.contains('open');
-  if (isOpen) {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('open');
-  } else {
-    sidebar.classList.add('open');
-    overlay.classList.add('open');
-  }
-}
-
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarOverlay').classList.remove('open');
-}
-
-/* ════════════════════════════════════════════════════════════════
-   RENDER PRINCIPAL
-════════════════════════════════════════════════════════════════ */
-function render() {
-  renderMetricas();
-  renderDashboard();
-  renderBadges();
-  renderTablaRecientes();
-  renderBandeja();
-  renderKanban('hacer-diseno');
-  renderKanban('confirmado');
-  renderKanban('enviado-calandra');
-  renderKanban('llego-impresion');
-  renderKanban('corte');
-  renderKanban('calidad');
-  renderKanban('costura');
-  renderKanban('listo');
-  renderKanban('enviado-final');
-  cargarWT();
-  renderArreglos();
-  renderCalandra();
-  renderSatelites();
-}
-
-/* ─── Métricas ────────────────────────────────────────────────── */
-function renderMetricas() {
-  const total     = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  const enProd    = pedidos.filter(p => ['llego-impresion','corte','calidad','costura'].includes(p.estado)).length;
-  const listos    = pedidos.filter(p => p.estado === 'listo').length;
-  const enDiseno  = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
-
-  document.getElementById('m-total').textContent      = total;
-  document.getElementById('m-produccion').textContent = enProd;
-  document.getElementById('m-listos').textContent     = listos;
-  document.getElementById('m-diseno').textContent     = enDiseno;
-}
-
-/* ─── Dashboard ──────────────────────────────────────────────── */
-function renderDashboard() {
-  // KPIs calandra y satélites
-  const semanaKey = getSemanaKey(new Date());
-  const semLista  = calandraRegistros.filter(r => r.semana === semanaKey);
-  const totalMetros = semLista.reduce((a, r) => a + (r.metros || 0), 0);
-  document.getElementById('m-cal-semana').textContent = totalMetros.toFixed(1);
-
-  const pendTotalSat = SATELITES.reduce((sum, s) => {
-    const ent = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
-    const rec = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
-    return sum + Math.max(0, ent - rec);
-  }, 0);
-  document.getElementById('m-sat-pend').textContent = pendTotalSat;
-
-  // Panel alertas entregas próximas
-  const hoy   = new Date(); hoy.setHours(0,0,0,0);
-  const activos = pedidos.filter(p => p.estado !== 'enviado-final' && p.fechaEntrega);
-  const conFecha = activos.map(p => {
-    const d = new Date(p.fechaEntrega + 'T00:00:00');
-    const diff = Math.round((d - hoy) / 86400000);
-    return { ...p, diff };
-  }).filter(p => p.diff <= 2).sort((a, b) => a.diff - b.diff);
-
-  const contAlertas = document.getElementById('dash-alertas');
-  if (!conFecha.length) {
-    contAlertas.innerHTML = '<div class="dash-empty">Sin pedidos con entrega en los próximos 2 días</div>';
-  } else {
-    contAlertas.innerHTML = conFecha.map(p => {
-      const cls   = p.diff <= 1 ? 'red' : 'yellow';
-      const tipo  = p.diff < 0 ? `${Math.abs(p.diff)}d vencido` : p.diff === 0 ? 'HOY' : `${p.diff}d`;
-      const estad = ESTADO_LABELS[p.estado] || p.estado;
-      return `<div class="dash-alert-item ${p.diff <= 1 ? '' : 'warn'}">
-        <div class="dash-alert-dias ${cls}">${tipo}</div>
-        <div class="dash-alert-info">
-          <div class="dash-alert-equipo">#${p.id} ${esc(p.equipo || p.telefono)}</div>
-          <div class="dash-alert-estado">${esc(p.vendedora || '—')} · ${estad}</div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Panel pipeline conteos
-  const PIPE_ESTADOS = [
-    { key: 'bandeja',          label: 'Ventas / Cotizaciones', color: '#94a3b8' },
-    { key: 'hacer-diseno',     label: 'Hacer diseño',          color: '#818cf8' },
-    { key: 'confirmado',       label: 'Confirmado',            color: '#fb923c' },
-    { key: 'enviado-calandra', label: 'Enviado calandra',      color: '#06b6d4' },
-    { key: 'llego-impresion',  label: 'Llegó impresión',       color: '#38bdf8' },
-    { key: 'corte',            label: 'Corte',                 color: '#a78bfa' },
-    { key: 'calidad',          label: 'Control calidad',       color: '#fbbf24' },
-    { key: 'costura',          label: 'Costura',               color: '#f472b6' },
-    { key: 'listo',            label: 'Listo p/entregar',      color: '#4ade80' },
-  ];
-  const contPipe = document.getElementById('dash-pipeline');
-  const rowsPipe = PIPE_ESTADOS.map(e => {
-    const cnt = pedidos.filter(p => p.estado === e.key).length;
-    return `<div class="dash-pipe-row" style="${cnt === 0 ? 'opacity:0.35;' : ''}">
-      <div class="dash-pipe-dot" style="background:${cnt > 0 ? e.color : '#334155'};box-shadow:${cnt > 0 ? '0 0 5px ' + e.color + '66' : 'none'};"></div>
-      <div class="dash-pipe-label">${e.label}</div>
-      <div class="dash-pipe-count" style="color:${cnt > 0 ? e.color : 'var(--text-muted)'};">${cnt}</div>
-    </div>`;
-  }).join('');
-  contPipe.innerHTML = rowsPipe || '<div class="dash-empty">Sin pedidos activos</div>';
-
-  // Panel satélites
-  const contSat = document.getElementById('dash-satelites');
-  contSat.innerHTML = SATELITES.map(s => {
-    const ent = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
-    const rec = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
-    const pend = Math.max(0, ent - rec);
-    const cls = pend === 0 ? 'ok' : pend <= 10 ? 'warn' : 'high';
-    return `<div class="dash-sat-row">
-      <div class="dash-sat-nombre">${s}</div>
-      <div>
-        <div class="dash-sat-pend ${cls}">${pend}</div>
-        <div class="dash-sat-label">pend.</div>
-      </div>
-      <div style="font-size:0.72rem;color:var(--text-muted);text-align:right;">
-        <div>↑${ent} entregado</div>
-        <div>↓${rec} recibido</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Panel calandra semana
-  const contCal = document.getElementById('dash-calandra');
-  if (!semLista.length) {
-    contCal.innerHTML = '<div class="dash-empty">Sin registros esta semana</div>';
-  } else {
-    const totalSem = semLista.reduce((a, r) => a + (r.metros || 0), 0);
-    const numEnvios = semLista.length;
-    const ultimoEnvio = semLista[0];
-    contCal.innerHTML = `<div class="dash-cal-stats">
-      <div class="dash-cal-stat">
-        <div class="dash-cal-stat-val">${totalSem.toFixed(1)}</div>
-        <div class="dash-cal-stat-label">metros esta semana</div>
-      </div>
-      <div class="dash-cal-stat">
-        <div class="dash-cal-stat-val">${numEnvios}</div>
-        <div class="dash-cal-stat-label">envíos registrados</div>
-      </div>
-    </div>
-    <div style="margin-top:10px;font-size:0.75rem;color:var(--text-muted);">
-      Último: <span style="color:var(--text);">${esc(ultimoEnvio.equipo || '—')}</span>
-      · ${ultimoEnvio.metros}m · ${ultimoEnvio.fecha || ''}
-    </div>`;
-  }
-}
-
-/* ─── Badges sidebar ─────────────────────────────────────────── */
-function renderBadges() {
-  const bandeja  = pedidos.filter(p => p.estado === 'bandeja').length;
-  const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
-  const prod     = pedidos.filter(p => ['llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length;
-  const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  document.getElementById('badge-general').textContent = total;
-  document.getElementById('badge-bandeja').textContent = bandeja;
-  document.getElementById('badge-diseno').textContent  = diseno;
-  document.getElementById('badge-prod').textContent    = prod;
-}
-
-/* ─── Tabla recientes ────────────────────────────────────────── */
-const TL_ETAPAS = [
-  { key: 'bandeja',          label: 'Bandeja'    },
-  { key: 'hacer-diseno',     label: 'Diseño'     },
-  { key: 'confirmado',       label: 'Confirmado' },
-  { key: 'enviado-calandra', label: 'Calandra'   },
-  { key: 'llego-impresion',  label: 'Impresión'  },
-  { key: 'corte',            label: 'Corte'      },
-  { key: 'calidad',          label: 'Calidad'    },
-  { key: 'arreglo',          label: 'Arreglo'    },
-  { key: 'costura',          label: 'Costura'    },
-  { key: 'listo',            label: 'Listo'      },
-];
-
-const TL_ORDER = TL_ETAPAS.map(e => e.key);
-
-function renderTablaRecientes() {
-  const cont = document.getElementById('tabla-recientes');
-  const lista = pedidos.filter(p => p.estado !== 'enviado-final').sort((a, b) => a.id - b.id);
-
-  if (!lista.length) {
-    cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin pedidos aún</div>`;
-    return;
-  }
-
-  const MAX = 5;
-  const visible = lista.slice(0, MAX);
-  const resto   = lista.length - MAX;
-
-  cont.innerHTML = visible.map(p => {
-    const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
-    const fecha  = p.fechaEntrega ? `📅 ${fmtFecha(p.fechaEntrega)}` : '';
-    // Para el timeline, si el pedido tiene arreglo registrado tratamos la etapa 'arreglo'
-    // como activa cuando está en calidad (esperando que llegue), o done cuando ya pasó de calidad
-    const curIdx = TL_ORDER.indexOf(p.estado);
-    const arregloIdx = TL_ORDER.indexOf('arreglo');
-
-    const steps = TL_ETAPAS.map((etapa, i) => {
-      let cls = '';
-      if (etapa.key === 'arreglo') {
-        if (p.arreglo && p.estado === 'calidad') cls = 'active';
-        else if (p.arreglo && curIdx > arregloIdx) cls = 'done';
-        else if (curIdx > arregloIdx) cls = 'done'; // pasó calidad sin arreglo
-      } else {
-        // índice real del estado actual (saltando 'arreglo' que no es estado real)
-        const estadoIdx = curIdx >= arregloIdx ? curIdx + 1 : curIdx; // ajuste por etapa virtual
-        if (i < arregloIdx) {
-          if (i < curIdx) cls = 'done';
-          if (i === curIdx) cls = 'active';
-        } else if (i > arregloIdx) {
-          const realI = i - 1; // índice real sin la etapa virtual
-          if (realI < curIdx) cls = 'done';
-          if (realI === curIdx) cls = 'active';
-        }
-      }
-      return `<div class="tl-step ${cls}"><div class="tl-dot"></div><div class="tl-label">${etapa.label}</div></div>`;
-    }).join('');
-
-    return `
-      <div class="pedido-row">
-        <div class="pedido-row-top">
-          <div class="pedido-row-id">#${p.id}</div>
-          <div class="pedido-row-nombre">${esc(p.equipo || p.telefono)}</div>
-          <div class="pedido-row-meta">
-            <span>${esc(p.vendedora || '—')}</span>
-            <span style="color:var(--text-muted);font-size:0.68rem;">${items}</span>
-          </div>
-          ${fecha ? `<div class="pedido-row-fecha">${fecha}</div>` : ''}
-        </div>
-        <div class="timeline-bar">${steps}</div>
-      </div>
-    `;
-  }).join('');
-
-  if (resto > 0) {
-    cont.innerHTML += `
-      <div style="text-align:center;padding:12px;">
-        <button class="btn btn-glass btn-sm" onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">
-          Ver ${resto} pedido${resto>1?'s':''} más →
-        </button>
-      </div>`;
-  }
-}
-
-/* ─── Bandeja ────────────────────────────────────────────────── */
-let busquedaActual = '';
-
-function buscarPedidos(q) {
-  busquedaActual = q.toLowerCase().trim();
-  renderBandeja();
-}
-
-function renderBandeja() {
-  const q = busquedaActual;
-  const filtrar = p => !q ||
-    (p.equipo   && p.equipo.toLowerCase().includes(q)) ||
-    (p.telefono && p.telefono.toLowerCase().includes(q));
-
-  const cotizaciones = pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja' && filtrar(p));
-  // Pedidos confirmados: visible desde que se confirman hasta que se entregan (todo excepto enviado-final)
-  const pedidosConf  = pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final' && filtrar(p));
-
-  document.getElementById('count-cotizar').textContent = cotizaciones.length;
-  document.getElementById('count-pedido').textContent  = pedidosConf.length;
-
-  document.getElementById('lista-cotizar').innerHTML = renderBandejaCotizaciones(cotizaciones);
-  document.getElementById('lista-pedido').innerHTML  = renderBandejaPedidos(pedidosConf);
-}
-
-function renderBandejaCotizaciones(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
-  return arr.map(p => `
-    <div class="bandeja-card">
-      <div class="bandeja-card-top">
-        <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
-          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
-        </div>
-        <div class="bandeja-id">#${p.id}</div>
-      </div>
-      <div class="bandeja-meta">
-        <span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${esc(p.vendedora || '—')}
-        </span>
-        <span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          ${esc(p.creadoEn || '—')}
-        </span>
-      </div>
-      <div class="bandeja-actions">
-        <button class="btn btn-primary btn-sm" onclick="openModalCompletar(${p.id})">Completar →</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-// Colores de etapa para el badge en la tarjeta de bandeja
-const ETAPA_COLOR = {
-  'bandeja':           '#64748b',
-  'hacer-diseno':      '#a78bfa',
-  'confirmado':        '#06b6d4',
-  'enviado-calandra':  '#f97316',
-  'llego-impresion':   '#f97316',
-  'corte':             '#eab308',
-  'calidad':           '#ef4444',
-  'costura':           '#10b981',
-  'listo':             '#10b981',
-};
-
-function irAlPedido(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const ESTADO_SECCION = {
-    'hacer-diseno':      'diseno',
-    'confirmado':        'diseno',
-    'enviado-calandra':  'diseno',
-    'llego-impresion':   'produccion',
-    'corte':             'produccion',
-    'calidad':           'produccion',
-    'costura':           'produccion',
-    'listo':             'envios',
-    'enviado-final':     'envios',
-  };
-  const seccion = ESTADO_SECCION[p.estado] || 'produccion';
-  const navEl = document.querySelector(`.nav-item[onclick*="'${seccion}'"]`);
-  showSection(seccion, navEl);
-}
-
-function eliminarPedidoBandeja(id, event) {
-  event.stopPropagation();
-  if (!confirm(`¿Eliminar pedido #${id}?`)) return;
-  pedidos = pedidos.filter(x => x.id !== id);
-  guardar();
-  render();
-  toast(`Pedido #${id} eliminado`, 'info');
-}
-
-function renderBandejaPedidos(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
-  return arr.map(p => {
-    const etiqueta = ESTADO_LABELS[p.estado] || p.estado;
-    const color    = ETAPA_COLOR[p.estado] || '#64748b';
-
-    const itemsTxt = p.items && p.items.length
-      ? p.items.map(i => `${esc(i.prenda)}`).join(', ')
-      : 'Sin prendas';
-
-    const fechaHtml = p.fechaEntrega
-      ? `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Clic para cambiar fecha" style="cursor:pointer;color:#fde047;">📅 ${fmtFecha(p.fechaEntrega)} <span style="opacity:0.5;font-size:0.65rem;">✎</span></span>`
-      : `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Agregar fecha de entrega" style="cursor:pointer;color:var(--text-muted);">📅 Agregar fecha</span>`;
-
-    const esNavegable = p.estado !== 'bandeja';
-
-    return `
-    <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
-      <div class="bandeja-card-top">
-        <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
-          ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <div class="bandeja-id">#${p.id}</div>
-          <button onclick="eliminarPedidoBandeja(${p.id}, event)" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 6px;font-size:0.7rem;cursor:pointer;line-height:1.4;">✕</button>
-        </div>
-      </div>
-      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">${itemsTxt}</div>
-      <div class="bandeja-meta">
-        <span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${esc(p.vendedora || '—')}
-        </span>
-        ${fechaHtml}
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}55;">● ${etiqueta}</span>
-        ${esNavegable ? `<span style="font-size:0.65rem;color:var(--text-muted);">→ ver pedido</span>` : ''}
-        <button onclick="openModalCompletar(${p.id});event.stopPropagation();" style="margin-left:auto;background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;border-radius:4px;padding:2px 8px;font-size:0.68rem;cursor:pointer;">✏ Editar prendas</button>
-      </div>
-    </div>
-  `;
-  }).join('');
-}
-
-/* ─── Kanban ─────────────────────────────────────────────────── */
-function renderKanban(estado) {
-  const col = document.getElementById(`col-${estado}`);
-  const cnt = document.getElementById(`cnt-${estado}`);
-  if (!col) return;
-
-  const items = pedidos.filter(p => p.estado === estado);
-  if (cnt) cnt.textContent = items.length;
-
-  if (!items.length) {
-    col.innerHTML = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
-    return;
-  }
-
-  col.innerHTML = items.map(p => renderKanbanCard(p)).join('');
-}
-
-function renderKanbanCardDiseno(p) {
-  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
-  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
-  const disenadorTxt = p.disenadorAsignado || '';
-
-  const disenadorHtml = disenadorTxt
-    ? `<div style="font-size:0.78rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">🎨 ${esc(disenadorTxt)}</div>`
-    : `<div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">🎨 Sin asignar</div>`;
-
-  const notasHtml = p.notas
-    ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;font-style:italic;">📝 ${esc(p.notas)}</div>`
-    : '';
-
-  let actionHtml = '';
-  if (p.estado === 'hacer-diseno') {
-    if (!disenadorTxt) {
-      const opts = DISENADORES.map(d => `<option value="${d}">${d}</option>`).join('');
-      actionHtml = `
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select id="sel-dis-${p.id}" style="flex:1;background:#1e1b2e;border:1px solid #4c1d95;border-radius:6px;color:#e2e8f0;font-size:0.75rem;padding:5px 8px;outline:none;">
-            <option value="" style="background:#1e1b2e;color:#e2e8f0;">Seleccionar...</option>${opts.replace(/<option /g, '<option style="background:#1e1b2e;color:#e2e8f0;" ')}
-          </select>
-          <button onclick="tomarPedidoDiseno(${p.id})" style="background:rgba(124,58,237,0.25);border:1px solid rgba(124,58,237,0.5);color:#c4b5fd;border-radius:6px;padding:5px 10px;font-size:0.75rem;cursor:pointer;white-space:nowrap;">Tomar</button>
-        </div>`;
-    } else {
-      actionHtml = `
-        <div style="display:flex;gap:6px;">
-          <button onclick="marcarDisenoListo(${p.id})" style="flex:1;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.4);color:#4ade80;border-radius:6px;padding:6px;font-size:0.78rem;cursor:pointer;font-weight:600;">✓ Listo</button>
-          <button onclick="liberarPedidoDiseno(${p.id})" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:6px 10px;font-size:0.75rem;cursor:pointer;" title="Liberar pedido">✕</button>
-        </div>`;
-    }
-  } else if (p.estado === 'confirmado') {
-    actionHtml = `
-      <div class="kanban-card-actions">
-        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Enviar a calandra</button>
-      </div>`;
-  } else if (p.estado === 'enviado-calandra') {
-    actionHtml = `
-      <div class="kanban-card-actions">
-        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Llegó impresión</button>
-      </div>`;
-  }
-
-  return `
-    <div class="kanban-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div style="font-size:0.7rem;color:var(--text-muted);">#${p.id}</div>
-      </div>
-      <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-        <span style="background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.35);color:#fde047;border-radius:5px;padding:2px 8px;font-size:0.73rem;font-weight:700;">📅 ${fechaTxt}</span>
-        <span style="font-size:0.73rem;color:var(--text-muted);">👤 ${esc(p.vendedora || '-')}</span>
-      </div>
-      ${notasHtml}
-      ${disenadorHtml}
-      ${actionHtml}
-    </div>
-  `;
-}
-
-function tomarPedidoDiseno(id) {
-  const sel = document.getElementById(`sel-dis-${id}`);
-  const nombre = sel ? sel.value : '';
-  if (!nombre) { toast('Selecciona un diseñador', 'error'); return; }
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.disenadorAsignado = nombre;
-  guardar();
-  render();
-  toast(`${nombre} tomó el pedido #${id}`, 'ok');
-}
-
-function marcarDisenoListo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.estado = 'confirmado';
-  p.ultimoMovimiento = new Date().toISOString();
-  guardar();
-  render();
-  toast(`Pedido #${id} marcado como listo`, 'ok');
-}
-
-function editarFecha(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-
-  // Mini modal inline
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = `
-    <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:280px;text-align:center;">
-      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">📅 Fecha de entrega — #${p.id} ${esc(p.equipo||'')}</div>
-      <input type="date" id="fecha-edit-input" value="${p.fechaEntrega||''}" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;">
-      <div style="display:flex;gap:8px;justify-content:center;">
-        <button onclick="confirmarFecha(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
-        <button onclick="this.closest('.fecha-overlay').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Cancelar</button>
-      </div>
-    </div>`;
-  overlay.classList.add('fecha-overlay');
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-}
-
-function confirmarFecha(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const val = document.getElementById('fecha-edit-input').value;
-  p.fechaEntrega = val;
-  guardar();
-  render();
-  document.querySelector('.fecha-overlay')?.remove();
-  toast('Fecha actualizada', 'ok');
-}
-
-function editarEquipo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = `
-    <div style="background:#1e1b2e;border:1px solid #4c1d95;border-radius:12px;padding:24px;min-width:300px;text-align:center;">
-      <div style="font-size:0.9rem;color:#e2e8f0;font-weight:600;margin-bottom:16px;">✏️ Nombre del equipo — #${p.id}</div>
-      <input type="text" id="equipo-edit-input" value="${esc(p.equipo||'')}" placeholder="Nombre del equipo / cliente" style="width:100%;background:#0f0d1a;border:1px solid #4c1d95;border-radius:8px;color:#e2e8f0;font-size:1rem;padding:8px 12px;outline:none;margin-bottom:16px;box-sizing:border-box;">
-      <div style="display:flex;gap:8px;justify-content:center;">
-        <button onclick="confirmarEquipo(${id})" style="background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.6);color:#c4b5fd;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Guardar</button>
-        <button onclick="this.closest('.equipo-overlay').remove()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:0.85rem;">Cancelar</button>
-      </div>
-    </div>`;
-  overlay.classList.add('equipo-overlay');
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
-  setTimeout(() => { const i = document.getElementById('equipo-edit-input'); if(i){i.focus();i.select();} }, 100);
-}
-
-function confirmarEquipo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const val = document.getElementById('equipo-edit-input').value.trim();
-  if (!val) { toast('El nombre no puede estar vacío', 'error'); return; }
-  p.equipo = val;
-  guardar();
-  render();
-  document.querySelector('.equipo-overlay')?.remove();
-  toast('Nombre actualizado', 'ok');
-}
-
-function liberarPedidoDiseno(id) {
-  if (!confirm('¿Liberar este pedido para que otro diseñador lo tome?')) return;
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.disenadorAsignado = '';
-  guardar();
-  render();
-  toast(`Pedido #${id} liberado`, 'info');
-}
-
-function renderKanbanCard(p) {
-  const ESTADOS_DISENO = ['hacer-diseno', 'confirmado', 'enviado-calandra'];
-  if (ESTADOS_DISENO.includes(p.estado)) return renderKanbanCardDiseno(p);
-
-  const siguiente = SIGUIENTE[p.estado];
-  const itemsTxt = p.items && p.items.length
-    ? p.items.map(i => `<span>${esc(i.prenda)}</span> · <span style="opacity:.7">${esc(i.tela)}</span>`).join('<br>')
-    : '<span style="opacity:.5">Sin prendas</span>';
-
-  const fechaHtml = p.fechaEntrega
-    ? `<div class="kanban-card-date" onclick="editarFecha(${p.id})" title="Clic para cambiar fecha" style="cursor:pointer;">📅 ${fmtFecha(p.fechaEntrega)} ✎</div>`
-    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;cursor:pointer;" onclick="editarFecha(${p.id})" title="Agregar fecha de entrega">📅 Sin fecha — agregar</div>`;
-
-  const notasHtml = p.notas
-    ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-style:italic;">"${esc(p.notas)}"</div>`
-    : '';
-
-  const arregloInfoHtml = (p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'calidad')
-    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">⚠ Arreglo: ${esc(p.arreglo)}</div>`
-    : '';
-
-  let actionsHtml = '';
-
-  if (p.estado === 'calidad') {
-    if (p.arreglo) {
-      const descActual = (p.arreglo === 'pendiente') ? '' : esc(p.arreglo);
-      actionsHtml = `
-        <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">⚠ ¿Qué hay que arreglar?</div>
-        <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo (Enter = nueva línea)..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
-        <div class="kanban-card-actions">
-          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">✓ Llegó</button>
-          <button class="btn btn-xs" onclick="guardarDescArreglo(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.72rem;padding:4px 8px;border-radius:5px;cursor:pointer;">Guardar</button>
-        </div>
-      `;
-    } else {
-      actionsHtml = `
-        <div class="kanban-card-actions">
-          <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">→ Costura</button>
-          <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">🔧</button>
-        </div>
-      `;
-    }
-  } else if (p.estado === 'listo') {
-    actionsHtml = `
-      <button onclick="copiarMsgListo(${p.id})" style="width:100%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;color:#4ade80;font-size:0.75rem;font-weight:600;padding:6px 10px;cursor:pointer;margin-bottom:8px;">📋 Copiar mensaje para cliente</button>
-      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">¿Cómo se envía?</div>
-      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;">
-        ${METODOS_ENVIO.map(m => `<button onclick="registrarEnvioDirecto(${p.id},'${esc(m)}')" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:var(--text);font-size:0.72rem;padding:5px 8px;cursor:pointer;text-align:left;">${esc(m)}</button>`).join('')}
-      </div>
-    `;
-  } else if (siguiente) {
-    const btnLabel = getBotonLabel(p.estado);
-    actionsHtml = `
-      <div class="kanban-card-actions">
-        <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">${btnLabel}</button>
-      </div>
-    `;
-  } else {
-    actionsHtml = '';
-  }
-
-  return `
-    <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}">
-      <div class="kanban-card-id">#${p.id}</div>
-      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;">
-        ${esc(p.equipo || p.telefono)}
-        ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}
-      </div>
-      ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">📱 ${esc(p.telefono)}</div>` : ''}
-      <div class="kanban-card-items">${itemsTxt}</div>
-      <div class="kanban-card-vendor">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        ${esc(p.vendedora || '—')}
-      </div>
-      ${fechaHtml}
-      ${notasHtml}
-      ${arregloInfoHtml}
-      ${actionsHtml}
-    </div>
-  `;
-}
-
-function getBotonLabel(estado) {
-  const labels = {
-    'hacer-diseno':     '✓ Confirmado',
-    'confirmado':       '→ Calandra',
-    'enviado-calandra': '→ Llegó impresión',
-    'llego-impresion':  '→ Corte',
-    'corte':            '→ Calidad',
-    'costura':          '→ Listo',
-    'listo':            '→ Enviar',
-  };
-  return labels[estado] || '→ Siguiente';
-}
-
-/* ════════════════════════════════════════════════════════════════
-   ACCIONES
-════════════════════════════════════════════════════════════════ */
-const NOTIF_ICONS = {
-  'bandeja':          '💼',
-  'hacer-diseno':     '🎨',
-  'confirmado':       '✅',
-  'enviado-calandra': '📤',
-  'llego-impresion':  '🖨️',
-  'corte':            '✂️',
-  'calidad':          '🔍',
-  'costura':          '🧵',
-  'listo':            '📦',
-  'enviado-final':    '🚀',
-};
-
-function avanzar(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const sig = SIGUIENTE[p.estado];
-  if (!sig) return;
-  p.estado = sig;
-  p.ultimoMovimiento = new Date().toISOString();
-  guardar();
-  render();
-  toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
-
-  const icono = NOTIF_ICONS[sig] || '➡️';
-  const nombre = p.equipo || p.telefono;
-  if (sig === 'listo') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> está <strong>listo para entregar</strong> — vendedora: ${esc(p.vendedora || '—')}`, 'success', id);
-  } else if (sig === 'calidad') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó a <strong>control calidad</strong>`, 'info', id);
-  } else if (sig === 'enviado-calandra') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> enviado a <strong>calandra</strong>`, 'info', id);
-  } else if (sig === 'llego-impresion') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>corte</strong>`, 'info', id);
-  } else if (sig === 'enviado-final') {
-    crearNotif('🚀', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> — pedido completado`, 'success', id);
-  } else {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> avanzó a <strong>${ESTADO_LABELS[sig]}</strong>`, 'info', id);
-  }
-}
-
-function avanzarNormal(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.estado = 'costura';
-  p.arreglo = null;
-  p.ultimoMovimiento = new Date().toISOString();
-  guardar();
-  render();
-  toast(`#${id} pasó a Costura`, 'success');
-  crearNotif('🧵', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
-}
-
-function registrarArreglo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.arreglo = 'pendiente';
-  guardar();
-  render();
-  toast(`#${id} marcado con arreglo — escribe la descripción`, 'info');
-  crearNotif('⚠️', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
-}
-
-function guardarDescArreglo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const el = document.getElementById(`arreglo-edit-${id}`);
-  const val = el ? el.value.trim() : '';
-  if (!val) { toast('Escribe qué hay que arreglar', 'error'); return; }
-  p.arreglo = val;
-  guardar();
-  // No re-renderizar para no destruir el textarea — solo actualizar badges
-  renderBadges();
-  renderMetricas();
-  toast(`✓ Arreglo guardado`, 'success');
-}
-
-function llegoFaltante(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.arreglo = null;
-  p.estado  = 'costura';
-  guardar();
-  render();
-  toast(`#${id} → Costura (faltante llegó)`, 'success');
-}
-
-function eliminarPedido(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  if (p.estado !== 'enviado-final') {
-    toast(`#${id} solo se puede eliminar cuando esté enviado`, 'info');
-    return;
-  }
-  if (!confirm(`¿Eliminar pedido #${id}?`)) return;
-  pedidos = pedidos.filter(x => x.id !== id);
-  guardar();
-  render();
-  toast(`Pedido #${id} eliminado`, 'info');
-}
-
-/* ════════════════════════════════════════════════════════════════
-   MODAL COMPLETAR
-════════════════════════════════════════════════════════════════ */
-function openModalCompletar(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  modalCompletarId = id;
-
-  // Ajustar título según tipo
-  const titulo = document.getElementById('modal-completar-titulo');
-  if (titulo) titulo.textContent = p.tipoBandeja === 'cotizar' ? 'Confirmar cotización' : 'Completar pedido';
-
-  document.getElementById('comp-telefono').value = p.telefono || '';
-  document.getElementById('comp-vendedora').value = p.vendedora || '';
-  document.getElementById('comp-fecha').value = p.fechaEntrega || '';
-  document.getElementById('comp-notas').value = p.notas || '';
-
-  // Poblar items existentes si hay
-  const lista = document.getElementById('comp-items-list');
-  lista.innerHTML = '';
-  const items = p.items && p.items.length ? p.items : [{ prenda: PRENDAS[0], tela: TELAS[0] }];
-  items.forEach(item => addItemCompConValor(item.prenda, item.tela));
-
-  document.getElementById('modal-completar').classList.add('open');
-}
-
-function addItemComp() { addItemCompConValor(); }
-
-function addItemCompConValor(prenda = PRENDAS[0], tela = TELAS[0]) {
-  const lista = document.getElementById('comp-items-list');
-  const row = document.createElement('div');
-  row.className = 'item-row';
-  row.innerHTML = `
-    <select>
-      ${PRENDAS.map(pr => `<option ${pr === prenda ? 'selected' : ''}>${pr}</option>`).join('')}
-    </select>
-    <span class="item-sep">·</span>
-    <select>
-      ${TELAS.map(t => `<option ${t === tela ? 'selected' : ''}>${t}</option>`).join('')}
-    </select>
-    <button class="item-remove" onclick="this.parentElement.remove()">×</button>
-  `;
-  lista.appendChild(row);
-}
-
-function guardarCompletar() {
-  if (!modalCompletarId) return;
-  const p = pedidos.find(x => x.id === modalCompletarId);
-  if (!p) return;
-
-  const fecha = document.getElementById('comp-fecha').value;
-  const notas = document.getElementById('comp-notas').value.trim();
-
-  const rows  = document.querySelectorAll('#comp-items-list .item-row');
-  const items = Array.from(rows).map(row => {
-    const sels = row.querySelectorAll('select');
-    return { prenda: sels[0].value, tela: sels[1].value };
-  });
-
-  p.fechaEntrega = fecha;
-  p.notas        = notas;
-  p.items        = items;
-
-  // Cotización completada → se convierte en pedido confirmado
-  // Estado pasa a 'hacer-diseno' y tipoBandeja a 'pedido'
-  // A partir de aquí aparece en la columna "Pedidos confirmados" con su etapa visible
-  p.tipoBandeja = 'pedido';
-  p.estado      = 'hacer-diseno';
-
-  guardar();
-  closeModal('modal-completar');
-  render();
-  toast(`#${p.id} confirmado — en cola de diseño`, 'success');
-}
-
-function avanzarDesdeBandeja(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const sig = SIGUIENTE[p.estado];
-  if (!sig) return;
-  p.estado = sig;
-  guardar();
-  render();
-  toast(`#${id} → ${ESTADO_LABELS[sig]}`, 'success');
-}
-
-function getBandejaBotonLabel(estado) {
-  const labels = {
-    'bandeja':           '→ Iniciar diseño',
-    'hacer-diseno':      '→ Diseño listo',
-    'confirmado':        '→ Enviar a calandra',
-    'enviado-calandra':  '→ Llegó impresión',
-    'llego-impresion':   '→ Corte',
-    'corte':             '→ Calidad',
-    'calidad':           '→ Costura',
-    'costura':           '→ Listo',
-    'listo':             '→ Entregar / Enviar',
-  };
-  return labels[estado] || '→ Siguiente';
-}
-
-/* ════════════════════════════════════════════════════════════════
-   MODAL NUEVO PEDIDO
-════════════════════════════════════════════════════════════════ */
-function openModalNuevo() {
-  tipoNuevo = 'cotizar';
-  document.getElementById('nuevo-telefono').value = '';
-  document.getElementById('nuevo-vendedora').value = '';
-  document.getElementById('nuevo-fecha').value = '';
-  document.getElementById('nuevo-notas').value = '';
-  document.getElementById('nuevo-items-list').innerHTML = '';
-  document.getElementById('nuevo-extra').style.display = 'none';
-  document.getElementById('tipo-cotizar').className = 'tipo-btn active-cotizar';
-  document.getElementById('tipo-pedido').className  = 'tipo-btn';
-  document.getElementById('modal-nuevo').classList.add('open');
-}
-
-function setTipo(tipo) {
-  tipoNuevo = tipo;
-  if (tipo === 'cotizar') {
-    document.getElementById('tipo-cotizar').className = 'tipo-btn active-cotizar';
-    document.getElementById('tipo-pedido').className  = 'tipo-btn';
-    document.getElementById('nuevo-extra').style.display = 'none';
-  } else {
-    document.getElementById('tipo-cotizar').className = 'tipo-btn';
-    document.getElementById('tipo-pedido').className  = 'tipo-btn active-pedido';
-    document.getElementById('nuevo-extra').style.display = 'block';
-    if (!document.getElementById('nuevo-items-list').children.length) {
-      addItemNuevo();
-    }
-  }
-}
-
-function addItemNuevo() { addItemNuevoConValor(); }
-
-function addItemNuevoConValor(prenda = PRENDAS[0], tela = TELAS[0]) {
-  const lista = document.getElementById('nuevo-items-list');
-  const row   = document.createElement('div');
-  row.className = 'item-row';
-  row.innerHTML = `
-    <select>
-      ${PRENDAS.map(pr => `<option ${pr === prenda ? 'selected' : ''}>${pr}</option>`).join('')}
-    </select>
-    <span class="item-sep">·</span>
-    <select>
-      ${TELAS.map(t => `<option ${t === tela ? 'selected' : ''}>${t}</option>`).join('')}
-    </select>
-    <button class="item-remove" onclick="this.parentElement.remove()">×</button>
-  `;
-  lista.appendChild(row);
-}
-
-function guardarNuevo() {
-  const equipo = document.getElementById('nuevo-equipo').value.trim();
-  const tel  = document.getElementById('nuevo-telefono').value.trim();
-  const vend = document.getElementById('nuevo-vendedora').value;
-
-  if (!equipo) { toast('Ingresa el nombre del equipo o cliente', 'error'); return; }
-  if (!vend) { toast('Selecciona una vendedora', 'error'); return; }
-
-  const pedido = {
-    id:          nextId++,
-    equipo:      equipo,
-    telefono:    tel,
-    vendedora:   vend,
-    tipoBandeja: tipoNuevo,
-    estado:      'bandeja',
-    creadoEn:    new Date().toLocaleDateString('es-CO'),
-    items:       [],
-    fechaEntrega: '',
-    notas:       '',
-    arreglo:     null,
-  };
-
-  if (tipoNuevo === 'pedido') {
-    pedido.fechaEntrega = document.getElementById('nuevo-fecha').value;
-    pedido.notas        = document.getElementById('nuevo-notas').value.trim();
-    const rows = document.querySelectorAll('#nuevo-items-list .item-row');
-    pedido.items = Array.from(rows).map(row => {
-      const sels = row.querySelectorAll('select');
-      return { prenda: sels[0].value, tela: sels[1].value };
-    });
-    // Pedido directo entra confirmado, va directo a diseño
-    pedido.estado = 'hacer-diseno';
-  }
-
-  pedidos.push(pedido);
-  guardar();
-  closeModal('modal-nuevo');
-  render();
-  toast(`Pedido #${pedido.id} creado en bandeja`, 'success');
-
-  if (tipoNuevo === 'pedido') {
-    crearNotif('✅', `Nuevo pedido <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> confirmado — vendedora: ${esc(pedido.vendedora)}`, 'success', pedido.id);
-  } else {
-    crearNotif('💼', `Nueva cotización <strong>#${pedido.id} ${esc(pedido.equipo)}</strong> — vendedora: ${esc(pedido.vendedora)}`, 'info', pedido.id);
-  }
-}
-
-/* ════════════════════════════════════════════════════════════════
-   MODALES HELPERS
-════════════════════════════════════════════════════════════════ */
-function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-// Cerrar al click fuera
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.classList.remove('open');
-  });
-});
-
-// ESC key
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-  }
-});
-
-/* ════════════════════════════════════════════════════════════════
-   TOAST
-════════════════════════════════════════════════════════════════ */
-function toast(msg, type = 'info') {
-  const icons = { success: '✓', error: '✕', info: 'ℹ' };
-  const container = document.getElementById('toasts');
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<span>${icons[type]}</span> ${esc(msg)}`;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
-}
-
-/* ════════════════════════════════════════════════════════════════
-   UTILIDADES
-════════════════════════════════════════════════════════════════ */
-function esc(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-// Formatea "YYYY-MM-DD" → "Lun 26/03"
-function fmtFecha(iso) {
-  if (!iso) return '';
-  // Parsear sin desfase de zona horaria
-  const [y, m, d] = iso.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-  const dd = String(d).padStart(2, '0');
-  const mm = String(m).padStart(2, '0');
-  return `${dias[date.getDay()]} ${dd}/${mm}`;
-}
-
-/* ════════════════════════════════════════════════════════════════
-   FECHA HEADER
-════════════════════════════════════════════════════════════════ */
-function updateDate() {
-  const now = new Date();
-  const opts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
-  document.getElementById('header-date').textContent = now.toLocaleDateString('es-CO', opts);
-}
-
-
-function arregloLlego(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.arreglo = null;
-  p.estado  = 'costura';
-  guardar();
-  render();
-  toast(`#${id} → Costura`, 'success');
-}
-
-/* ════════════════════════════════════════════════════════════════
-   ENVÍOS
-════════════════════════════════════════════════════════════════ */
-const METODOS_ENVIO = ['Interrapidísimo', 'Bus / Encomienda terminal', 'Recogió en fábrica'];
-
-function registrarEnvio(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const sel = document.getElementById(`metodo-${id}`);
-  const metodo = sel ? sel.value : '';
-  if (!metodo) { toast('Selecciona el método de envío', 'error'); return; }
-  p.metodoEnvio = metodo;
-  p.estado      = 'enviado-final';
-  guardar();
-  render();
-  toast(`#${id} enviado — ${metodo}`, 'success');
-}
-
-function copiarMsgListo(id) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  const nombre = p.equipo || p.telefono || 'cliente';
-  const msg = `Hola! 👋 Le informamos que su pedido *${nombre}* ya está listo para despacho. 🎉\n\nPor favor enviar el saldo restante para proceder con el envío.\n\n¡Gracias por su compra! 🙏`;
-  navigator.clipboard.writeText(msg).then(() => {
-    toast('Mensaje copiado — pégalo en WhatsApp', 'success');
-  }).catch(() => {
-    prompt('Copia este mensaje:', msg);
-  });
-}
-
-function registrarEnvioDirecto(id, metodo) {
-  const p = pedidos.find(x => x.id === id);
-  if (!p) return;
-  p.metodoEnvio = metodo;
-  p.estado      = 'enviado-final';
-  guardar();
-  render();
-  toast(`#${id} enviado — ${metodo}`, 'success');
-}
-
-/* ════════════════════════════════════════════════════════════════
-   WETRANSFER
-════════════════════════════════════════════════════════════════ */
-let wtRegistros = []; // cargados del servidor
-let _wtTipo = 'enviado'; // tipo activo en formulario
-
-async function cargarWT() {
-  try {
-    const r = await fetch('/api/wetransfer');
-    const d = await r.json();
-    wtRegistros = d.registros || [];
-  } catch { wtRegistros = []; }
-  renderWT();
-}
-
-function registrarWT(tipo) {
-  _wtTipo = tipo || 'enviado';
-  document.getElementById('wt-archivo').value = '';
-  document.getElementById('wt-equipo').value = '';
-  document.getElementById('wt-form-title').textContent =
-    tipo === 'descargado' ? '✅ Registrar descarga WeTransfer' : '📤 Registrar envío WeTransfer';
-  document.getElementById('wt-form-sub').textContent =
-    tipo === 'descargado' ? 'Mauricio confirmó que descargó el archivo' : 'Se envió el diseño por WeTransfer a calandra';
-  document.getElementById('wt-btn-guardar').textContent = tipo === 'descargado' ? 'Guardar descarga' : 'Guardar envío';
-  document.getElementById('form-wt').style.display = 'block';
-  document.getElementById('wt-archivo').focus();
-}
-
-async function guardarWT() {
-  const archivo = document.getElementById('wt-archivo').value.trim();
-  const equipo  = document.getElementById('wt-equipo').value.trim();
-  if (!archivo) { toast('Ingresa el nombre del archivo', 'error'); return; }
-
-  try {
-    const r = await fetch('/api/wetransfer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: _wtTipo, archivo, equipo }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error);
-    document.getElementById('form-wt').style.display = 'none';
-    toast(_wtTipo === 'descargado' ? `Descarga registrada: ${archivo}` : `Envío registrado: ${archivo}`, 'success');
-    await cargarWT();
-  } catch (e) {
-    toast('Error al guardar: ' + e.message, 'error');
-  }
-}
-
-function renderWT() {
-  const cont = document.getElementById('lista-wt');
-  const resumen = document.getElementById('wt-resumen-hoy');
-  if (!cont) return;
-
-  const hoy = new Date().toLocaleDateString('es-CO');
-  const hoy_list = wtRegistros.filter(e => e.fecha === hoy);
-  const hist     = wtRegistros.filter(e => e.fecha !== hoy);
-
-  // Contar enviados y descargados hoy
-  const envHoy  = hoy_list.filter(e => e.tipo === 'enviado').length;
-  const descHoy = hoy_list.filter(e => e.tipo === 'descargado').length;
-
-  document.getElementById('badge-wt').textContent = hoy_list.length;
-
-  if (resumen) {
-    resumen.innerHTML = `
-      <div style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
-        <span style="font-size:1.1rem;">📤</span>
-        <div>
-          <div style="font-size:1.3rem;font-weight:800;color:#67e8f9;line-height:1;">${envHoy}</div>
-          <div style="font-size:0.68rem;color:var(--text-muted);">Enviados hoy</div>
-        </div>
-      </div>
-      <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:8px;">
-        <span style="font-size:1.1rem;">✅</span>
-        <div>
-          <div style="font-size:1.3rem;font-weight:800;color:#4ade80;line-height:1;">${descHoy}</div>
-          <div style="font-size:0.68rem;color:var(--text-muted);">Descargados hoy</div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Agrupar: unir enviado + descargado del mismo archivo
-  function renderFila(e, dim) {
-    const esBadge = e.tipo === 'descargado'
-      ? `<span style="font-size:0.65rem;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.35);border-radius:10px;padding:2px 8px;white-space:nowrap;">✅ Descargado</span>`
-      : `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 8px;white-space:nowrap;">📤 Enviado</span>`;
-    const autoTag = e.auto ? `<span style="font-size:0.62rem;background:rgba(167,139,250,0.12);color:#a78bfa;border:1px solid rgba(167,139,250,0.25);border-radius:10px;padding:1px 6px;">auto</span>` : '';
-    return `
-      <div style="background:var(--card-bg);border:1px solid ${e.tipo==='descargado'?'rgba(34,197,94,0.2)':'rgba(6,182,212,0.15)'};border-radius:var(--radius);padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;${dim?'opacity:0.6;':''}">
-        <span style="font-size:1.1rem;">${e.tipo==='descargado'?'✅':'📤'}</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e.archivo)}</div>
-          ${e.equipo ? `<div style="font-size:0.72rem;color:var(--text-muted);">Equipo: ${esc(e.equipo)}</div>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-          ${esBadge}${autoTag}
-          <span style="font-size:0.68rem;color:var(--text-muted);">${dim ? e.fecha+' ' : ''}${e.hora}</span>
-        </div>
-      </div>`;
-  }
-
-  let html = '';
-  if (!hoy_list.length) {
-    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin registros hoy</div>`;
-  } else {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hoy</div>`;
-    // Ordenar: más reciente primero
-    html += [...hoy_list].reverse().map(e => renderFila(e, false)).join('');
-  }
-
-  if (hist.length) {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
-    html += [...hist].reverse().slice(0, 30).map(e => renderFila(e, true)).join('');
-  }
-
-  cont.innerHTML = html;
-}
-
-/* ════════════════════════════════════════════════════════════════
-   ARREGLOS MANUALES
-════════════════════════════════════════════════════════════════ */
-let arreglosManuales = JSON.parse(localStorage.getItem('ws_arreglos_manuales') || '[]');
-
-function guardarArreglos_store() {
-  localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
-  fetch('/api/arreglos', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ arreglos: arreglosManuales })
-  }).catch(() => {});
-}
-
-async function sincronizarArreglosServidor() {
-  try {
-    const r = await fetch('/api/arreglos');
-    if (!r.ok) return;
-    const data = await r.json();
-    const serv = Array.isArray(data.arreglos) ? data.arreglos : [];
-    const todos = [...arreglosManuales, ...serv];
-    const vistos = new Set();
-    arreglosManuales = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
-    arreglosManuales.sort((a, b) => b.id - a.id);
-    localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
-    // Subir merge al servidor
-    fetch('/api/arreglos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ arreglos: arreglosManuales })
-    }).catch(() => {});
-    renderArreglos();
-  } catch {}
-}
-
-function registrarArregloManual() {
-  document.getElementById('ar-equipo').value = '';
-  document.getElementById('ar-faltante').value = '';
-  document.getElementById('form-arreglo').style.display = 'block';
-  document.getElementById('ar-equipo').focus();
-}
-
-function guardarArregloManual() {
-  const equipo   = document.getElementById('ar-equipo').value.trim();
-  const faltante = document.getElementById('ar-faltante').value.trim();
-  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
-  if (!faltante) { toast('Ingresa qué falta', 'error'); return; }
-  arreglosManuales.unshift({ id: Date.now(), equipo, faltante, fecha: new Date().toLocaleDateString('es-CO'), resuelto: false });
-  guardarArreglos_store();
-  document.getElementById('form-arreglo').style.display = 'none';
-  renderArreglos();
-  toast(`Arreglo registrado: ${equipo}`, 'info');
-}
-
-function resolverArregloManual(id) {
-  const a = arreglosManuales.find(x => x.id === id);
-  if (!a) return;
-  a.resuelto = true;
-  guardarArreglos_store();
-  renderArreglos();
-  toast('Arreglo resuelto', 'success');
-}
-
-function renderArreglos() {
-  const contPed = document.getElementById('lista-arreglos-pedidos');
-  const contMan = document.getElementById('lista-arreglos-manuales');
-  if (!contPed || !contMan) return;
-
-  // Arreglos de pedidos activos
-  const conArreglo = pedidos.filter(p => p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'enviado-final');
-  document.getElementById('badge-arreglos').textContent = conArreglo.length + arreglosManuales.filter(a => !a.resuelto).length;
-
-  if (!conArreglo.length) {
-    contPed.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin arreglos en pedidos activos</div>`;
-  } else {
-    contPed.innerHTML = conArreglo.map(p => `
-      <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),var(--card-bg));border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-          <span style="font-size:0.65rem;color:var(--text-muted);">#${p.id}</span>
-          <span style="font-weight:700;font-size:0.88rem;">${esc(p.equipo || p.telefono)}</span>
-          <span style="font-size:0.68rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">calidad</span>
-        </div>
-        <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">🔧 ${esc(p.arreglo)}</div>
-      </div>
-    `).join('');
-  }
-
-  const pendientes = arreglosManuales.filter(a => !a.resuelto);
-  const resueltos  = arreglosManuales.filter(a =>  a.resuelto);
-
-  if (!pendientes.length && !resueltos.length) {
-    contMan.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin registros manuales</div>`;
-    return;
-  }
-
-  contMan.innerHTML = [...pendientes, ...resueltos].map(a => `
-    <div style="background:var(--card-bg);border:1px solid ${a.resuelto ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;${a.resuelto ? 'opacity:0.55;' : ''}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-        <span style="font-weight:700;font-size:0.88rem;">${esc(a.equipo)}</span>
-        <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);">${a.fecha}</span>
-      </div>
-      <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">🔧 ${esc(a.faltante)}</div>
-      ${!a.resuelto ? `<button class="btn btn-success btn-xs" onclick="resolverArregloManual(${a.id})">✓ Resuelto</button>` : `<span style="font-size:0.7rem;color:#6ee7b7;">✓ Resuelto</span>`}
-    </div>
-  `).join('');
-}
-
-/* ════════════════════════════════════════════════════════════════
-   INIT
-════════════════════════════════════════════════════════════════ */
-limpiarEnviadosDelMesPasado();
-// Migración: limpiar valores rotos de p.arreglo (false, "", 0) y normalizar tipoBandeja
-pedidos.forEach(p => {
-  if (p.arreglo !== null && p.arreglo !== undefined && !p.arreglo) {
-    p.arreglo = null;
-  }
-  if (p.tipoBandeja) {
-    p.tipoBandeja = p.tipoBandeja.toLowerCase();
-  }
-});
-// Solo subir al servidor al inicio si hay pedidos en localStorage (evita borrar datos del servidor)
-if (pedidos.length > 0) guardar();
-updateDate();
-render();
-
-// Sincronizar desde servidor — el servidor es fuente de verdad
-function syncConServidor(silencioso = false) {
-  fetch('/api/pedidos')
-    .then(r => r.json())
-    .then(data => {
-      const serverPedidos = Array.isArray(data) ? data : (data.pedidos || []);
-      const serverNextId  = data.nextId || null;
-
-      if (!serverPedidos.length && !pedidos.length) return;
-
-      if (!serverPedidos.length) {
-        if (pedidos.length > 0) guardar();
-        return;
-      }
-
-      const mapaServer = new Map(serverPedidos.map(p => [p.id, p]));
-      const mapaLocal  = new Map(pedidos.map(p => [p.id, p]));
-      const merged = [];
-
-      const todosIds = new Set([...mapaServer.keys(), ...mapaLocal.keys()]);
-      todosIds.forEach(id => {
-        const s = mapaServer.get(id);
-        const l = mapaLocal.get(id);
-        if (s && l) {
-          merged.push({ ...l, estado: s.estado,
-            notaWebhook: s.notaWebhook || l.notaWebhook,
-            ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook });
-        } else if (s) {
-          merged.push(s);
-        } else {
-          merged.push(l);
-        }
-      });
-
-      merged.sort((a, b) => a.id - b.id);
-
-      const maxId = merged.reduce((m, p) => Math.max(m, p.id), 0);
-      const nuevoNextId = Math.max(nextId, serverNextId || 1, maxId + 1);
-
-      const cambios = JSON.stringify(merged) !== JSON.stringify(pedidos) || nuevoNextId !== nextId;
-      if (cambios) {
-        pedidos = merged;
-        nextId  = nuevoNextId;
-        localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
-        localStorage.setItem('ws_nextId3', String(nextId));
-        guardar();
-        render();
-        if (!silencioso) toast('🔄 Pedidos sincronizados', 'info');
-      }
-    })
-    .catch(() => {});
-}
-
-// Sync al cargar
-syncConServidor(false);
-
-// Polling automático cada 15 segundos
-setInterval(() => syncConServidor(true), 15000);
-
-// Sync calandra Drive al cargar y cada 2 minutos
-setTimeout(sincronizarCalandraServidor, 500);
-setInterval(sincronizarCalandraServidor, 120000);
-
-/* ════════════════════════════════════════════════════════════════
-   CALANDRA — CONTROL DE METRAJE
-════════════════════════════════════════════════════════════════ */
-function guardarCalandra_store() {
-  localStorage.setItem('ws_calandra', JSON.stringify(calandraRegistros));
-}
-
-// Sincroniza registros de Drive (vienen del servidor vía n8n) con los locales
-async function sincronizarCalandraServidor() {
-  try {
-    const r = await fetch('/api/calandra');
-    if (!r.ok) return;
-    const { registros: del_servidor } = await r.json();
-    if (!del_servidor || !del_servidor.length) return;
-
-    // Normalizar registros del servidor al formato local
-    const normalizados = del_servidor.map(r => ({
-      id:       r.id,
-      equipo:   r.equipo,
-      altoCm:   r.alto,
-      metros:   r.metros,
-      fecha:    r.fecha,
-      hora:     '',
-      semana:   getSemanaKey((() => { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); })()),
-      archivo:  r.archivo || '',
-      disenador: r.disenador || '',
-      origen:   'drive',
-    }));
-
-    // Mezclar: no duplicar por id
-    const idsLocales = new Set(calandraRegistros.map(r => r.id));
-    const nuevos = normalizados.filter(r => !idsLocales.has(r.id));
-
-    if (nuevos.length) {
-      calandraRegistros = [...nuevos, ...calandraRegistros];
-      guardarCalandra_store();
-      renderCalandra();
-      renderDashboard();
-      nuevos.forEach(r => {
-        crearNotif('📄', `<strong>Drive:</strong> PDF <em>${esc(r.archivo || r.equipo)}</em> registrado — <strong>${r.metros.toFixed(2)} m</strong>`, 'info');
-      });
-    }
-  } catch {}
-}
-
-function cambiarAnchoTela(val) {
-  calandraAncho = parseFloat(val);
-  localStorage.setItem('ws_calandra_ancho', String(calandraAncho));
-  document.getElementById('cal-ancho-label').textContent = calandraAncho.toFixed(2) + ' m';
-  renderCalandra();
-}
-
-function abrirFormCalandra() {
-  document.getElementById('cal-equipo').value = '';
-  document.getElementById('cal-alto').value   = '';
-  document.getElementById('form-calandra').style.display = 'block';
-  document.getElementById('cal-equipo').focus();
-}
-
-function guardarCalandra() {
-  const equipo = document.getElementById('cal-equipo').value.trim();
-  const alto   = parseFloat(document.getElementById('cal-alto').value);
-  if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
-  if (!alto || alto <= 0) { toast('Ingresa el alto del PDF en cm', 'error'); return; }
-
-  // alto en cm × ancho en m → metros lineales
-  // (alto / 100) = alto en metros; metros lineales = alto_m (el ancho ya está fijo por la tela)
-  const altoCm   = alto;
-  const metros   = parseFloat(((altoCm / 100)).toFixed(3)); // metros lineales del rollo
-  const metros2  = parseFloat(((altoCm / 100) * calandraAncho).toFixed(3)); // m²
-
-  const hoy = new Date().toLocaleDateString('es-CO');
-  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-
-  calandraRegistros.unshift({
-    id:       Date.now(),
-    equipo,
-    altoCm,
-    metros,
-    metros2,
-    ancho:    calandraAncho,
-    fecha:    hoy,
-    hora,
-    semana:   getSemanaKey(new Date()),
-  });
-
-  guardarCalandra_store();
-  document.getElementById('form-calandra').style.display = 'none';
-  renderCalandra();
-  toast(`Registrado: ${equipo} — ${metros} m lineales`, 'success');
-}
-
-function getSemanaKey(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay() + 1); // lunes
-  return d.toLocaleDateString('es-CO');
-}
-
-function renderCalandra() {
-  const cont = document.getElementById('lista-calandra');
-  if (!cont) return;
-
-  const hoy       = new Date().toLocaleDateString('es-CO');
-  const semanaKey = getSemanaKey(new Date());
-
-  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy);
-  const semanaList = calandraRegistros.filter(r => r.semana === semanaKey);
-  const historico  = calandraRegistros.filter(r => r.fecha !== hoy);
-
-  const metrosHoy    = hoyList.reduce((s, r) => s + r.metros, 0);
-  const metrosSemana = semanaList.reduce((s, r) => s + r.metros, 0);
-
-  // Actualizar ancho selector
-  const sel = document.getElementById('cal-ancho-sel');
-  if (sel) sel.value = String(calandraAncho);
-  const lbl = document.getElementById('cal-ancho-label');
-  if (lbl) lbl.textContent = calandraAncho.toFixed(2) + ' m';
-
-  // Métricas
-  const elSemana = document.getElementById('cal-metros-semana');
-  const elHoy    = document.getElementById('cal-metros-hoy');
-  const elArch   = document.getElementById('cal-archivos-hoy');
-  if (elSemana) elSemana.textContent = metrosSemana.toFixed(2);
-  if (elHoy)    elHoy.textContent    = metrosHoy.toFixed(2);
-  if (elArch)   elArch.textContent   = hoyList.length;
-
-  // Badge sidebar
-  const badge = document.getElementById('badge-calandra');
-  if (badge) badge.textContent = hoyList.length;
-
-  let html = '';
-
-  if (!hoyList.length) {
-    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin envíos registrados hoy</div>`;
-  } else {
-    html += `<div class="cal-semana-header">Hoy — ${hoyList.length} archivos · ${metrosHoy.toFixed(2)} m lineales</div>`;
-    html += hoyList.map(r => renderCalItem(r)).join('');
-  }
-
-  // Agrupar histórico por semana (solo mostramos la semana actual para no saturar)
-  const historicoSemana = historico.filter(r => r.semana === semanaKey);
-  if (historicoSemana.length) {
-    const porSemana = {};
-    historicoSemana.forEach(r => {
-      if (!porSemana[r.semana]) porSemana[r.semana] = [];
-      porSemana[r.semana].push(r);
-    });
-    Object.entries(porSemana).forEach(([sem, items]) => {
-      const total = items.reduce((s, r) => s + r.metros, 0);
-      html += `<div class="cal-semana-header">Semana del ${sem} — ${items.length} archivos · ${total.toFixed(2)} m lineales</div>`;
-      html += items.map(r => renderCalItem(r, true)).join('');
-    });
-  }
-
-  cont.innerHTML = html;
-}
-
-function renderCalItem(r, opaco = false) {
-  const esDrive = r.origen === 'drive';
-  const icono   = esDrive ? '🌐' : '📄';
-  const extra   = esDrive && r.archivo
-    ? `<span style="font-size:0.7rem;color:#a78bfa;margin-left:6px;" title="${esc(r.archivo)}">Drive · ${esc(r.disenador || '')}</span>`
-    : '';
-  return `
-    <div class="cal-item" style="${opaco ? 'opacity:0.65;' : ''}">
-      <span style="font-size:1.3rem;">${icono}</span>
-      <div class="cal-item-info">
-        <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
-        <div class="cal-item-meta">${r.alto || r.altoCm || 0} cm alto · ${r.fecha} ${r.hora || ''}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div class="cal-item-metros">${r.metros <= 0.01 ? '<span style="color:var(--orange);font-size:0.75em;font-weight:700;">⚠️ Sin métrica</span>' : r.metros.toFixed(2) + ' m'}</div>
-        <button onclick="borrarCalItem('${r.id}')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 7px;font-size:0.8rem;cursor:pointer;line-height:1.4;" title="Borrar">✕</button>
-      </div>
-    </div>
-  `;
-}
-
-async function borrarCalItem(id) {
-  if (!confirm('¿Borrar este registro?')) return;
-  calandraRegistros = calandraRegistros.filter(r => String(r.id) !== String(id));
-  guardarCalandra_store();
-  renderCalandra();
-  renderDashboard();
-  // También borra del servidor para que no vuelva a aparecer
-  try { await fetch('/api/calandra/' + id, { method: 'DELETE' }); } catch {}
-}
-
-/* ════════════════════════════════════════════════════════════════
-   SATÉLITES — CONTROL COSTURA
-════════════════════════════════════════════════════════════════ */
-function guardarSat_store() {
-  localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
-  fetch('/api/satelites', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ movimientos: satMovimientos })
-  }).catch(() => {});
-}
-
-async function sincronizarSatelitesServidor() {
-  try {
-    const r = await fetch('/api/satelites');
-    if (!r.ok) return;
-    const data = await r.json();
-    const serv = Array.isArray(data.movimientos) ? data.movimientos : [];
-    const todos = [...satMovimientos, ...serv];
-    const vistos = new Set();
-    satMovimientos = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
-    satMovimientos.sort((a, b) => b.id - a.id);
-    localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
-    // Subir merge al servidor
-    fetch('/api/satelites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ movimientos: satMovimientos })
-    }).catch(() => {});
-    renderSatelites();
-  } catch {}
-}
-
-function abrirFormSat(tipo) {
-  satTipoActual = tipo;
-  document.getElementById('sat-nombre').value   = '';
-  document.getElementById('sat-equipo').value   = '';
-  document.getElementById('sat-cantidad').value = '';
-  const titulo = document.getElementById('form-sat-titulo');
-  if (titulo) titulo.textContent = tipo === 'entrega' ? '📦 Registrar entrega a satélite' : '✅ Registrar recepción de satélite';
-  document.getElementById('form-sat').style.display = 'block';
-  document.getElementById('sat-nombre').focus();
-}
-
-function guardarSat() {
-  const nombre   = document.getElementById('sat-nombre').value;
-  const equipo   = document.getElementById('sat-equipo').value.trim();
-  const prenda   = document.getElementById('sat-prenda').value;
-  const cantidad = parseInt(document.getElementById('sat-cantidad').value);
-
-  if (!nombre)           { toast('Selecciona el satélite', 'error'); return; }
-  if (!equipo)           { toast('Ingresa el equipo o pedido', 'error'); return; }
-  if (!cantidad || cantidad <= 0) { toast('Ingresa la cantidad', 'error'); return; }
-
-  const hoy = new Date().toLocaleDateString('es-CO');
-  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-
-  satMovimientos.unshift({
-    id:       Date.now(),
-    tipo:     satTipoActual,
-    satelite: nombre,
-    equipo,
-    prenda,
-    cantidad,
-    fecha:    hoy,
-    hora,
-  });
-
-  guardarSat_store();
-  document.getElementById('form-sat').style.display = 'none';
-  renderSatelites();
-  toast(`${satTipoActual === 'entrega' ? 'Entregado' : 'Recibido'}: ${cantidad} ${prenda} a ${nombre}`, 'success');
-}
-
-function renderSatelites() {
-  const contResumen = document.getElementById('sat-resumen');
-  const contLista   = document.getElementById('lista-satelites');
-  if (!contResumen || !contLista) return;
-
-  // Badge sidebar
-  const pendTotal = SATELITES.reduce((sum, s) => {
-    const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
-    const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
-    return sum + Math.max(0, entregado - recibido);
-  }, 0);
-  const badge = document.getElementById('badge-satelites');
-  if (badge) badge.textContent = pendTotal;
-
-  // Colores únicos por satélite
-  const SAT_COLORS = {
-    'Marcela':  { border: 'rgba(139,92,246,0.35)', header: '#a78bfa', dot: '#7c3aed' },
-    'Yamile':   { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
-    'Wilson':   { border: 'rgba(249,115,22,0.35)', header: '#fb923c', dot: '#ea580c' },
-    'Cristina': { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
-  };
-
-  // Resumen por satélite
-  contResumen.innerHTML = SATELITES.map(s => {
-    const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
-    const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
-    const pendiente = Math.max(0, entregado - recibido);
-    const col = SAT_COLORS[s] || { border: 'rgba(255,255,255,0.1)', header: '#94a3b8', dot: '#64748b' };
-    return `
-      <div class="sat-card" style="border-color:${col.border};">
-        <div class="sat-card-nombre" style="color:${col.header};display:flex;align-items:center;gap:7px;">
-          <span style="width:9px;height:9px;border-radius:50%;background:${col.dot};flex-shrink:0;"></span>
-          ${esc(s)}
-          ${pendiente > 0 ? `<span style="margin-left:auto;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:10px;padding:1px 7px;font-size:0.68rem;font-weight:700;">${pendiente} pend.</span>` : ''}
-        </div>
-        <div class="sat-stat-row">
-          <span class="sat-stat-label">Entregado</span>
-          <span class="sat-stat-val sat-entregado">${entregado}</span>
-        </div>
-        <div class="sat-stat-row">
-          <span class="sat-stat-label">Recibido</span>
-          <span class="sat-stat-val sat-recibido">${recibido}</span>
-        </div>
-        <div class="sat-stat-row" style="border-top:1px solid rgba(255,255,255,0.07);margin-top:6px;padding-top:6px;">
-          <span class="sat-stat-label">Pendiente</span>
-          <span class="sat-stat-val ${pendiente > 0 ? 'sat-pendiente' : 'sat-recibido'}">${pendiente}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Lista de movimientos recientes
-  if (!satMovimientos.length) {
-    contLista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin movimientos registrados</div>`;
-    return;
-  }
-
-  contLista.innerHTML = `
-    <div class="cal-semana-header" style="color:var(--text-muted);">Movimientos recientes</div>
-    ${satMovimientos.slice(0, 40).map(m => `
-      <div class="sat-item ${m.tipo}">
-        <span style="font-size:1.1rem;">${m.tipo === 'entrega' ? '📦' : '✅'}</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.satelite)} — ${esc(m.equipo)}</div>
-          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(m.prenda)} · ${m.fecha} ${m.hora}</div>
-        </div>
-        <span class="sat-tipo-badge" style="${m.tipo === 'entrega' ? 'background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);' : 'background:rgba(16,185,129,0.15);color:#4ade80;border:1px solid rgba(16,185,129,0.3);'}">${m.tipo === 'entrega' ? '+' : '-'}${m.cantidad}</span>
-      </div>
-    `).join('')}
-  `;
-}
-
-/* ════════════════════════════════════════════════════════════════
-   SISTEMA DE NOTIFICACIONES
-════════════════════════════════════════════════════════════════ */
-let notificaciones = JSON.parse(localStorage.getItem('ws_notifs') || '[]');
-
-function guardarNotifs() {
-  // Máximo 60 notificaciones guardadas
-  if (notificaciones.length > 60) notificaciones = notificaciones.slice(0, 60);
-  localStorage.setItem('ws_notifs', JSON.stringify(notificaciones));
-}
-
-function crearNotif(icono, mensaje, tipo = 'info', pedidoId = null) {
-  const notif = {
-    id:      Date.now(),
-    icono,
-    mensaje,
-    tipo,       // 'info' | 'success' | 'warning' | 'danger'
-    pedidoId,
-    leida:   false,
-    hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
-    fecha:   new Date().toLocaleDateString('es-CO'),
-  };
-  notificaciones.unshift(notif);
-  guardarNotifs();
-  renderNotifs();
-}
-
-function renderNotifs() {
-  const lista  = document.getElementById('notif-list');
-  const badge  = document.getElementById('notif-badge');
-  if (!lista || !badge) return;
-
-  const noLeidas = notificaciones.filter(n => !n.leida).length;
-
-  // Badge
-  if (noLeidas > 0) {
-    badge.textContent = noLeidas > 99 ? '99+' : noLeidas;
-    badge.classList.add('visible');
-  } else {
-    badge.classList.remove('visible');
-  }
-
-  if (!notificaciones.length) {
-    lista.innerHTML = '<div class="notif-empty">🔕 Sin notificaciones</div>';
-    return;
-  }
-
-  // Agrupar por fecha
-  const grupos = {};
-  notificaciones.forEach(n => {
-    const hoy = new Date().toLocaleDateString('es-CO');
-    const key = n.fecha === hoy ? 'Hoy' : n.fecha;
-    if (!grupos[key]) grupos[key] = [];
-    grupos[key].push(n);
-  });
-
-  lista.innerHTML = Object.entries(grupos).map(([fecha, items]) => `
-    <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);padding:6px 10px 4px;">${fecha}</div>
-    ${items.map(n => `
-      <div class="notif-item ${n.leida ? '' : 'unread'}" onclick="notifClick(${n.id})">
-        <div class="notif-icon">${n.icono}</div>
-        <div class="notif-body">
-          <div class="notif-msg">${n.mensaje}</div>
-          <div class="notif-time">${n.hora}</div>
-        </div>
-      </div>
-    `).join('')}
-  `).join('');
-}
-
-function notifClick(id) {
-  const n = notificaciones.find(x => x.id === id);
-  if (!n) return;
-  n.leida = true;
-  guardarNotifs();
-  renderNotifs();
-  // Si tiene pedido asociado, navegar a vista general
-  if (n.pedidoId) {
-    showSection('vista-general', document.querySelector('[onclick*="vista-general"]'));
-  }
-}
-
-function marcarTodasLeidas() {
-  notificaciones.forEach(n => n.leida = true);
-  guardarNotifs();
-  renderNotifs();
-}
-
-function borrarNotifs() {
-  notificaciones = [];
-  guardarNotifs();
-  renderNotifs();
-}
-
-function toggleNotifPanel() {
-  const panel = document.getElementById('notif-panel');
-  panel.classList.toggle('open');
-  // Al abrir, marcar como leídas
-  if (panel.classList.contains('open')) {
-    setTimeout(() => {
-      notificaciones.forEach(n => n.leida = true);
-      guardarNotifs();
-      renderNotifs();
-    }, 1500);
-  }
-}
-
-// Cerrar panel al hacer click fuera
-document.addEventListener('click', e => {
-  const panel = document.getElementById('notif-panel');
-  const btn   = document.querySelector('.notif-btn');
-  if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-    panel.classList.remove('open');
-  }
-});
-
-// Verificar alertas de fechas próximas (se llama cada hora y al cargar)
-function verificarAlertasFechas() {
-  const hoy  = new Date(); hoy.setHours(0,0,0,0);
-  const hoyStr = hoy.toLocaleDateString('es-CO');
-
-  pedidos.filter(p => p.estado !== 'enviado-final' && p.fechaEntrega).forEach(p => {
-    const d    = new Date(p.fechaEntrega + 'T00:00:00');
-    const diff = Math.round((d - hoy) / 86400000);
-    const clave = `alerta-fecha-${p.id}-${hoyStr}`;
-
-    // Solo una alerta por pedido por día
-    if (localStorage.getItem(clave)) return;
-
-    if (diff === 0) {
-      localStorage.setItem(clave, '1');
-      crearNotif('🚨', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega HOY`, 'danger', p.id);
-    } else if (diff === 1) {
-      localStorage.setItem(clave, '1');
-      crearNotif('⚠️', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega mañana`, 'warning', p.id);
-    } else if (diff === 2) {
-      localStorage.setItem(clave, '1');
-      crearNotif('📅', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega en 2 días`, 'info', p.id);
-    } else if (diff < 0) {
-      localStorage.setItem(clave, '1');
-      crearNotif('🔴', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
-    }
-  });
-}
-
-// Inicializar notificaciones al cargar
-renderNotifs();
-setTimeout(verificarAlertasFechas, 1000);
-setInterval(verificarAlertasFechas, 3600000); // cada hora
-
-
-/* ════════════════════════════════════════════════════════════════
-   MÓDULO COTIZACIONES / FACTURAS
-════════════════════════════════════════════════════════════════ */
-const LOGO_WYS = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? '/logos wys.png'
-  : 'https://' + location.hostname + '/logos%20wys.png';
-
-let docTipo = 'cotizacion';
-let docItems = [];
-let docHistorial = JSON.parse(localStorage.getItem('ws_docs') || '[]');
-let nextCot = parseInt(localStorage.getItem('ws_nextCot') || '210');
-let nextFac = parseInt(localStorage.getItem('ws_nextFac') || '501');
-let docCuenta = 1; // 1 = Duvan, 2 = William
-
-const CUENTAS_BANCOLOMBIA = {
-  1: { num: '215 0000 3773', nombre: 'DUVAN DOMINGUEZ VELANDIA', cc: 'C.C. 1 030 675 743', tipo: 'CTA DE AHORROS' },
-  2: { num: '912 383 287 94', nombre: 'william sneider dominguez', cc: '1.233.506.852', tipo: 'cta de ahorros' },
-};
-
-function selCuenta(n) {
-  docCuenta = n;
-  document.getElementById('btn-cta1').className = 'btn btn-xs ' + (n===1 ? 'btn-orange' : 'btn-glass');
-  document.getElementById('btn-cta2').className = 'btn btn-xs ' + (n===2 ? 'btn-orange' : 'btn-glass');
-}
-
-function guardarDocs() {
-  localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
-  localStorage.setItem('ws_nextCot', String(nextCot));
-  localStorage.setItem('ws_nextFac', String(nextFac));
-  // Subir al servidor (historial + contadores)
-  fetch('/api/docs/nums', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nextCot, nextFac, historial: docHistorial })
-  }).catch(() => {});
-}
-
-// Sincroniza historial entre este dispositivo y el servidor (bidireccional)
-async function cargarDocsServidor() {
-  try {
-    // 1. Bajar lo que tiene el servidor
-    const r = await fetch('/api/docs/nums');
-    if (!r.ok) return;
-    const data = await r.json();
-    if (data.nextCot) { nextCot = data.nextCot; localStorage.setItem('ws_nextCot', String(nextCot)); }
-    if (data.nextFac) { nextFac = data.nextFac; localStorage.setItem('ws_nextFac', String(nextFac)); }
-
-    // 2. Merge servidor + local
-    const servidorHist = Array.isArray(data.historial) ? data.historial : [];
-    const todos = [...docHistorial, ...servidorHist];
-    const vistos = new Set();
-    const merged = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
-    merged.sort((a, b) => b.id - a.id);
-    if (merged.length > 50) merged.length = 50;
-    docHistorial = merged;
-    localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
-    renderDocHistorial();
-
-    // 3. Siempre subir el merge completo al servidor (para que quede todo centralizado)
-    fetch('/api/docs/nums', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nextCot, nextFac, historial: docHistorial })
-    }).catch(() => {});
-  } catch {}
-}
-
-function abrirFormDoc(tipo) {
-  docTipo = tipo;
-  docItems = [{ cant: 1, desc: '', precio: 0 }];
-  document.getElementById('form-doc-titulo').textContent = tipo === 'cotizacion' ? 'Nueva cotización' : 'Nueva factura';
-  document.getElementById('doc-cliente').value = '';
-  document.getElementById('doc-telefono').value = '';
-  document.getElementById('doc-nit').value = '';
-  document.getElementById('doc-correo').value = '';
-  document.getElementById('doc-vendedora').value = '';
-  document.getElementById('doc-abono').value = '';
-  document.getElementById('doc-abono-grupo').style.display = tipo === 'factura' ? '' : 'none';
-  document.getElementById('form-doc').style.display = '';
-  renderDocItems();
-  renderDocTotales();
-  document.getElementById('form-doc').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function cerrarFormDoc() {
-  document.getElementById('form-doc').style.display = 'none';
-}
-
-function addItemDoc() {
-  docItems.push({ cant: 1, desc: '', precio: 0 });
-  renderDocItems();
-  renderDocTotales();
-}
-
-function removeItemDoc(i) {
-  docItems.splice(i, 1);
-  if (docItems.length === 0) docItems.push({ cant: 1, desc: '', precio: 0 });
-  renderDocItems();
-  renderDocTotales();
-}
-
-function renderDocItems() {
-  const cont = document.getElementById('doc-items-list');
-  cont.innerHTML = docItems.map((it, i) => `
-    <div class="doc-item-row">
-      <input type="number" class="form-input" min="1" value="${it.cant}"
-        oninput="docItems[${i}].cant=+this.value;renderDocTotales()">
-      <input type="text" class="form-input" value="${esc(it.desc)}" placeholder="Descripción (ej: CAMISETAS NIÑO)"
-        oninput="docItems[${i}].desc=this.value">
-      <input type="number" class="form-input" min="0" value="${it.precio}" placeholder="Precio unit."
-        oninput="docItems[${i}].precio=+this.value;renderDocTotales()">
-      <div style="font-size:0.78rem;color:var(--text-muted);text-align:right;padding-right:4px;">
-        ${fmtPeso(it.cant * it.precio)}
-      </div>
-      <button class="btn btn-glass btn-xs" onclick="removeItemDoc(${i})">✕</button>
-    </div>
-  `).join('');
-}
-
-function calcDocTotales() {
-  const subtotal = docItems.reduce((s, it) => s + (it.cant * it.precio), 0);
-  const abono = docTipo === 'factura' ? (parseInt(document.getElementById('doc-abono')?.value || '0') || 0) : 0;
-  const total = subtotal - abono;
-  return { subtotal, abono, total };
-}
-
-function renderDocTotales() {
-  const { subtotal, abono, total } = calcDocTotales();
-  const cont = document.getElementById('doc-totales');
-  let html = `<div class="doc-totales-row"><span class="lbl">SUBTOTAL:</span><span class="val">${fmtPeso(subtotal)}</span></div>`;
-  if (docTipo === 'factura') {
-    html += `<div class="doc-totales-row"><span class="lbl">ABONO:</span><span class="val" style="color:var(--orange)">${fmtPeso(abono)}</span></div>`;
-  }
-  html += `<div class="doc-totales-row total-final"><span class="lbl">TOTAL:</span><span class="val">${fmtPeso(total)}</span></div>`;
-  cont.innerHTML = html;
-}
-
-function fmtPeso(n) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
-}
-
-function fmtPesoNum(n) {
-  return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(n);
-}
-
-function generarPDF() {
-  const cliente   = document.getElementById('doc-cliente').value.trim();
-  const vendedora = document.getElementById('doc-vendedora').value;
-  if (!cliente)   return toast('Ingresa el nombre del cliente', 'warning');
-  if (!vendedora) return toast('Selecciona la vendedora', 'warning');
-  if (docItems.every(it => !it.desc)) return toast('Agrega al menos un ítem', 'warning');
-
-  const telefono = document.getElementById('doc-telefono').value.trim();
-  const nit      = document.getElementById('doc-nit').value.trim();
-  const correo   = document.getElementById('doc-correo').value.trim();
-  const abono    = docTipo === 'factura' ? (parseInt(document.getElementById('doc-abono').value || '0') || 0) : 0;
-  const { subtotal, total } = calcDocTotales();
-
-  const num    = docTipo === 'cotizacion' ? nextCot : nextFac;
-  const numStr = String(num).padStart(5, '0');
-  const fecha  = new Date().toLocaleDateString('es-CO');
-  const esCot  = docTipo === 'cotizacion';
-  const titulo = esCot ? 'COTIZACION' : 'FACTURA';
-  const color1 = '#c8a96e';
-  const color2 = '#f5e6c8';
-
-  const filasItems = docItems.filter(it => it.desc).map(it => {
-    const tot = it.cant * it.precio;
-    return `<tr>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;color:#c8501a;">${it.cant}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;text-transform:uppercase;">${esc(it.desc)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(it.precio)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(tot)}</td>
-    </tr>`;
-  }).join('');
-
-  const itemsValidos = docItems.filter(it => it.desc).length;
-  const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
-    .map(() => `<tr><td style="padding:10px 6px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
-
-  const abonoFila = !esCot ? `<tr>
-    <td colspan="2"></td>
-    <td style="text-align:right;font-weight:600;padding:6px 6px;">ABONO:</td>
-    <td style="text-align:center;padding:6px 6px;">
-      <span style="background:${color1};color:white;padding:2px 10px;border-radius:3px;font-weight:700;">${abono > 0 ? fmtPesoNum(abono) : '0'}</span>
-    </td>
-  </tr>` : '';
-
-  const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
-    <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
-    TELA<br>
-    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
-    BONOS<br>
-    por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
-    por compra de +100 uniformes obsequiamos descuento del 5%
-  </div>` : '';
-
-  const htmlDoc = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>${titulo} #${numStr}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:Arial,sans-serif;font-size:12px;color:#333;background:white}
-  .page{width:800px;margin:0 auto;padding:30px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-  .empresa-info{font-size:11px;line-height:1.7}
-  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
-  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
-  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
-  .campo{color:#999;min-width:60px;display:inline-block}
-  table{width:100%;border-collapse:collapse}
-  thead tr{background:${color1}}
-  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
-  tbody tr:nth-child(even){background:${color2}}
-  tbody tr{border-bottom:1px solid #e8d8b8}
-  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
-  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
-  .cuenta{text-align:center;font-size:10px;line-height:1.7}
-  .cuenta strong{font-size:11px;text-transform:uppercase}
-  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="header">
-    <div>
-      <img src="${LOGO_WYS}" style="height:90px;width:auto;" alt="W&S">
-      <div class="empresa-info" style="margin-top:8px;">
-        <strong>W&S DEPORTIVO</strong><br>
-        1030675743-0<br>
-        CARRERA 90A # 4-40<br>
-        Bogotá D.C<br>
-        (350) 697-4711<br>
-        301 663 94 30
-      </div>
-    </div>
-    <div class="titulo-doc">
-      <h1>${titulo}</h1>
-      <div class="num"># ${numStr}</div>
-      <div style="text-align:right;font-size:11px;margin-top:10px;">
-        Fecha: ${fecha}<br>
-        <strong>VENDEDOR: ${esc(vendedora)}</strong>
-      </div>
-    </div>
-  </div>
-
-  <hr>
-
-  <div style="margin-bottom:16px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
-    <div style="font-size:11px;line-height:1.8;">
-      <span class="campo">Nombre</span> ${esc(cliente)}<br>
-      <span class="campo">Teléfono</span> ${telefono || '—'}<br>
-      ${nit ? `<span class="campo">NIT/CC</span> ${nit}<br>` : ''}
-      ${correo ? `<span class="campo">Correo</span> ${correo}<br>` : ''}
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width:80px">CANTIDAD</th>
-        <th>DESCRIPCION</th>
-        <th style="width:110px">PRECIO</th>
-        <th style="width:110px">TOTAL</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filasItems}
-      ${filasVacias}
-      <tr>
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:600;padding:8px 6px;">SUBTOTAL:</td>
-        <td style="text-align:center;font-weight:700;padding:8px 6px;">${fmtPesoNum(subtotal)}</td>
-      </tr>
-      ${abonoFila}
-      <tr style="background:${color2};">
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:800;font-size:13px;padding:8px 6px;">TOTAL:</td>
-        <td style="text-align:center;font-weight:800;font-size:14px;padding:8px 6px;">${fmtPesoNum(total)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div class="footer-text">
-    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
-    SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
-  </div>
-
-  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
-
-  <div class="cuentas">
-    <div class="cuenta">
-      <strong>BANCOLOMBIA</strong><br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].num}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].nombre}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].cc}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].tipo}
-    </div>
-    <div class="cuenta">
-      <strong>NEQUI</strong><br>
-      350 697 47 11<br>
-      301 663 94 30
-    </div>
-    <div class="cuenta">
-      <strong>DAVIPLATA</strong><br>
-      350 697 47 11<br>
-      301 663 94 30
-    </div>
-  </div>
-
-  ${notaCot}
-</div>
-</body>
-</html>`;
-
-  // Guardar en historial
-  const registro = {
-    id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora, telefono,
-    subtotal, abono, total, fecha, cuenta: docCuenta,
-    items: docItems.filter(it => it.desc).map(it => ({...it})),
-  };
-  docHistorial.unshift(registro);
-  if (docHistorial.length > 50) docHistorial = docHistorial.slice(0, 50);
-  if (docTipo === 'cotizacion') nextCot++; else nextFac++;
-  guardarDocs();
-  renderDocHistorial();
-
-  const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const win  = window.open(url, '_blank');
-  if (win) setTimeout(() => win.print(), 1200);
-  else window.location.href = url; // fallback celular bloqueó popup
-
-  toast(titulo + ' #' + numStr + ' generada', 'success');
-  cerrarFormDoc();
-}
-
-function renderDocHistorial() {
-  const cont = document.getElementById('doc-historial');
-  if (!cont) return;
-
-  const buscar = (document.getElementById('doc-buscar')?.value || '').toLowerCase().trim();
-  const filtroTipo = document.getElementById('doc-filtro-tipo')?.value || '';
-
-  let lista = docHistorial;
-  if (filtroTipo) lista = lista.filter(d => d.tipo === filtroTipo);
-  if (buscar) lista = lista.filter(d =>
-    (d.cliente || '').toLowerCase().includes(buscar) ||
-    (d.numero || '').toLowerCase().includes(buscar) ||
-    (d.vendedora || '').toLowerCase().includes(buscar)
-  );
-
-  if (!lista.length) {
-    cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">' +
-      (docHistorial.length ? 'Sin resultados para esa búsqueda.' : 'No hay documentos generados aún.') + '</div>';
-    return;
-  }
-  cont.innerHTML = lista.slice(0, 30).map(d => `
-    <div class="doc-hist-row" style="flex-wrap:wrap;gap:4px;">
-      <span class="doc-num">#${d.numero}</span>
-      <span class="${d.tipo === 'cotizacion' ? 'doc-badge-cot' : 'doc-badge-fac'}">${d.tipo === 'cotizacion' ? 'Cot' : 'Fac'}</span>
-      <span class="doc-cliente">${esc(d.cliente)}</span>
-      <span class="doc-total">${fmtPeso(d.total)}</span>
-      <span class="doc-fecha">${d.fecha}</span>
-      <div style="margin-left:auto;display:flex;gap:5px;">
-        <button onclick="verDocHistorial(${d.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">Ver</button>
-        <button onclick="compartirDocWA(${d.id})" style="background:#25d366;border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">WhatsApp</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function verDocHistorial(id) {
-  const d = docHistorial.find(x => x.id === id);
-  if (!d) return;
-  const htmlDoc = buildDocHTML(d);
-  const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-}
-
-function buildDocHTML(d) {
-  const esCot   = d.tipo === 'cotizacion';
-  const titulo  = esCot ? 'COTIZACION' : 'FACTURA';
-  const color1  = '#c8a96e';
-  const color2  = '#f5e6c8';
-
-  const filasItems = d.items.filter(it => it.desc).map(it => {
-    const tot = (it.cant || 1) * (it.precio || 0);
-    return `<tr>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;color:#c8501a;">${it.cant}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;text-transform:uppercase;">${esc(it.desc)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(it.precio || 0)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(tot)}</td>
-    </tr>`;
-  }).join('');
-
-  const itemsValidos = d.items.filter(it => it.desc).length;
-  const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
-    .map(() => `<tr><td style="padding:10px 6px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
-
-  const abonoFila = !esCot && d.abono > 0 ? `<tr>
-    <td colspan="2"></td>
-    <td style="text-align:right;font-weight:600;padding:6px 6px;">ABONO:</td>
-    <td style="text-align:center;padding:6px 6px;">
-      <span style="background:${color1};color:white;padding:2px 10px;border-radius:3px;font-weight:700;">${fmtPesoNum(d.abono)}</span>
-    </td>
-  </tr>` : '';
-
-  const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
-    <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
-    TELA<br>
-    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
-    BONOS<br>
-    por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
-    por compra de +100 uniformes obsequiamos descuento del 5%
-  </div>` : '';
-
-  // Cuenta bancolombia (usar la seleccionada actualmente, o la 1 por defecto)
-  const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
-
-  return `<!DOCTYPE html><html style="background:white;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{font-family:Arial,sans-serif;font-size:12px;color:#333 !important;background:white !important;color-scheme:light !important}
-  .page{width:800px;margin:0 auto;padding:30px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-  .empresa-info{font-size:11px;line-height:1.7}
-  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
-  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
-  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
-  .campo{color:#999;min-width:60px;display:inline-block}
-  table{width:100%;border-collapse:collapse}
-  thead tr{background:${color1}}
-  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
-  tbody tr:nth-child(even){background:${color2}}
-  tbody tr{border-bottom:1px solid #e8d8b8}
-  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
-  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
-  .cuenta{text-align:center;font-size:10px;line-height:1.7}
-  .cuenta strong{font-size:11px;text-transform:uppercase}
-  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-<div class="page">
-  <div class="header">
-    <div>
-      <div class="empresa-info">
-        <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
-      </div>
-    </div>
-    <div class="titulo-doc">
-      <h1>${titulo}</h1>
-      <div class="num"># ${d.numero}</div>
-      <div style="text-align:right;font-size:11px;margin-top:10px;">
-        Fecha: ${d.fecha}<br><strong>VENDEDOR: ${esc(d.vendedora)}</strong>
-      </div>
-    </div>
-  </div>
-  <hr>
-  <div style="margin-bottom:16px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
-    <div style="font-size:11px;line-height:1.8;">
-      <span class="campo">Nombre</span> ${esc(d.cliente)}<br>
-      ${d.telefono ? `<span class="campo">Teléfono</span> ${d.telefono}<br>` : ''}
-    </div>
-  </div>
-  <table>
-    <thead><tr>
-      <th style="width:80px">CANTIDAD</th><th>DESCRIPCION</th>
-      <th style="width:110px">PRECIO</th><th style="width:110px">TOTAL</th>
-    </tr></thead>
-    <tbody>
-      ${filasItems}${filasVacias}
-      <tr><td colspan="2"></td>
-        <td style="text-align:right;font-weight:600;padding:8px 6px;">SUBTOTAL:</td>
-        <td style="text-align:center;font-weight:700;padding:8px 6px;">${fmtPesoNum(d.subtotal)}</td>
-      </tr>
-      ${abonoFila}
-      <tr style="background:${color2};">
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:800;font-size:13px;padding:8px 6px;">TOTAL:</td>
-        <td style="text-align:center;font-weight:800;font-size:14px;padding:8px 6px;">${fmtPesoNum(d.total)}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="footer-text">
-    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
-    SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
-  </div>
-  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
-  <div class="cuentas">
-    <div class="cuenta"><strong>BANCOLOMBIA</strong><br>${cta.num}<br>${cta.nombre}<br>${cta.cc}<br>${cta.tipo}</div>
-    <div class="cuenta"><strong>NEQUI</strong><br>350 697 47 11<br>301 663 94 30</div>
-    <div class="cuenta"><strong>DAVIPLATA</strong><br>350 697 47 11<br>301 663 94 30</div>
-  </div>
-  ${notaCot}
-</div></body></html>`;
-}
-
-// Convierte una URL de imagen a base64 para embeber en el PDF
-async function imgToBase64(src) {
-  try {
-    const resp = await fetch(src);
-    if (!resp.ok) throw new Error('fetch failed');
-    const blob = await resp.blob();
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    // fallback via canvas
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        c.getContext('2d').drawImage(img, 0, 0);
-        resolve(c.toDataURL('image/png'));
-      };
-      img.onerror = () => resolve(''); // sin logo antes que romper el PDF
-      img.src = src;
-    });
-  }
-}
-
-async function compartirDocWA(id) {
-  const d = docHistorial.find(x => x.id === id);
-  if (!d) return;
-  const tipo   = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
-  const nombre = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
-
-  toast('Generando PDF...', 'info');
-
-  try {
-    const htmlDoc = buildDocHTML(d);
-
-    // Renderizar en iframe oculto para que html2pdf capture bien
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
-    document.body.appendChild(iframe);
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(htmlDoc);
-    iframe.contentDocument.close();
-
-    await new Promise(r => setTimeout(r, 1000)); // esperar renderizado
-
-    const opt = {
-      margin:      [8, 8, 8, 8],
-      filename:    nombre,
-      image:       { type: 'jpeg', quality: 0.97 },
-      html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
-      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    };
-
-    const pdfBlob = await html2pdf()
-      .set(opt)
-      .from(iframe.contentDocument.body)
-      .outputPdf('blob');
-
-    document.body.removeChild(iframe);
-
-    // Celular: compartir como PDF directo (abre WhatsApp)
-    if (navigator.canShare) {
-      const pdfFile = new File([pdfBlob], nombre, { type: 'application/pdf' });
-      if (navigator.canShare({ files: [pdfFile] })) {
-        await navigator.share({ files: [pdfFile], title: nombre });
-        return;
-      }
-    }
-
-    // PC: descargar PDF
-    const url = URL.createObjectURL(pdfBlob);
-    const a   = document.createElement('a');
-    a.href = url; a.download = nombre;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('PDF descargado', 'success');
-
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      console.error(err);
-      toast('Error al generar PDF', 'error');
-    }
-  }
-}
-
-// Hook showSection para renderizar historial al abrir la sección
-(function() {
-  const _orig = showSection;
-  showSection = function(id, navEl) {
-    _orig(id, navEl);
-    if (id === 'cotizaciones') { cargarDocsServidor(); renderDocHistorial(); }
-    if (id === 'arreglos')     { sincronizarArreglosServidor(); }
-    if (id === 'satelites')    { sincronizarSatelitesServidor(); }
-  };
-})();
-
-// Sync inicial con servidor para todos los módulos
-setTimeout(cargarDocsServidor, 1500);
-setTimeout(sincronizarArreglosServidor, 2000);
-setTimeout(sincronizarSatelitesServidor, 2500);
-
-</script>
+<script src="/js/app.js"></script>
 </body>
 </html>
+

@@ -1,0 +1,153 @@
+{
+  "name": "Listo para Entregar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0],
+      "id": "d4e5f6a7-0004-0004-0004-000000000001",
+      "name": "Cada 10 minutos"
+    },
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/pedidos",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [208, 0],
+      "id": "d4e5f6a7-0004-0004-0004-000000000002",
+      "name": "Obtener Pedidos"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Usar Static Data para recordar qué IDs ya fueron notificados\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.notificados) staticData.notificados = [];\n\nconst { pedidos } = $('Obtener Pedidos').item.json;\n\n// Solo pedidos en estado listo-entregar que NO hayan sido notificados antes\nconst nuevos = pedidos.filter(p =>\n  p.estado === 'listo-entregar' &&\n  !staticData.notificados.includes(p.id)\n);\n\nif (nuevos.length === 0) return [];\n\n// Registrar los nuevos como notificados\nstaticData.notificados = [\n  ...staticData.notificados,\n  ...nuevos.map(p => p.id)\n];\n\n// Limpiar IDs viejos (enviado-final) para que el array no crezca infinito\nconst idsActivos = pedidos\n  .filter(p => p.estado !== 'enviado-final')\n  .map(p => p.id);\nstaticData.notificados = staticData.notificados.filter(id => idsActivos.includes(id));\n\nreturn nuevos.map(p => ({ json: p }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [416, 0],
+      "id": "d4e5f6a7-0004-0004-0004-000000000003",
+      "name": "Filtrar Listos Nuevos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d4e5f6a7-0004-0004-0004-000000000010",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [624, 0],
+      "id": "d4e5f6a7-0004-0004-0004-000000000004",
+      "name": "Hay Listos?"
+    },
+    {
+      "parameters": {
+        "chatId": "-5135765805",
+        "text": "=✅ *Pedido listo para entregar*\n\n{{ $input.all().map(i => `• #${i.json.id} *${i.json.equipo || i.json.telefono}*\\n  Vendedora: *${i.json.vendedora}*${i.json.fechaEntrega ? ' | Entrega: ' + i.json.fechaEntrega : ''}\\n  📱 ${i.json.telefono}`).join('\\n\\n') }}\n\n👉 Avisar al cliente que su pedido está listo",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [832, -96],
+      "id": "d4e5f6a7-0004-0004-0004-000000000005",
+      "name": "Notificar Vendedora",
+      "webhookId": "d4e5f6a7-0004-0004-0004-000000000099",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada 10 minutos": {
+      "main": [
+        [
+          {
+            "node": "Obtener Pedidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Pedidos": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Listos Nuevos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Listos Nuevos": {
+      "main": [
+        [
+          {
+            "node": "Hay Listos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Listos?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Vendedora",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d4e5f6a7-0004-0004-0004-aabbccddeeff",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "ListoParaEntregar01",
+  "tags": []
+}

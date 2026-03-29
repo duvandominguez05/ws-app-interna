@@ -1,0 +1,167 @@
+{
+  "name": "Alertas Fechas Vencidas",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 19
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d984c5dd-7154-4e6b-99bf-129cf970eb07",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/pedidos",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "513df82c-cc81-4b87-b3b5-36bf61a68944",
+      "name": "Obtener Pedidos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { pedidos } = $('Obtener Pedidos').item.json;\n\nconst hoy = new Date();\nhoy.setHours(0, 0, 0, 0);\n\nconst vencidos = pedidos.filter(p => {\n  if (!p.fechaEntrega) return false;\n  if (p.estado === 'enviado-final') return false;\n  const fecha = new Date(p.fechaEntrega);\n  return fecha < hoy;\n});\n\nreturn vencidos.map(p => ({ json: p }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "70a55d7d-4d0c-473e-8c29-879ff2c1a9da",
+      "name": "Filtrar Vencidos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0eed785f-0cee-4e5c-af49-1cd972f4a332",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "9c2d44a1-91b4-419a-872b-b5940648ed0b",
+      "name": "Hay Vencidos?"
+    },
+    {
+      "parameters": {
+        "chatId": "-5135765805",
+        "text": "=⚠️ *Pedidos con fecha vencida*\n\n{{ $input.all().map(i => `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — venció el ${i.json.fechaEntrega} (${i.json.estado})`).join('\\n') }}\n\nRevisar en la app 👆\n",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        832,
+        -96
+      ],
+      "id": "1f53557d-0334-4911-9614-33394710cb57",
+      "name": "Notificar Admin",
+      "webhookId": "80d73ec1-87c0-444a-8ae7-e216d37748c9",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Obtener Pedidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Pedidos": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Vencidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Vencidos": {
+      "main": [
+        [
+          {
+            "node": "Hay Vencidos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Vencidos?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "87a79ff7-be52-4e7d-80a5-42b5143f3367",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "WU8utL4KX9cncdpS",
+  "tags": []
+}

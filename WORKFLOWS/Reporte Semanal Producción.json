@@ -1,0 +1,124 @@
+{
+  "name": "Reporte Semanal Producción",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "048cc639-3ad5-413a-8ebb-4e24b902e7ce",
+      "name": "Cada lunes 8am"
+    },
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/pedidos",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "96f5a291-30ef-440d-b460-da854f35e551",
+      "name": "Obtener Pedidos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { pedidos } = $input.first().json;\n\nconst ahora = new Date();\nconst hoy = ahora.toISOString();\n\n// Fecha inicio de semana anterior (lunes pasado)\nconst lunesAnterior = new Date(ahora);\nlunesAnterior.setDate(ahora.getDate() - 7);\nlunesAnterior.setHours(0,0,0,0);\n\n// Pedidos activos (no enviado-final)\nconst activos = pedidos.filter(p => p.estado !== 'enviado-final');\n\n// Entregados esta semana\nconst entregados = pedidos.filter(p =>\n  p.estado === 'enviado-final' &&\n  p.ultimoMovimiento &&\n  new Date(p.ultimoMovimiento) >= lunesAnterior\n);\n\n// Por estado\nconst estados = {\n  'bandeja': 0, 'hacer-diseno': 0, 'confirmado': 0,\n  'enviado-calandra': 0, 'llego-impresion': 0, 'corte': 0,\n  'calidad': 0, 'costura': 0, 'listo': 0\n};\nactivos.forEach(p => {\n  if (estados[p.estado] !== undefined) estados[p.estado]++;\n});\n\n// Sin movimiento +3 días\nconst sinMovimiento = activos.filter(p => {\n  if (!p.ultimoMovimiento) return false;\n  const diff = (ahora - new Date(p.ultimoMovimiento)) / (1000 * 60 * 60 * 24);\n  return diff >= 3;\n});\n\n// Vencidos (fecha entrega pasada)\nconst vencidos = activos.filter(p => {\n  if (!p.fechaEntrega) return false;\n  const partes = p.fechaEntrega.split('/');\n  if (partes.length !== 3) return false;\n  const fecha = new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);\n  return fecha < ahora;\n});\n\n// Armar líneas sin movimiento\nconst listaSinMov = sinMovimiento.slice(0, 5).map(p => {\n  const dias = Math.floor((ahora - new Date(p.ultimoMovimiento)) / (1000*60*60*24));\n  return `  • ${p.equipo || 'Sin nombre'} — ${p.estado} (${dias}d)`;\n}).join('\\n');\n\n// Armar líneas vencidos\nconst listaVencidos = vencidos.slice(0, 5).map(p =>\n  `  • ${p.equipo || 'Sin nombre'} — venció ${p.fechaEntrega}`\n).join('\\n');\n\nconst texto = `📊 *Reporte Semanal Producción*\n📅 Semana del ${lunesAnterior.toLocaleDateString('es-CO')} al ${ahora.toLocaleDateString('es-CO')}\n\n✅ *Entregados esta semana:* ${entregados.length}\n📦 *Pedidos activos:* ${activos.length}\n\n📋 *Por etapa:*\n  Bandeja: ${estados['bandeja']}\n  Diseño: ${estados['hacer-diseno']}\n  Confirmado: ${estados['confirmado']}\n  Calandra: ${estados['enviado-calandra']}\n  Impresión: ${estados['llego-impresion']}\n  Corte: ${estados['corte']}\n  Calidad: ${estados['calidad']}\n  Costura: ${estados['costura']}\n  Listo: ${estados['listo']}\n\n⚠️ *Sin movimiento +3 días:* ${sinMovimiento.length}\n${listaSinMov || '  Ninguno'}\n\n🔴 *Vencidos:* ${vencidos.length}\n${listaVencidos || '  Ninguno'}`;\n\nreturn [{ json: { texto } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "4e9bbde8-a9bb-42b5-8423-887efaaa02c4",
+      "name": "Procesar Reporte"
+    },
+    {
+      "parameters": {
+        "chatId": "-5135765805",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        592,
+        0
+      ],
+      "id": "1d35bb08-4d1a-4a8b-a515-669027e533d0",
+      "name": "Enviar a WS Admin",
+      "webhookId": "902c57d4-b44a-444d-b398-55262f41ec01",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada lunes 8am": {
+      "main": [
+        [
+          {
+            "node": "Obtener Pedidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Pedidos": {
+      "main": [
+        [
+          {
+            "node": "Procesar Reporte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Reporte": {
+      "main": [
+        [
+          {
+            "node": "Enviar a WS Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "80a3a2d2-2419-4f4b-aa00-5a521fa41915",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "wYZCvGpRVGlcYfxb",
+  "tags": []
+}

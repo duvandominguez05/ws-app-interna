@@ -400,6 +400,12 @@ http.createServer((req, res) => {
 
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+  
+  if (req.url !== '/' && !fs.existsSync(filePath)) {
+    const publicPath = path.join(__dirname, 'public', req.url);
+    if (fs.existsSync(publicPath)) filePath = publicPath;
+  }
+  
   const ext = path.extname(filePath);
   fs.readFile(filePath, (err, data) => {
     if (err) {
