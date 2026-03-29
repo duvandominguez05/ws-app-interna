@@ -4212,10 +4212,11 @@ function renderCalandra() {
     html += hoyList.map(r => renderCalItem(r)).join('');
   }
 
-  // Agrupar histórico por semana
-  if (historico.length) {
+  // Agrupar histórico por semana (solo mostramos la semana actual para no saturar)
+  const historicoSemana = historico.filter(r => r.semana === semanaKey);
+  if (historicoSemana.length) {
     const porSemana = {};
-    historico.forEach(r => {
+    historicoSemana.forEach(r => {
       if (!porSemana[r.semana]) porSemana[r.semana] = [];
       porSemana[r.semana].push(r);
     });
@@ -4240,10 +4241,10 @@ function renderCalItem(r, opaco = false) {
       <span style="font-size:1.3rem;">${icono}</span>
       <div class="cal-item-info">
         <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
-        <div class="cal-item-meta">${r.altoCm} cm alto · ${r.fecha} ${r.hora || ''}</div>
+        <div class="cal-item-meta">${r.alto || r.altoCm || 0} cm alto · ${r.fecha} ${r.hora || ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="cal-item-metros">${r.metros.toFixed(2)} m</div>
+        <div class="cal-item-metros">${r.metros <= 0.01 ? '<span style="color:var(--orange);font-size:0.75em;font-weight:700;">⚠️ Sin métrica</span>' : r.metros.toFixed(2) + ' m'}</div>
         <button onclick="borrarCalItem('${r.id}')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:4px;padding:1px 7px;font-size:0.8rem;cursor:pointer;line-height:1.4;" title="Borrar">✕</button>
       </div>
     </div>

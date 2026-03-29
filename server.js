@@ -175,9 +175,8 @@ http.createServer((req, res) => {
         if (!equipo || !alto)
           return json(res, 400, { error: 'Faltan campos: equipo, alto' });
 
-        const altoCm  = parseFloat(alto);
-        if (isNaN(altoCm) || altoCm <= 0)
-          return json(res, 400, { error: 'alto debe ser un número positivo en cm' });
+        let altoCm  = parseFloat(alto);
+        if (isNaN(altoCm) || altoCm < 0) altoCm = 0;
 
         const metros  = parseFloat((altoCm / 100).toFixed(3));
         const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
@@ -423,6 +422,9 @@ http.createServer((req, res) => {
 // ── Limpieza automática cada 30 días ────────────────────────────
 // Borra registros más antiguos de 30 días, dejando mínimo los 6 más recientes
 function limpiezaAutomatica() {
+  // ── Limpieza Desactivada a petición del usuario para preservar historial perpetuo ──
+  return;
+  
   const LIMITE_MS  = 30 * 24 * 60 * 60 * 1000; // 30 días en ms
   const MIN_ITEMS  = 6;
   const ahora      = Date.now();
