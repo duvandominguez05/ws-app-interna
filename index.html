@@ -4932,18 +4932,16 @@ function renderDocHistorial() {
   `).join('');
 }
 
-async function verDocHistorial(id) {
+function verDocHistorial(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
-  const logoBase64 = await imgToBase64(LOGO_WYS);
-  const htmlDoc = buildDocHTML(d, logoBase64);
+  const htmlDoc = buildDocHTML(d);
   const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }
 
-function buildDocHTML(d, logoSrc) {
-  logoSrc = logoSrc || LOGO_WYS;
+function buildDocHTML(d) {
   const esCot   = d.tipo === 'cotizacion';
   const titulo  = esCot ? 'COTIZACION' : 'FACTURA';
   const color1  = '#c8a96e';
@@ -5008,8 +5006,7 @@ function buildDocHTML(d, logoSrc) {
 <div class="page">
   <div class="header">
     <div>
-      <img src="${logoSrc}" style="height:90px;width:auto;" alt="W&S">
-      <div class="empresa-info" style="margin-top:8px;">
+      <div class="empresa-info">
         <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
       </div>
     </div>
@@ -5100,9 +5097,7 @@ async function compartirDocWA(id) {
   toast('Generando PDF...', 'info');
 
   try {
-    // Convertir logo a base64 para que se vea en el iframe sin problemas de CORS
-    const logoBase64 = await imgToBase64(LOGO_WYS);
-    const htmlDoc = buildDocHTML(d, logoBase64);
+    const htmlDoc = buildDocHTML(d);
 
     // Renderizar en iframe oculto para que html2pdf capture bien
     const iframe = document.createElement('iframe');
