@@ -1173,18 +1173,18 @@
     /* ─── EMPTY STATE ──────────────────────────────────────────────────── */
     .empty-state {
       text-align: center;
-      padding: 30px 20px;
+      padding: 14px 10px;
       color: var(--text-muted);
     }
 
     .empty-icon {
-      font-size: 2rem;
-      margin-bottom: 8px;
-      opacity: 0.4;
+      font-size: 1.4rem;
+      margin-bottom: 4px;
+      opacity: 0.35;
     }
 
     .empty-text {
-      font-size: 0.78rem;
+      font-size: 0.75rem;
     }
 
     /* ─── ANIMATIONS ───────────────────────────────────────────────────── */
@@ -2213,10 +2213,11 @@
       <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-primary btn-sm" onclick="abrirFormCalandra()">+ Registrar envío</button>
         <div class="cal-ancho-bar">
-          Ancho de tela:
+          <span style="color:var(--text-muted);font-size:0.78rem;">Ancho de tela calandra:</span>
           <strong style="color:#a78bfa;" id="cal-ancho-label">1.50 m</strong>
           <select id="cal-ancho-sel" onchange="cambiarAnchoTela(this.value)"
-            style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.12);color:var(--text);border-radius:5px;font-size:0.72rem;padding:3px 8px;">
+            title="Selecciona el ancho de la tela que usa la calandra (afecta el cálculo de metros)"
+            style="background:var(--card-bg);border:1px solid rgba(167,139,250,0.3);color:var(--text);border-radius:5px;font-size:0.78rem;padding:4px 10px;outline:none;cursor:pointer;">
             <option value="1.40">1.40 m</option>
             <option value="1.50" selected>1.50 m</option>
             <option value="1.60">1.60 m</option>
@@ -2401,7 +2402,19 @@
       </div>
 
       <!-- Historial -->
-      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px;">Historial reciente</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Historial reciente</div>
+        <div style="display:flex;gap:6px;margin-left:auto;align-items:center;flex-wrap:wrap;">
+          <input id="doc-buscar" type="text" placeholder="🔍 Buscar cliente o #..." oninput="renderDocHistorial()"
+            style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 10px;outline:none;width:180px;">
+          <select id="doc-filtro-tipo" onchange="renderDocHistorial()"
+            style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.1);border-radius:7px;color:var(--text);font-size:0.78rem;padding:5px 8px;outline:none;">
+            <option value="">Todos</option>
+            <option value="factura">Solo facturas</option>
+            <option value="cotizacion">Solo cotizaciones</option>
+          </select>
+        </div>
+      </div>
       <div id="doc-historial"></div>
     </section>
 
@@ -2773,13 +2786,12 @@ function renderDashboard() {
   const contPipe = document.getElementById('dash-pipeline');
   const rowsPipe = PIPE_ESTADOS.map(e => {
     const cnt = pedidos.filter(p => p.estado === e.key).length;
-    if (!cnt) return '';
-    return `<div class="dash-pipe-row">
-      <div class="dash-pipe-dot" style="background:${e.color};box-shadow:0 0 5px ${e.color}66;"></div>
+    return `<div class="dash-pipe-row" style="${cnt === 0 ? 'opacity:0.35;' : ''}">
+      <div class="dash-pipe-dot" style="background:${cnt > 0 ? e.color : '#334155'};box-shadow:${cnt > 0 ? '0 0 5px ' + e.color + '66' : 'none'};"></div>
       <div class="dash-pipe-label">${e.label}</div>
-      <div class="dash-pipe-count" style="color:${e.color};">${cnt}</div>
+      <div class="dash-pipe-count" style="color:${cnt > 0 ? e.color : 'var(--text-muted)'};">${cnt}</div>
     </div>`;
-  }).filter(Boolean).join('');
+  }).join('');
   contPipe.innerHTML = rowsPipe || '<div class="dash-empty">Sin pedidos activos</div>';
 
   // Panel satélites
@@ -3129,7 +3141,10 @@ function renderKanbanCardDiseno(p) {
         <div style="font-size:0.7rem;color:var(--text-muted);">#${p.id}</div>
       </div>
       <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
-      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">📅 ${fechaTxt} &nbsp; 👤 ${esc(p.vendedora || '-')}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.35);color:#fde047;border-radius:5px;padding:2px 8px;font-size:0.73rem;font-weight:700;">📅 ${fechaTxt}</span>
+        <span style="font-size:0.73rem;color:var(--text-muted);">👤 ${esc(p.vendedora || '-')}</span>
+      </div>
       ${notasHtml}
       ${disenadorHtml}
       ${actionHtml}
@@ -4333,14 +4348,27 @@ function renderSatelites() {
   const badge = document.getElementById('badge-satelites');
   if (badge) badge.textContent = pendTotal;
 
+  // Colores únicos por satélite
+  const SAT_COLORS = {
+    'Marcela':  { border: 'rgba(139,92,246,0.35)', header: '#a78bfa', dot: '#7c3aed' },
+    'Yamile':   { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
+    'Wilson':   { border: 'rgba(249,115,22,0.35)', header: '#fb923c', dot: '#ea580c' },
+    'Cristina': { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
+  };
+
   // Resumen por satélite
   contResumen.innerHTML = SATELITES.map(s => {
     const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
     const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
     const pendiente = Math.max(0, entregado - recibido);
+    const col = SAT_COLORS[s] || { border: 'rgba(255,255,255,0.1)', header: '#94a3b8', dot: '#64748b' };
     return `
-      <div class="sat-card">
-        <div class="sat-card-nombre">🧵 ${esc(s)}</div>
+      <div class="sat-card" style="border-color:${col.border};">
+        <div class="sat-card-nombre" style="color:${col.header};display:flex;align-items:center;gap:7px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${col.dot};flex-shrink:0;"></span>
+          ${esc(s)}
+          ${pendiente > 0 ? `<span style="margin-left:auto;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:10px;padding:1px 7px;font-size:0.68rem;font-weight:700;">${pendiente} pend.</span>` : ''}
+        </div>
         <div class="sat-stat-row">
           <span class="sat-stat-label">Entregado</span>
           <span class="sat-stat-val sat-entregado">${entregado}</span>
@@ -4872,20 +4900,45 @@ function generarPDF() {
 function renderDocHistorial() {
   const cont = document.getElementById('doc-historial');
   if (!cont) return;
-  if (!docHistorial.length) {
-    cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">No hay documentos generados aún.</div>';
+
+  const buscar = (document.getElementById('doc-buscar')?.value || '').toLowerCase().trim();
+  const filtroTipo = document.getElementById('doc-filtro-tipo')?.value || '';
+
+  let lista = docHistorial;
+  if (filtroTipo) lista = lista.filter(d => d.tipo === filtroTipo);
+  if (buscar) lista = lista.filter(d =>
+    (d.cliente || '').toLowerCase().includes(buscar) ||
+    (d.numero || '').toLowerCase().includes(buscar) ||
+    (d.vendedora || '').toLowerCase().includes(buscar)
+  );
+
+  if (!lista.length) {
+    cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">' +
+      (docHistorial.length ? 'Sin resultados para esa búsqueda.' : 'No hay documentos generados aún.') + '</div>';
     return;
   }
-  cont.innerHTML = docHistorial.slice(0, 20).map(d => `
+  cont.innerHTML = lista.slice(0, 30).map(d => `
     <div class="doc-hist-row" style="flex-wrap:wrap;gap:4px;">
       <span class="doc-num">#${d.numero}</span>
       <span class="${d.tipo === 'cotizacion' ? 'doc-badge-cot' : 'doc-badge-fac'}">${d.tipo === 'cotizacion' ? 'Cot' : 'Fac'}</span>
       <span class="doc-cliente">${esc(d.cliente)}</span>
       <span class="doc-total">${fmtPeso(d.total)}</span>
       <span class="doc-fecha">${d.fecha}</span>
-      <button onclick="compartirDocWA(${d.id})" style="margin-left:auto;background:#25d366;border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">WhatsApp</button>
+      <div style="margin-left:auto;display:flex;gap:5px;">
+        <button onclick="verDocHistorial(${d.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">Ver</button>
+        <button onclick="compartirDocWA(${d.id})" style="background:#25d366;border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:0.75rem;cursor:pointer;">WhatsApp</button>
+      </div>
     </div>
   `).join('');
+}
+
+function verDocHistorial(id) {
+  const d = docHistorial.find(x => x.id === id);
+  if (!d) return;
+  const htmlDoc = buildDocHTML(d);
+  const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 }
 
 function buildDocHTML(d, logoSrc) {
