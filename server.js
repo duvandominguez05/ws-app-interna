@@ -420,10 +420,10 @@ http.createServer((req, res) => {
   limpiezaAutomatica(); // al arrancar
 });
 
-// ── Limpieza automática cada 45 días ────────────────────────────
-// Borra registros más antiguos de 45 días, dejando mínimo los 6 más recientes
+// ── Limpieza automática cada 30 días ────────────────────────────
+// Borra registros más antiguos de 30 días, dejando mínimo los 6 más recientes
 function limpiezaAutomatica() {
-  const LIMITE_MS  = 45 * 24 * 60 * 60 * 1000; // 45 días en ms
+  const LIMITE_MS  = 30 * 24 * 60 * 60 * 1000; // 30 días en ms
   const MIN_ITEMS  = 6;
   const ahora      = Date.now();
   const CLEAN_FILE = path.join(__dirname, 'data', 'ultimaLimpieza.json');
