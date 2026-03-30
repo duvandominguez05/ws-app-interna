@@ -1477,8 +1477,10 @@ function syncConServidor(silencioso = false) {
         const l = mapaLocal.get(id);
         if (s && l) {
           merged.push({ ...l, estado: s.estado,
+            equipo: s.equipo || l.equipo,
             notaWebhook: s.notaWebhook || l.notaWebhook,
-            ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook });
+            ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook,
+            ultimoMovimiento: s.ultimoMovimiento || l.ultimoMovimiento });
         } else if (s) {
           merged.push(s);
         } else {
