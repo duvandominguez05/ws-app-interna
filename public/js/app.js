@@ -16,6 +16,8 @@ const SIGUIENTE = {
   'listo':            'enviado-final',
 };
 
+const ANTERIOR = Object.fromEntries(Object.entries(SIGUIENTE).map(([a, b]) => [b, a]));
+
 const ESTADO_LABELS = {
   'bandeja':           'Bandeja',
   'hacer-diseno':      'Hacer diseño',
@@ -569,11 +571,13 @@ function renderKanbanCardDiseno(p) {
   } else if (p.estado === 'confirmado') {
     actionHtml = `
       <div class="kanban-card-actions">
+        <button class="btn btn-xs" onclick="retroceder(${p.id})" title="Retroceder estado" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);padding:4px 8px;font-size:0.85rem;line-height:1;">←</button>
         <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Enviar a calandra</button>
       </div>`;
   } else if (p.estado === 'enviado-calandra') {
     actionHtml = `
       <div class="kanban-card-actions">
+        <button class="btn btn-xs" onclick="retroceder(${p.id})" title="Retroceder estado" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);padding:4px 8px;font-size:0.85rem;line-height:1;">←</button>
         <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">Llegó impresión</button>
       </div>`;
   }
@@ -728,6 +732,7 @@ function renderKanbanCard(p) {
     } else {
       actionsHtml = `
         <div class="kanban-card-actions">
+          <button class="btn btn-xs" onclick="retroceder(${p.id})" title="Retroceder estado" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);padding:4px 8px;font-size:0.85rem;line-height:1;">←</button>
           <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">→ Costura</button>
           <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">🔧</button>
         </div>
@@ -743,8 +748,10 @@ function renderKanbanCard(p) {
     `;
   } else if (siguiente) {
     const btnLabel = getBotonLabel(p.estado);
+    const antEstado = ANTERIOR[p.estado];
     actionsHtml = `
       <div class="kanban-card-actions">
+        ${antEstado ? `<button class="btn btn-xs" onclick="retroceder(${p.id})" title="Retroceder estado" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);padding:4px 8px;font-size:0.85rem;line-height:1;">←</button>` : ''}
         <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">${btnLabel}</button>
       </div>
     `;
@@ -828,6 +835,18 @@ function avanzar(id) {
   } else {
     crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> avanzó a <strong>${ESTADO_LABELS[sig]}</strong>`, 'info', id);
   }
+}
+
+function retroceder(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const ant = ANTERIOR[p.estado];
+  if (!ant) return;
+  p.estado = ant;
+  p.ultimoMovimiento = new Date().toISOString();
+  guardar();
+  render();
+  toast(`#${id} ← ${ESTADO_LABELS[ant]}`, 'info');
 }
 
 function avanzarNormal(id) {
