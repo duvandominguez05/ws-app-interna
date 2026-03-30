@@ -1,3 +1,5 @@
 node_modules/
 data/
 package-lock.json
+bot-log.txt
+wa_auth_local/
