@@ -8,7 +8,7 @@ const API_URL  = process.env.API_URL   || 'https://ws-app-interna-production.up.
 const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
 const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
 
-const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+(.+))?$/i;
+const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+([A-Za-zÁÉÍÓÚáéíóúñÑ].+))?$/i;
 
 // Socket global para que server.js pueda enviar alertas
 let sockGlobal = null;
