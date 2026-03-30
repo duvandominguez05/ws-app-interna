@@ -21,7 +21,7 @@ const mime = {
   '.json': 'application/json',
 };
 
-function crearVentaInterna(tipo, vendedora, telefono, waMsgId) {
+function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
   const tipoNorm = tipo.toLowerCase();
   const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
   const vendedoraNorm = vendedora.toLowerCase();
@@ -41,7 +41,7 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId) {
 
   const nuevo = {
     id:          nextId,
-    equipo:      '',
+    equipo:      equipo ? String(equipo).trim() : '',
     telefono:    String(telefono).trim(),
     vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
     tipoBandeja: tipoNorm,
@@ -142,19 +142,19 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { tipo, vendedora, telefono, waMsgId, key } = JSON.parse(body);
-        
+        const { tipo, vendedora, telefono, waMsgId, equipo, key } = JSON.parse(body);
+
         // Validación de API Key
         if (key !== API_KEY) return json(res, 401, { error: 'Contraseña de API inválida' });
 
         if (!tipo || !vendedora || !telefono)
           return json(res, 400, { error: 'Faltan campos: tipo, vendedora, telefono' });
-        
+
         const tipoNorm = tipo.toLowerCase();
         if (!['cotizar', 'pedido'].includes(tipoNorm))
           return json(res, 400, { error: 'tipo debe ser cotizar o pedido' });
-        
-        const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''), waMsgId);
+
+        const result = crearVentaInterna(tipo, vendedora, String(telefono).replace(/\s/g, ''), waMsgId, equipo);
         return json(res, result.ok ? 200 : 400, result);
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });

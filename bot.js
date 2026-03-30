@@ -9,7 +9,7 @@ const API_URL  = process.env.API_URL   || 'http://localhost:3000';
 const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
 const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
 
-const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+)/i;
+const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+(.+))?$/i;
 
 // Socket global para que server.js pueda enviar alertas
 let sockGlobal = null;
@@ -23,11 +23,11 @@ async function enviarAlerta(texto) {
   }
 }
 
-async function crearVenta(tipo, vendedora, telefono) {
+async function crearVenta(tipo, vendedora, telefono, equipo) {
   const res = await fetch(`${API_URL}/api/venta`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tipo, vendedora, telefono: telefono.replace(/\s/g, '') }),
+    body: JSON.stringify({ tipo, vendedora, telefono: telefono.replace(/\s/g, ''), equipo: equipo || '' }),
   });
   return res.json();
 }
@@ -62,15 +62,16 @@ async function conectar() {
       const match = texto.match(REGEX);
       if (!match) continue;
 
-      const [, tipo, vendedora, telefono] = match;
-      console.log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono}`);
+      const [, tipo, vendedora, telefono, equipo] = match;
+      console.log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono}${equipo ? ` | equipo: ${equipo}` : ''}`);
 
       try {
-        const result = await crearVenta(tipo, vendedora, telefono);
+        const result = await crearVenta(tipo, vendedora, telefono, equipo);
         const jid = msg.key.remoteJid;
         if (result.ok) {
+          const equipoLinea = equipo ? `\n🏷️ Equipo: ${equipo}` : '';
           await sock.sendMessage(jid, {
-            text: `✅ ${tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}`,
+            text: `✅ ${tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\n👤 Vendedora: ${result.vendedora}\n📞 Tel: ${result.telefono}${equipoLinea}`,
           });
         } else {
           await sock.sendMessage(jid, { text: `❌ Error: ${result.error}` });
