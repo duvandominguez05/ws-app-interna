@@ -120,10 +120,29 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { pedidos, nextId } = JSON.parse(body);
-        if (!Array.isArray(pedidos)) return json(res, 400, { error: 'pedidos debe ser array' });
-        guardarPedidos(pedidos, nextId);
-        return json(res, 200, { ok: true, total: pedidos.length });
+        const { pedidos: incoming, nextId } = JSON.parse(body);
+        if (!Array.isArray(incoming)) return json(res, 400, { error: 'pedidos debe ser array' });
+
+        // Merge: preservar campos del servidor que el cliente puede no tener
+        const existing = leerPedidos();
+        const mapaExisting = new Map(existing.map(p => [p.id, p]));
+        const merged = incoming.map(p => {
+          const e = mapaExisting.get(p.id);
+          if (!e) return p;
+          return {
+            ...p,
+            equipo: p.equipo || e.equipo || '',
+            notaWebhook: p.notaWebhook || e.notaWebhook,
+            ultimaActWebhook: p.ultimaActWebhook || e.ultimaActWebhook,
+          };
+        });
+        // Preservar pedidos del servidor que el cliente no tiene (creados por bot en otro momento)
+        const incomingIds = new Set(incoming.map(p => p.id));
+        existing.forEach(e => { if (!incomingIds.has(e.id)) merged.push(e); });
+        merged.sort((a, b) => a.id - b.id);
+
+        guardarPedidos(merged, nextId);
+        return json(res, 200, { ok: true, total: merged.length });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
       }
