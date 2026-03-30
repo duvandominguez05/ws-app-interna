@@ -2,10 +2,9 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { Boom } = require('@hapi/boom');
 const fetch = require('node-fetch');
 const path = require('path');
-const http = require('http');
 const qrcode = require('qrcode-terminal');
 
-const API_URL  = process.env.API_URL   || 'http://localhost:3000';
+const API_URL  = process.env.API_URL   || 'https://ws-app-interna-production.up.railway.app';
 const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
 const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
 
@@ -27,7 +26,7 @@ async function crearVenta(tipo, vendedora, telefono, equipo) {
   const res = await fetch(`${API_URL}/api/venta`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tipo, vendedora, telefono: telefono.replace(/\s/g, ''), equipo: equipo || '' }),
+    body: JSON.stringify({ tipo, vendedora, telefono: telefono.replace(/\s/g, ''), equipo: equipo || '', key: 'ws-textil-2026' }),
   });
   return res.json();
 }
@@ -83,27 +82,7 @@ async function conectar() {
   });
 }
 
-conectar();
+process.on('uncaughtException', err => console.error('[bot] Error no capturado:', err.message));
+process.on('unhandledRejection', err => console.error('[bot] Promesa rechazada:', err?.message || err));
 
-// Servidor interno para recibir alertas desde server.js
-const BOT_PORT = process.env.BOT_PORT || 3001;
-http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/alerta') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', async () => {
-      try {
-        const { texto } = JSON.parse(body);
-        await enviarAlerta(texto);
-        res.writeHead(200);
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-}).listen(BOT_PORT, () => console.log(`[bot] Servidor interno en puerto ${BOT_PORT}`));
+conectar();
