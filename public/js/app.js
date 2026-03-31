@@ -53,7 +53,7 @@ let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
 let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
-const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina', 'Pantalonetas'];
+const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
 
@@ -1812,7 +1812,6 @@ function renderSatelites() {
     'Yamile':      { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
     'Wilson':      { border: 'rgba(249,115,22,0.35)', header: '#fb923c', dot: '#ea580c' },
     'Cristina':    { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
-    'Pantalonetas':{ border: 'rgba(250,204,21,0.35)', header: '#fde047', dot: '#ca8a04' },
   };
 
   // Resumen por satélite
