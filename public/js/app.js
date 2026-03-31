@@ -246,7 +246,19 @@ function renderDashboard() {
     const rec = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
     const pend = Math.max(0, ent - rec);
     const cls = pend === 0 ? 'ok' : pend <= 10 ? 'warn' : 'high';
-    return `<div class="dash-sat-row">
+
+    const prendasMap = {};
+    satMovimientos.filter(m => m.satelite === s).forEach(m => {
+      const p = m.prenda || 'Sin tipo';
+      if (!prendasMap[p]) prendasMap[p] = 0;
+      prendasMap[p] += m.tipo === 'entrega' ? m.cantidad : -m.cantidad;
+    });
+    const prendasPend = Object.entries(prendasMap).filter(([, v]) => v > 0);
+    const prendasHtml = prendasPend.map(([p, v]) =>
+      `<div style="font-size:0.68rem;color:var(--text-muted);">${esc(p)}: <span style="color:var(--text);font-weight:600;">${v}</span></div>`
+    ).join('');
+
+    return `<div class="dash-sat-row" style="flex-wrap:wrap;gap:4px;">
       <div class="dash-sat-nombre">${s}</div>
       <div>
         <div class="dash-sat-pend ${cls}">${pend}</div>
@@ -256,6 +268,7 @@ function renderDashboard() {
         <div>↑${ent} entregado</div>
         <div>↓${rec} recibido</div>
       </div>
+      ${prendasHtml ? `<div style="width:100%;padding-top:4px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:6px;">${prendasHtml}</div>` : ''}
     </div>`;
   }).join('');
 
