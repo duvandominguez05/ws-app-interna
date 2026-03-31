@@ -53,7 +53,7 @@ let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
 let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || '1.50');
-const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
+const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina', 'Pantalonetas'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
 
@@ -321,11 +321,7 @@ function renderTablaRecientes() {
     return;
   }
 
-  const MAX = 5;
-  const visible = lista.slice(0, MAX);
-  const resto   = lista.length - MAX;
-
-  cont.innerHTML = visible.map(p => {
+  cont.innerHTML = lista.map(p => {
     const items  = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '—';
     const fecha  = p.fechaEntrega ? `📅 ${fmtFecha(p.fechaEntrega)}` : '';
     // Para el timeline, si el pedido tiene arreglo registrado tratamos la etapa 'arreglo'
@@ -370,14 +366,6 @@ function renderTablaRecientes() {
     `;
   }).join('');
 
-  if (resto > 0) {
-    cont.innerHTML += `
-      <div style="text-align:center;padding:12px;">
-        <button class="btn btn-glass btn-sm" onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">
-          Ver ${resto} pedido${resto>1?'s':''} más →
-        </button>
-      </div>`;
-  }
 }
 
 /* ─── Bandeja ────────────────────────────────────────────────── */
@@ -755,6 +743,11 @@ function renderKanbanCard(p) {
         <button class="btn btn-primary btn-xs" onclick="avanzar(${p.id})">${btnLabel}</button>
       </div>
     `;
+  } else if (p.estado === 'enviado-final') {
+    actionsHtml = `
+      <div class="kanban-card-actions">
+        <button onclick="eliminarPedido(${p.id})" style="width:100%;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:5px 10px;font-size:0.75rem;cursor:pointer;">✕ Eliminar</button>
+      </div>`;
   } else {
     actionsHtml = '';
   }
@@ -1815,10 +1808,11 @@ function renderSatelites() {
 
   // Colores únicos por satélite
   const SAT_COLORS = {
-    'Marcela':  { border: 'rgba(139,92,246,0.35)', header: '#a78bfa', dot: '#7c3aed' },
-    'Yamile':   { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
-    'Wilson':   { border: 'rgba(249,115,22,0.35)', header: '#fb923c', dot: '#ea580c' },
-    'Cristina': { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
+    'Marcela':     { border: 'rgba(139,92,246,0.35)', header: '#a78bfa', dot: '#7c3aed' },
+    'Yamile':      { border: 'rgba(6,182,212,0.35)',  header: '#67e8f9', dot: '#0891b2' },
+    'Wilson':      { border: 'rgba(249,115,22,0.35)', header: '#fb923c', dot: '#ea580c' },
+    'Cristina':    { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
+    'Pantalonetas':{ border: 'rgba(250,204,21,0.35)', header: '#fde047', dot: '#ca8a04' },
   };
 
   // Resumen por satélite
@@ -1827,6 +1821,21 @@ function renderSatelites() {
     const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
     const pendiente = Math.max(0, entregado - recibido);
     const col = SAT_COLORS[s] || { border: 'rgba(255,255,255,0.1)', header: '#94a3b8', dot: '#64748b' };
+
+    // Prendas pendientes por tipo
+    const prendasMap = {};
+    satMovimientos.filter(m => m.satelite === s).forEach(m => {
+      const p = m.prenda || 'Sin tipo';
+      if (!prendasMap[p]) prendasMap[p] = 0;
+      prendasMap[p] += m.tipo === 'entrega' ? m.cantidad : -m.cantidad;
+    });
+    const prendasPend = Object.entries(prendasMap).filter(([, v]) => v > 0);
+    const prendasHtml = prendasPend.length
+      ? `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px;">
+          ${prendasPend.map(([p, v]) => `<div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);padding:1px 0;"><span>${esc(p)}</span><span style="color:var(--text);font-weight:600;">${v}</span></div>`).join('')}
+         </div>`
+      : '';
+
     return `
       <div class="sat-card" style="border-color:${col.border};">
         <div class="sat-card-nombre" style="color:${col.header};display:flex;align-items:center;gap:7px;">
@@ -1846,6 +1855,7 @@ function renderSatelites() {
           <span class="sat-stat-label">Pendiente</span>
           <span class="sat-stat-val ${pendiente > 0 ? 'sat-pendiente' : 'sat-recibido'}">${pendiente}</span>
         </div>
+        ${prendasHtml}
       </div>
     `;
   }).join('');
