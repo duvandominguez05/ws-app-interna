@@ -1,184 +1,120 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
-const qrcode = require('qrcode-terminal');
+const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch');
 
-// ── CONFIGURACIÓN ────────────────────────────────────────────────
-const RAILWAY_URL = 'https://ws-app-interna-production.up.railway.app';
-const API_KEY     = 'ws-textil-2026';
-const AUTH_DIR    = path.join(__dirname, 'wa_auth_local');
-const COLA_FILE   = path.join(__dirname, 'cola_pendiente.json');
-const REGEX       = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+)/i;
+const API_URL  = 'https://ws-app-interna-production.up.railway.app';
+const AUTH_DIR = path.join(__dirname, 'wa_auth_local');
+const COLA_FILE = path.join(__dirname, 'cola_pendiente.json');
+const PHONE    = process.env.WA_PHONE_NUMBER || '573133064614';
+const REGEX    = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+(.+))?$/i;
 
-// ── Cola local (persiste en disco) ──────────────────────────────
-
+// ── Cola local ───────────────────────────────────────────────────
 function leerCola() {
-  try {
-    if (!fs.existsSync(COLA_FILE)) return [];
-    return JSON.parse(fs.readFileSync(COLA_FILE, 'utf8'));
-  } catch { return []; }
+  try { return fs.existsSync(COLA_FILE) ? JSON.parse(fs.readFileSync(COLA_FILE, 'utf8')) : []; }
+  catch { return []; }
 }
-
-function guardarCola(cola) {
-  fs.writeFileSync(COLA_FILE, JSON.stringify(cola, null, 2));
-}
-
+function guardarCola(cola) { fs.writeFileSync(COLA_FILE, JSON.stringify(cola, null, 2)); }
 function encolar(item) {
   const cola = leerCola();
-  // No encolar duplicados por waMsgId
   if (cola.some(c => c.waMsgId === item.waMsgId)) return;
   cola.push(item);
   guardarCola(cola);
-  console.log(`[cola] Guardado localmente: ${item.tipo} de ${item.vendedora} (${item.waMsgId})`);
+  console.log('[cola] Guardado localmente:', item.tipo, item.vendedora);
 }
+function desencolar(id) { guardarCola(leerCola().filter(c => c.waMsgId !== id)); }
 
-function desencolar(waMsgId) {
-  const cola = leerCola().filter(c => c.waMsgId !== waMsgId);
-  guardarCola(cola);
-}
-
-// ── Envío al servidor ────────────────────────────────────────────
-
-async function subirAlServidor(item) {
-  const response = await fetch(`${RAILWAY_URL}/api/venta`, {
-    method:  'POST',
+// ── API ──────────────────────────────────────────────────────────
+async function subirVenta(item) {
+  const res = await fetch(`${API_URL}/api/venta`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      tipo:      item.tipo,
-      vendedora: item.vendedora,
-      telefono:  item.telefono,
-      waMsgId:   item.waMsgId,
-      key:       API_KEY,
-    }),
+    body: JSON.stringify({ tipo: item.tipo, vendedora: item.vendedora, telefono: item.telefono, equipo: item.equipo || '', waMsgId: item.waMsgId, key: 'ws-textil-2026' }),
   });
-  return response.json();
+  return res.json();
 }
-
-// ── Procesar un mensaje detectado ────────────────────────────────
-
-async function procesarMensaje(tipo, vendedora, telefono, waMsgId) {
-  const item = { tipo, vendedora, telefono, waMsgId };
-
-  try {
-    const result = await subirAlServidor(item);
-
-    if (result.ok) {
-      if (result.duplicado) {
-        console.log(`⚠️  Duplicado ignorado: waMsgId=${waMsgId}`);
-      } else {
-        console.log(`✅ Pedido #${result.id} subido — ${vendedora} ${tipo}`);
-      }
-      desencolar(waMsgId);
-      return result;
-    } else {
-      console.error(`❌ Error servidor: ${result.error} → encolando`);
-      encolar(item);
-    }
-
-  } catch (err) {
-    console.error(`❌ Sin conexión con Railway: ${err.message} → encolando`);
-    encolar(item);
-  }
-  return null;
-}
-
-// ── Reintentar cola pendiente ────────────────────────────────────
 
 async function reintentarCola() {
   const cola = leerCola();
-  if (cola.length === 0) return;
-
-  console.log(`[cola] Reintentando ${cola.length} pendiente(s)...`);
-
+  if (!cola.length) return;
+  console.log('[cola] Reintentando', cola.length, 'pendiente(s)...');
   for (const item of cola) {
     try {
-      const result = await subirAlServidor(item);
-
-      if (result.ok) {
-        if (result.duplicado) {
-          console.log(`⚠️  Cola: duplicado ignorado waMsgId=${item.waMsgId}`);
-        } else {
-          console.log(`✅ Cola: subido pedido #${result.id} — ${item.vendedora} ${item.tipo}`);
-        }
-        desencolar(item.waMsgId);
-      } else {
-        console.error(`❌ Cola: error servidor para ${item.waMsgId}: ${result.error}`);
-      }
-
-    } catch (err) {
-      console.log(`[cola] Aún sin conexión (${err.message}), se reintentará...`);
-      break; // Si no hay red, no seguir intentando el resto
-    }
+      const r = await subirVenta(item);
+      if (r.ok) { desencolar(item.waMsgId); console.log('[cola] Subido #' + r.id); }
+      else console.error('[cola] Error:', r.error);
+    } catch (e) { console.log('[cola] Sin conexion, reintentando luego...'); break; }
   }
 }
 
-// ── Bot WhatsApp ─────────────────────────────────────────────────
-
+// ── Bot ──────────────────────────────────────────────────────────
 let sockGlobal = null;
 
-async function conectarBot() {
-  console.log('🚀 Iniciando Bot Local de W&S Textil...');
+async function conectar() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-
-  const sock = sockGlobal = makeWASocket({
-    auth:                  state,
-    printQRInTerminal:     true,
-    browser:               Browsers.macOS('Edge'),
-    connectTimeoutMs:      60000,
-    defaultQueryTimeoutMs: 0,
-    syncFullHistory:       true, // Pide historial al reconectarse
-  });
-
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  sockGlobal = sock;
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+  if (!sock.authState.creds.registered) {
+    console.log('[bot] Solicitando pairing code para', PHONE, '...');
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const code = await sock.requestPairingCode(PHONE);
+      console.log('\n==============================');
+      console.log('PAIRING CODE: ' + code);
+      console.log('Ingresa en WhatsApp > Dispositivos vinculados > Vincular con numero de telefono');
+      console.log('==============================\n');
+    } catch (e) { console.error('[bot] Error pairing code:', e.message); }
+  }
+
+  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error instanceof Boom)
-        ? lastDisconnect.error.output?.statusCode !== DisconnectReason.loggedOut
-        : true;
-      console.log('❌ Conexión cerrada. Reconectando:', shouldReconnect);
-      if (shouldReconnect) conectarBot();
+      const ok = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('Conexion cerrada. Reconectando:', ok);
+      if (ok) setTimeout(conectar, 5000);
     } else if (connection === 'open') {
-      console.log('✅ Bot Conectado — revisando cola pendiente...');
-      reintentarCola(); // Al reconectar, subir lo que quedó pendiente
+      console.log('✅ Bot conectado!');
+      reintentarCola();
     }
   });
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
-
-      // Ignorar mensajes de más de 48 horas
       const msgTs = (msg.messageTimestamp || 0) * 1000;
       if (msgTs < Date.now() - 48 * 60 * 60 * 1000) continue;
-
       const texto = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
       const match = texto.match(REGEX);
       if (!match) continue;
 
-      const [, tipo, vendedora, telefono] = match;
+      const [, tipo, vendedora, telefono, equipo] = match;
       const waMsgId = msg.key.id;
       const chatId  = msg.key.remoteJid;
+      console.log('[bot] Detectado: #' + tipo, vendedora, telefono);
 
-      console.log(`📡 Detectado: #${tipo} de ${vendedora} — procesando...`);
-      const result = await procesarMensaje(tipo, vendedora, telefono.replace(/\s/g, ''), waMsgId);
-
-      // Responder al grupo (reply al mensaje original)
-      if (result && result.ok && !result.duplicado && sockGlobal) {
-        const esPedido = tipo.toLowerCase() === 'pedido';
-        const textoRespuesta = esPedido
-          ? `*Pedido #${result.id} registrado*\nVendedora: ${result.vendedora}\nTelefono: ${telefono.replace(/\s/g, '')}\nEstado: En diseno`
-          : `*Cotizacion #${result.id} registrada*\nVendedora: ${result.vendedora}\nTelefono: ${telefono.replace(/\s/g, '')}`;
-        await sockGlobal.sendMessage(chatId, { text: textoRespuesta }, { quoted: msg });
+      const item = { tipo, vendedora, telefono: telefono.replace(/\s/g, ''), equipo: equipo || '', waMsgId };
+      try {
+        const result = await subirVenta(item);
+        if (result.ok) {
+          desencolar(waMsgId);
+          if (!result.duplicado) {
+            const txt = tipo === 'pedido'
+              ? `Pedido #${result.id} registrado\nVendedora: ${result.vendedora}\nTelefono: ${item.telefono}`
+              : `Cotizacion #${result.id} registrada\nVendedora: ${result.vendedora}\nTelefono: ${item.telefono}`;
+            await sock.sendMessage(chatId, { text: txt }, { quoted: msg });
+          }
+        } else {
+          encolar(item);
+        }
+      } catch (e) {
+        console.error('[bot] Error:', e.message);
+        encolar(item);
       }
     }
   });
 }
 
-// ── Reintento periódico cada 30 segundos ────────────────────────
 setInterval(reintentarCola, 30_000);
-
-conectarBot();
+conectar();
