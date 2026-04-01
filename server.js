@@ -210,8 +210,14 @@ http.createServer((req, res) => {
         const fechaReal = fechaDrive || new Date().toLocaleDateString('es-CO');
         const semana = semanaBody || fechaReal;
 
+        // ID único aunque lleguen múltiples en el mismo ms
+        const idBase = Date.now();
+        const idUnico = registros.length > 0
+          ? Math.max(idBase, ...registros.map(r => r.id + 1))
+          : idBase;
+
         const registro = {
-          id:          Date.now(),
+          id:          idUnico,
           equipo:      String(equipo).trim(),
           alto:        altoCm,
           metros,
