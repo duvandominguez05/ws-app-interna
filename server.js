@@ -243,6 +243,15 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── DELETE /api/calandra/reset — limpia todos los registros ──
+  if (req.method === 'DELETE' && req.url === '/api/calandra/reset') {
+    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+    fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
+    fs.writeFileSync(CAL_FILE, JSON.stringify([], null, 2));
+    console.log('[calandra] reset completo');
+    return json(res, 200, { ok: true, mensaje: 'Calandra limpiada' });
+  }
+
   // ── DELETE /api/calandra/:id — borra un registro ────────────
   if (req.method === 'DELETE' && req.url.startsWith('/api/calandra/')) {
     const id = req.url.split('/')[3];
