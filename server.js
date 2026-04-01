@@ -114,14 +114,26 @@ http.createServer((req, res) => {
     return json(res, 200, { pedidos: leerPedidos(), nextId: leerNextId() });
   }
 
+  // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
+  if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/')) {
+    const id = parseInt(req.url.split('/')[3]);
+    const pedidos = leerPedidos();
+    const nuevos = pedidos.filter(p => p.id !== id);
+    if (nuevos.length === pedidos.length) return json(res, 404, { error: 'Pedido no encontrado' });
+    guardarPedidos(nuevos);
+    console.log(`[api] Pedido #${id} eliminado`);
+    return json(res, 200, { ok: true });
+  }
+
   // ── POST /api/pedidos — app sincroniza su estado al servidor ─
   if (req.method === 'POST' && req.url === '/api/pedidos') {
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { pedidos: incoming, nextId } = JSON.parse(body);
+        const { pedidos: incoming, nextId, eliminados: eliminadosCliente } = JSON.parse(body);
         if (!Array.isArray(incoming)) return json(res, 400, { error: 'pedidos debe ser array' });
+        const eliminadosSet = new Set(Array.isArray(eliminadosCliente) ? eliminadosCliente : []);
 
         // Merge: preservar campos del servidor que el cliente puede no tener
         const existing = leerPedidos();
@@ -137,8 +149,9 @@ http.createServer((req, res) => {
           };
         });
         // Preservar pedidos del servidor que el cliente no tiene (creados por bot en otro momento)
+        // pero NO reagregar los que el cliente eliminó explícitamente
         const incomingIds = new Set(incoming.map(p => p.id));
-        existing.forEach(e => { if (!incomingIds.has(e.id)) merged.push(e); });
+        existing.forEach(e => { if (!incomingIds.has(e.id) && !eliminadosSet.has(e.id)) merged.push(e); });
         merged.sort((a, b) => a.id - b.id);
 
         guardarPedidos(merged, nextId);

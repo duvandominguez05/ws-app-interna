@@ -86,7 +86,7 @@ function guardar() {
   fetch('/api/pedidos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pedidos, nextId })
+    body: JSON.stringify({ pedidos, nextId, eliminados: [...eliminadosLocales] })
   }).catch(() => {}); // silencioso — no interrumpe si falla
 }
 
@@ -471,6 +471,9 @@ function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
+  eliminadosLocales.add(id);
+  localStorage.setItem('ws_eliminados', JSON.stringify([...eliminadosLocales]));
+  fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
   guardar();
   render();
   toast(`Pedido #${id} eliminado`, 'info');
@@ -913,6 +916,7 @@ function eliminarPedido(id) {
   pedidos = pedidos.filter(x => x.id !== id);
   eliminadosLocales.add(id);
   localStorage.setItem('ws_eliminados', JSON.stringify([...eliminadosLocales]));
+  fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
   guardar();
   render();
   toast(`Pedido #${id} eliminado`, 'info');
