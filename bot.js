@@ -2,16 +2,16 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { Boom } = require('@hapi/boom');
 const fetch = require('node-fetch');
 const path = require('path');
-const qrcode = require('qrcode-terminal');
 
 const API_URL  = process.env.API_URL   || 'https://ws-app-interna-production.up.railway.app';
 const AUTH_DIR = path.join(__dirname, 'wa_auth_local');
 const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
+const PHONE_NUMBER = (process.env.WA_PHONE_NUMBER || '').replace(/\D/g, '');
 
 const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+([A-Za-zÁÉÍÓÚáéíóúñÑ].+))?$/i;
 
-// Socket global para que server.js pueda enviar alertas
 let sockGlobal = null;
+let pairingRequested = false;
 
 async function enviarAlerta(texto) {
   if (!sockGlobal) return;
@@ -31,32 +31,43 @@ async function crearVenta(tipo, vendedora, telefono, equipo) {
   return res.json();
 }
 
-const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
-
 async function conectar() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: ['Ubuntu', 'Chrome', '22.0'],
+  });
   sockGlobal = sock;
+  pairingRequested = false;
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-    if (qr && PHONE_NUMBER) {
+    if (qr && PHONE_NUMBER && !pairingRequested) {
+      pairingRequested = true;
+      // Esperar un momento antes de pedir el código
+      await new Promise(r => setTimeout(r, 2000));
       try {
         const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log(`\n📱 PAIRING CODE: ${code}\nIngresa este código en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono\n`);
+        console.log(`\n==============================`);
+        console.log(`📱 PAIRING CODE: ${code}`);
+        console.log(`Ingresa este código en WhatsApp:`);
+        console.log(`Ajustes → Dispositivos vinculados → Vincular con número de teléfono`);
+        console.log(`==============================\n`);
       } catch (e) {
         console.error('[bot] Error obteniendo pairing code:', e.message);
+        pairingRequested = false;
       }
-    } else if (qr) {
-      console.log('\n📱 Escanea este QR con WhatsApp del número del bot:\n');
-      qrcode.generate(qr, { small: true });
     }
+
     if (connection === 'close') {
       const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log('Conexión cerrada. Reconectando:', shouldReconnect);
-      if (shouldReconnect) conectar();
+      if (shouldReconnect) {
+        setTimeout(conectar, 5000);
+      }
     } else if (connection === 'open') {
       console.log('✅ Bot WhatsApp conectado');
     }
@@ -65,7 +76,6 @@ async function conectar() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (msg.key.fromMe) continue;
-      console.log('[bot] JID:', msg.key.remoteJid);
       const texto = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
       const match = texto.match(REGEX);
       if (!match) continue;
