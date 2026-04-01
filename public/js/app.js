@@ -1559,23 +1559,29 @@ async function sincronizarCalandraServidor() {
 
     // Reemplazar registros del servidor directamente (ya vienen ordenados y con estado WeTransfer)
     const normalizados = pdfs.map(r => ({
-      id:        r.id,
-      equipo:    r.equipo,
-      altoCm:    r.alto,
-      metros:    r.metros,
-      fecha:     r.fecha,
-      hora:      '',
-      semana:    getSemanaKey((() => { try { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); } catch { return new Date(); } })()),
-      archivo:   r.archivo || '',
-      disenador: r.disenador || '',
-      origen:    'drive',
-      enviado:   r.enviado || false,
+      id:          r.id,
+      equipo:      r.equipo,
+      altoCm:      r.alto,
+      metros:      r.metros,
+      fecha:       r.fecha,
+      hora:        '',
+      semana:      getSemanaKey((() => { try { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); } catch { return new Date(); } })()),
+      archivo:     r.archivo || '',
+      disenador:   r.disenador || '',
+      origen:      'drive',
+      enviado:     r.enviado || false,
+      createdTime: r.createdTime || null,
     }));
 
     // Mezclar: no duplicar por id, los del servidor tienen prioridad
     const idsServidor = new Set(normalizados.map(r => r.id));
     const soloLocales = calandraRegistros.filter(r => !idsServidor.has(r.id));
-    calandraRegistros = [...normalizados, ...soloLocales].sort((a, b) => b.id - a.id);
+    // Ordenar por createdTime (fecha real Drive) del más nuevo al más viejo
+    calandraRegistros = [...normalizados, ...soloLocales].sort((a, b) => {
+      const ta = a.createdTime ? new Date(a.createdTime).getTime() : a.id;
+      const tb = b.createdTime ? new Date(b.createdTime).getTime() : b.id;
+      return tb - ta;
+    });
     guardarCalandra_store();
     renderCalandra();
     renderDashboard();
@@ -1643,9 +1649,14 @@ function renderCalandra() {
   const hoy       = new Date().toLocaleDateString('es-CO');
   const semanaKey = getSemanaKey(new Date());
 
-  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy).sort((a, b) => b.id - a.id);
-  const semanaList = calandraRegistros.filter(r => r.semana === semanaKey).sort((a, b) => b.id - a.id);
-  const historico  = calandraRegistros.filter(r => r.fecha !== hoy).sort((a, b) => b.id - a.id);
+  const sortByDate = (a, b) => {
+    const ta = a.createdTime ? new Date(a.createdTime).getTime() : a.id;
+    const tb = b.createdTime ? new Date(b.createdTime).getTime() : b.id;
+    return tb - ta;
+  };
+  const hoyList   = calandraRegistros.filter(r => r.fecha === hoy).sort(sortByDate);
+  const semanaList = calandraRegistros.filter(r => r.semana === semanaKey).sort(sortByDate);
+  const historico  = calandraRegistros.filter(r => r.fecha !== hoy).sort(sortByDate);
 
   const metrosHoy    = hoyList.reduce((s, r) => s + r.metros, 0);
   const metrosSemana = semanaList.reduce((s, r) => s + r.metros, 0);

@@ -190,7 +190,7 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { equipo, alto, ancho, archivo, disenador, fechaDrive, semana: semanaBody } = JSON.parse(body);
+        const { equipo, alto, ancho, archivo, disenador, fechaDrive, semana: semanaBody, createdTime } = JSON.parse(body);
         if (!equipo || !alto)
           return json(res, 400, { error: 'Faltan campos: equipo, alto' });
 
@@ -211,15 +211,16 @@ http.createServer((req, res) => {
         const semana = semanaBody || fechaReal;
 
         const registro = {
-          id:         Date.now(),
-          equipo:     String(equipo).trim(),
-          alto:       altoCm,
+          id:          Date.now(),
+          equipo:      String(equipo).trim(),
+          alto:        altoCm,
           metros,
           semana,
-          fecha:      fechaReal,
-          archivo:    archivo || '',
-          disenador:  disenador || '',
-          origen:     'drive',
+          fecha:       fechaReal,
+          archivo:     archivo || '',
+          disenador:   disenador || '',
+          origen:      'drive',
+          createdTime: createdTime || null,
         };
 
         // Evitar duplicados por nombre de archivo
@@ -287,8 +288,12 @@ http.createServer((req, res) => {
         });
       }
     } catch {}
-    // Ordenar del más nuevo al más viejo por fecha real
-    registros.sort((a, b) => b.id - a.id);
+    // Ordenar del más nuevo al más viejo por createdTime de Drive (fecha real de subida)
+    registros.sort((a, b) => {
+      const ta = a.createdTime ? new Date(a.createdTime).getTime() : a.id;
+      const tb = b.createdTime ? new Date(b.createdTime).getTime() : b.id;
+      return tb - ta;
+    });
     const result = registros.map(r => ({
       ...r,
       enviado: enviados.has((r.archivo || '').toLowerCase())

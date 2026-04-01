@@ -3,30 +3,34 @@
   "nodes": [
     {
       "parameters": {
-        "pollTimes": {
-          "item": [
+        "rule": {
+          "interval": [
             {
-              "mode": "everyMinute"
+              "field": "minutes",
+              "minutesInterval": 5
             }
           ]
-        },
-        "triggerOn": "specificFolder",
-        "folderToWatch": {
-          "__rl": true,
-          "value": "1qaEI69DxqwDCE_Ce4UKHAQjCVcdgx_qy",
-          "mode": "id"
-        },
-        "event": "fileCreated",
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1200, 112],
+      "id": "cc1feeb2-f8f6-44b3-b15c-4f45bf54fa37",
+      "name": "Cada 5 minutos"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "='1qaEI69DxqwDCE_Ce4UKHAQjCVcdgx_qy' in parents and mimeType='application/pdf' and trashed=false",
+        "filter": {},
         "options": {}
       },
-      "id": "cc1feeb2-f8f6-44b3-b15c-4f45bf54fa37",
-      "name": "Google Drive Trigger",
-      "type": "n8n-nodes-base.googleDriveTrigger",
-      "typeVersion": 1,
-      "position": [
-        -1200,
-        112
-      ],
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-960, 112],
+      "id": "a1b2c3d4-0001-0001-0001-111111111111",
+      "name": "Buscar PDFs en Drive",
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "g0k7EcnkOFnDpu6t",
@@ -36,16 +40,33 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $('Google Drive Trigger').first().json;\nconst nombreCompleto = data.name || '';\nconst nombreSinExtension = nombreCompleto.replace(/\\.pdf$/i, '');\n\nreturn [{ json: { \n  ...data,\n  nombreCompleto, \n  nombreSinExtension \n}}];\n"
+        "jsCode": "const archivos = $input.all();\n\n// Limpiar static data para forzar reprocesamiento\nconst staticData = $getWorkflowStaticData('global');\nstaticData.procesados = [];\nstaticData.procesadosTiempo = {};\n\n// Solo archivos de HOY\nconst ahora = new Date();\nconst hoy = new Date(ahora);\nhoy.setHours(0, 0, 0, 0);\n\nconst deHoy = archivos.filter(item => {\n  const creado = new Date(item.json.createdTime);\n  return creado >= hoy;\n});\n\nif (deHoy.length === 0) return [];\n\nreturn deHoy.map(item => ({ json: item.json }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-720, 112],
+      "id": "a1b2c3d4-0001-0001-0001-222222222222",
+      "name": "Filtrar Nuevos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Filtrar Nuevos').first().json;\nconst nombreCompleto = data.name || '';\nconst nombreSinExtension = nombreCompleto.replace(/\\.pdf$/i, '');\n\nreturn [{ json: { \n  ...data,\n  nombreCompleto, \n  nombreSinExtension \n}}];\n"
       },
       "id": "95e04b4e-6430-4733-a178-fdeaa7c13327",
       "name": "Extraer Nombre Archivo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        -512,
-        112
-      ]
+      "position": [-512, 112]
+    },
+    {
+      "parameters": {
+        "jsCode": "const nombreCompleto = $('Extraer Nombre Archivo').first().json.nombreCompleto;\nconst nombreSinExtension = $('Extraer Nombre Archivo').first().json.nombreSinExtension;\n\nconst regex = /_(\\d+(?:[.,]\\d+)?)$/;\nconst match = nombreSinExtension.match(regex);\n\nlet altoCm = 0;\nif (match) {\n  altoCm = parseFloat(match[1].replace(',', '.'));\n}\n\nconst anchoM = 1.0;\nconst metros = altoCm > 0 ? Math.round((altoCm / 100) * anchoM * 1000) / 1000 : 0;\n\nreturn [{\n  json: {\n    equipo: nombreSinExtension,\n    alto: altoCm,\n    ancho: anchoM * 100,\n    metros,\n    archivo: nombreCompleto,\n    disenador: '',\n    pdfLeido: altoCm > 0,\n    debug: 'nombre=[' + nombreSinExtension + '] match=' + JSON.stringify(match)\n  }\n}];\n"
+      },
+      "id": "1f37ceb5-14e0-4531-8f92-d830373c3366",
+      "name": "Extraer Dimensiones PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-272, 112]
     },
     {
       "parameters": {
@@ -74,10 +95,7 @@
       "name": "¿Alto > 0?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        -32,
-        112
-      ]
+      "position": [-32, 112]
     },
     {
       "parameters": {
@@ -94,7 +112,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\"\n}",
+        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"semana\": \"{{ $json.semana }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\"\n}",
         "options": {
           "timeout": 30000
         }
@@ -103,10 +121,7 @@
       "name": "POST a Railway API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        208,
-        0
-      ]
+      "position": [208, 0]
     },
     {
       "parameters": {
@@ -121,10 +136,7 @@
       "name": "Telegram - PDF Registrado",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [
-        448,
-        0
-      ],
+      "position": [448, 0],
       "webhookId": "e29777ad-515d-4fa4-8a84-3fcde6a77dc3",
       "credentials": {
         "telegramApi": {
@@ -136,7 +148,7 @@
     {
       "parameters": {
         "chatId": "-5135765805",
-        "text": "=⚠️ *PDF sin dimensiones detectadas*\n📄 {{ $json.archivo }}\n❌ No se pudo leer el MediaBox del PDF.\nVerifica el archivo manualmente o súbelo de nuevo.",
+        "text": "=⚠️ *PDF sin dimensiones detectadas*\n📄 {{ $json.archivo }}\n❌ No se pudo leer el alto del nombre del PDF.\nVerifica el archivo manualmente o súbelo de nuevo.",
         "additionalFields": {
           "disable_notification": false,
           "parse_mode": "Markdown"
@@ -146,10 +158,7 @@
       "name": "Telegram - Alto No Detectado",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [
-        208,
-        224
-      ],
+      "position": [208, 224],
       "webhookId": "eff30b33-b492-496d-bef7-d041679a4962",
       "credentials": {
         "telegramApi": {
@@ -157,56 +166,37 @@
           "name": "Telegram account"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "const nombreCompleto = $('Extraer Nombre Archivo').first().json.nombreCompleto;\nconst nombreSinExtension = $('Extraer Nombre Archivo').first().json.nombreSinExtension;\n\n// Regex más flexible - busca cualquier número después de _ en cualquier parte\nconst regex = /_(\\d+(?:[.,]\\d+)?)/;\nconst match = nombreSinExtension.match(regex);\n\nlet altoCm = 0;\nif (match) {\n  altoCm = parseFloat(match[1].replace(',', '.'));\n}\n\nconst anchoM = 1.0;\nconst metros = altoCm > 0 ? Math.round((altoCm / 100) * anchoM * 1000) / 1000 : 0;\n\nreturn [{\n  json: {\n    equipo: nombreSinExtension,\n    alto: altoCm,\n    ancho: anchoM * 100,\n    metros,\n    archivo: nombreCompleto,\n    disenador: '',\n    pdfLeido: altoCm > 0,\n    debug: 'nombre=[' + nombreSinExtension + '] match=' + JSON.stringify(match)\n  }\n}];\n"
-      },
-      "id": "1f37ceb5-14e0-4531-8f92-d830373c3366",
-      "name": "Extraer Dimensiones PDF",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -272,
-        112
-      ]
-    },
-    {
-      "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Google Drive Trigger').first().json.id }}?alt=media",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleDriveOAuth2Api",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file"
-            }
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -864,
-        112
-      ],
-      "id": "242d0808-e95e-4698-bc7d-25fa943f3b18",
-      "name": "HTTP Request",
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "g0k7EcnkOFnDpu6t",
-          "name": "Google Drive account"
-        }
-      }
     }
   ],
   "pinData": {},
   "connections": {
-    "Google Drive Trigger": {
+    "Cada minuto": {
       "main": [
         [
           {
-            "node": "HTTP Request",
+            "node": "Buscar PDFs en Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar PDFs en Drive": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Nuevos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Nuevos": {
+      "main": [
+        [
+          {
+            "node": "Extraer Nombre Archivo",
             "type": "main",
             "index": 0
           }
@@ -218,6 +208,17 @@
         [
           {
             "node": "Extraer Dimensiones PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Dimensiones PDF": {
+      "main": [
+        [
+          {
+            "node": "¿Alto > 0?",
             "type": "main",
             "index": 0
           }
@@ -238,11 +239,6 @@
             "node": "Telegram - Alto No Detectado",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "POST a Railway API",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -252,28 +248,6 @@
         [
           {
             "node": "Telegram - PDF Registrado",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extraer Dimensiones PDF": {
-      "main": [
-        [
-          {
-            "node": "¿Alto > 0?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Request": {
-      "main": [
-        [
-          {
-            "node": "Extraer Nombre Archivo",
             "type": "main",
             "index": 0
           }

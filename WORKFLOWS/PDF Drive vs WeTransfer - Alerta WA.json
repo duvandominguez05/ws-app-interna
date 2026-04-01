@@ -6,8 +6,8 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 2
+              "field": "minutes",
+              "minutesInterval": 5
             }
           ]
         }
@@ -16,7 +16,7 @@
       "typeVersion": 1.3,
       "position": [-1400, 0],
       "id": "node-schedule",
-      "name": "Cada 2 horas"
+      "name": "Cada 5 minutos"
     },
     {
       "parameters": {
@@ -40,7 +40,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filtrar PDFs creados esta semana (lunes a hoy)\nconst archivos = $input.all();\n\nconst ahora = new Date();\nconst diaSemana = ahora.getDay();\nconst diasDesideLunes = diaSemana === 0 ? 6 : diaSemana - 1;\n\nconst lunes = new Date(ahora);\nlunes.setDate(ahora.getDate() - diasDesideLunes);\nlunes.setHours(0, 0, 0, 0);\n\n// Clave de semana (misma lógica que la app)\nconst semana = `${lunes.getFullYear()}-W${String(Math.ceil(lunes.getDate()/7)).padStart(2,'0')}-${lunes.getMonth()+1}`;\n\nconst deEstaSemana = archivos.filter(item => {\n  const creado = new Date(item.json.createdTime);\n  return creado >= lunes;\n});\n\nif (deEstaSemana.length === 0) return [{ json: { pdfs: [], semana, total: 0 } }];\n\nreturn [{ json: { pdfs: deEstaSemana.map(i => i.json), semana, total: deEstaSemana.length } }];\n"
+        "jsCode": "// Filtrar PDFs creados esta semana y guardar en item para pasar al siguiente nodo\nconst archivos = $input.all();\n\nconst ahora = new Date();\nconst diaSemana = ahora.getDay();\nconst diasDesideLunes = diaSemana === 0 ? 6 : diaSemana - 1;\n\nconst lunes = new Date(ahora);\nlunes.setDate(ahora.getDate() - diasDesideLunes);\nlunes.setHours(0, 0, 0, 0);\n\nconst semana = `${lunes.getFullYear()}-W${String(Math.ceil(lunes.getDate()/7)).padStart(2,'0')}-${lunes.getMonth()+1}`;\n\nconst deEstaSemana = archivos.filter(item => {\n  const creado = new Date(item.json.createdTime);\n  return creado >= lunes;\n});\n\nconst pdfs = deEstaSemana.map(i => ({\n  name: i.json.name,\n  createdTime: i.json.createdTime\n}));\n\n// Pasar los PDFs como un solo item con todos los datos\nreturn [{ json: { pdfs, semana, totalDrive: pdfs.length } }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -52,7 +52,7 @@
       "parameters": {
         "operation": "getAll",
         "filters": {
-          "q": "from:noreply@wetransfer.com enviado correctamente newer_than:7d"
+          "q": "from:noreply@wetransfer.com newer_than:7d"
         },
         "options": {
           "format": "full"
@@ -60,7 +60,7 @@
       },
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [-1160, 240],
+      "position": [-680, 0],
       "id": "node-gmail",
       "name": "Correos WeTransfer Gmail",
       "credentials": {
@@ -72,21 +72,11 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extraer todos los nombres .pdf mencionados en correos de WeTransfer\nconst correos = $input.all();\nconst archivosEnviados = new Set();\n\nfor (const correo of correos) {\n  const asunto = correo.json.subject || '';\n  const cuerpo = correo.json.text || correo.json.snippet || '';\n  const html   = correo.json.html || '';\n  const todo   = asunto + ' ' + cuerpo + ' ' + html;\n\n  // Buscar patrones nombre.pdf\n  const matches = todo.match(/[^\\s\"<>]+\\.pdf/gi);\n  if (matches) {\n    for (const m of matches) {\n      archivosEnviados.add(m.trim().toLowerCase());\n    }\n  }\n}\n\nreturn [{ json: { archivosEnviados: Array.from(archivosEnviados) } }];\n"
+        "jsCode": "// Recibe los PDFs del paso anterior y los correos del nodo Gmail\n// Los PDFs vienen en el primer item, los correos en los siguientes\nconst todosItems = $input.all();\n\n// El primer item tiene los datos de Drive\nconst pdfData = $('Filtrar PDFs Esta Semana').first().json;\nconst pdfs = pdfData.pdfs || [];\nconst semana = pdfData.semana || '';\n\n// Extraer archivos enviados de los correos\nconst archivosEnviados = new Set();\nfor (const item of todosItems) {\n  const asunto = item.json.subject || '';\n  const cuerpo = item.json.text || item.json.snippet || '';\n  const html   = item.json.html || '';\n  const todo   = asunto + ' ' + cuerpo + ' ' + html;\n\n  const matches = todo.match(/[^\\s\"<>()\\[\\]]+\\.pdf/gi);\n  if (matches) {\n    for (const m of matches) {\n      archivosEnviados.add(m.trim().toLowerCase());\n    }\n  }\n}\n\n// Cruzar\nconst pendientes = [];\nconst enviadosOk = [];\n\nfor (const pdf of pdfs) {\n  const nombre = (pdf.name || '').toLowerCase();\n  const nombreSinExt = nombre.replace(/\\.pdf$/i, '');\n\n  const matchAlto = nombreSinExt.match(/_(\\d+(?:[.,]\\d+)?)$/);\n  const altoCm = matchAlto ? parseFloat(matchAlto[1].replace(',', '.')) : 0;\n  const metros = altoCm > 0 ? Math.round((altoCm / 100) * 1000) / 1000 : 0;\n\n  const yaEnviado = Array.from(archivosEnviados).some(e => {\n    const eSinExt = e.replace(/\\.pdf$/i, '');\n    return e === nombre || eSinExt === nombreSinExt ||\n           e.includes(nombreSinExt) || nombreSinExt.includes(eSinExt);\n  });\n\n  const fecha = new Date(pdf.createdTime);\n  const fechaStr = fecha.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });\n\n  if (yaEnviado) {\n    enviadosOk.push({ nombre: pdf.name, fecha: fechaStr, altoCm, metros });\n  } else {\n    pendientes.push({ nombre: pdf.name, fecha: fechaStr, altoCm, metros });\n  }\n}\n\nreturn [{ json: {\n  semana,\n  hayPendientes: pendientes.length > 0,\n  pendientes,\n  enviadosOk,\n  totalDrive: pdfs.length,\n  totalEnviados: enviadosOk.length,\n  totalPendientes: pendientes.length\n} }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-920, 240],
-      "id": "node-extraer-enviados",
-      "name": "Extraer Archivos Enviados"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Cruzar PDFs de Drive con los enviados por WeTransfer\nconst pdfData  = $('Filtrar PDFs Esta Semana').first().json;\nconst pdfs     = pdfData.pdfs || [];\nconst semana   = pdfData.semana || '';\nconst enviados = $('Extraer Archivos Enviados').first().json.archivosEnviados || [];\n\nconst pendientes = [];\nconst enviadosOk = [];\n\nfor (const pdf of pdfs) {\n  const nombre = (pdf.name || '').toLowerCase();\n  const nombreSinExt = nombre.replace(/\\.pdf$/i, '');\n  \n  // Extraer metros del nombre (numero al final: equipo_280.pdf)\n  const matchAlto = nombreSinExt.match(/_(\\d+(?:[.,]\\d+)?)$/);\n  const altoCm = matchAlto ? parseFloat(matchAlto[1].replace(',', '.')) : 0;\n  const metros = altoCm > 0 ? Math.round((altoCm / 100) * 1000) / 1000 : 0;\n\n  const yaEnviado = enviados.some(e => {\n    const eSinExt = e.replace(/\\.pdf$/i, '');\n    return e === nombre || eSinExt === nombreSinExt || e.includes(nombreSinExt) || nombreSinExt.includes(eSinExt);\n  });\n\n  const fecha = new Date(pdf.createdTime);\n  const fechaStr = fecha.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });\n\n  if (yaEnviado) {\n    enviadosOk.push({ nombre: pdf.name, fecha: fechaStr, altoCm, metros });\n  } else {\n    pendientes.push({ nombre: pdf.name, fecha: fechaStr, altoCm, metros });\n  }\n}\n\nreturn [{ json: {\n  semana,\n  hayPendientes: pendientes.length > 0,\n  pendientes,\n  enviadosOk,\n  totalDrive: pdfs.length,\n  totalEnviados: enviadosOk.length,\n  totalPendientes: pendientes.length\n} }];\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-680, 120],
+      "position": [-440, 0],
       "id": "node-cruzar",
       "name": "Cruzar Drive vs WeTransfer"
     },
@@ -107,7 +97,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-440, 120],
+      "position": [-200, 0],
       "id": "node-registrar-app",
       "name": "Registrar en App Web"
     },
@@ -129,17 +119,17 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-200, 120],
+      "position": [40, 0],
       "id": "node-if-pendientes",
       "name": "¿Hay pendientes?"
     },
     {
       "parameters": {
-        "jsCode": "const data = $('Cruzar Drive vs WeTransfer').first().json;\nconst pendientes = data.pendientes || [];\n\nlet lista = '';\nfor (const p of pendientes) {\n  lista += `\\n• ${p.nombre} (${p.fecha})`;\n}\n\nconst mensaje = `⚠️ *PDFs sin enviar por WeTransfer*\\n\\n` +\n  `Esta semana hay *${data.totalDrive}* PDFs en Drive.\\n` +\n  `✅ Enviados: ${data.totalEnviados}\\n` +\n  `❌ Pendientes: ${data.totalPendientes}\\n\\n` +\n  `*Sin enviar a sublimarte:*${lista}\\n\\n` +\n  `📌 Enviar a sublimarte.alqueria@gmail.com`;\n\nreturn [{ json: { mensaje } }];\n"
+        "jsCode": "const data = $('Cruzar Drive vs WeTransfer').first().json;\nconst pendientes = data.pendientes || [];\n\nlet lista = '';\nfor (const p of pendientes) {\n  lista += `\\n• ${p.nombre} (${p.fecha})`;\n}\n\nconst mensaje = `⚠️ PDFs sin enviar por WeTransfer\\n\\n` +\n  `Esta semana: ${data.totalDrive} PDFs en Drive\\n` +\n  `✅ Enviados: ${data.totalEnviados}\\n` +\n  `❌ Sin enviar: ${data.totalPendientes}\\n\\n` +\n  `Sin enviar a sublimarte:${lista}\\n\\n` +\n  `Enviar a sublimarte.alqueria@gmail.com`;\n\nreturn [{ json: { mensaje } }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [40, 0],
+      "position": [280, -80],
       "id": "node-armar-mensaje",
       "name": "Armar Mensaje WA"
     },
@@ -161,31 +151,23 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [280, 0],
+      "position": [520, -80],
       "id": "node-send-wa",
       "name": "Enviar Alerta WA"
     }
   ],
   "pinData": {},
   "connections": {
-    "Cada 2 horas": {
-      "main": [
-        [
-          { "node": "Buscar PDFs en Drive", "type": "main", "index": 0 },
-          { "node": "Correos WeTransfer Gmail", "type": "main", "index": 0 }
-        ]
-      ]
+    "Cada 5 minutos": {
+      "main": [[{ "node": "Buscar PDFs en Drive", "type": "main", "index": 0 }]]
     },
     "Buscar PDFs en Drive": {
       "main": [[{ "node": "Filtrar PDFs Esta Semana", "type": "main", "index": 0 }]]
     },
-    "Correos WeTransfer Gmail": {
-      "main": [[{ "node": "Extraer Archivos Enviados", "type": "main", "index": 0 }]]
-    },
     "Filtrar PDFs Esta Semana": {
-      "main": [[{ "node": "Cruzar Drive vs WeTransfer", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Correos WeTransfer Gmail", "type": "main", "index": 0 }]]
     },
-    "Extraer Archivos Enviados": {
+    "Correos WeTransfer Gmail": {
       "main": [[{ "node": "Cruzar Drive vs WeTransfer", "type": "main", "index": 0 }]]
     },
     "Cruzar Drive vs WeTransfer": {

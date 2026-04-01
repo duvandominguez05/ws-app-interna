@@ -3,14 +3,61 @@
   "nodes": [
     {
       "parameters": {
-        "jsCode": "const subject = $input.first().json.Subject;\n\nconst match = subject.match(/se ha descargado (.+?)\\.pdf/i);\nconst archivo = match ? match[1].trim() : subject;\nconst equipo = archivo.replace(/\\s+\\d+$/, '').trim();\n\nreturn [{ json: { archivo, equipo, subject } }];\n"
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-208, 0],
+      "id": "a1b2c3d4-wt-0001-0001-000000000001",
+      "name": "Cada minuto"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 10,
+        "filters": {
+          "q": "from:noreply@wetransfer.com se ha descargado newer_than:1d"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "a1b2c3d4-wt-0001-0001-000000000002",
+      "name": "Buscar Correos WeTransfer",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "4D2s6JOWBaAK2fTO",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const correos = $input.all();\nconst ahora = new Date();\nconst DOS_MINUTOS = 2 * 60 * 1000;\n\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.procesados) staticData.procesados = [];\n\nconst nuevos = correos.filter(item => {\n  const fecha = new Date(item.json.date || item.json.internalDate / 1 || 0);\n  const esNuevo = (ahora - fecha) <= DOS_MINUTOS;\n  const id = item.json.id;\n  const noProcesado = !staticData.procesados.includes(id);\n  return esNuevo && noProcesado;\n});\n\nnuevos.forEach(item => {\n  staticData.procesados.push(item.json.id);\n});\n\n// Limpiar procesados viejos (más de 1 día)\nif (!staticData.procesadosTiempo) staticData.procesadosTiempo = {};\nnuevos.forEach(item => {\n  staticData.procesadosTiempo[item.json.id] = ahora.getTime();\n});\nconst UN_DIA = 24 * 60 * 60 * 1000;\nstaticData.procesados = staticData.procesados.filter(id => {\n  const t = staticData.procesadosTiempo[id];\n  return t && (ahora.getTime() - t) < UN_DIA;\n});\n\nif (nuevos.length === 0) return [];\n\nreturn nuevos.map(item => ({ json: item.json }));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        208,
-        0
-      ],
+      "position": [208, 0],
+      "id": "a1b2c3d4-wt-0001-0001-000000000003",
+      "name": "Filtrar Nuevos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const subject = $input.first().json.subject || $input.first().json.Subject || '';\n\nconst match = subject.match(/se ha descargado (.+?)\\.pdf/i);\nconst archivo = match ? match[1].trim() : subject;\nconst equipo = archivo.replace(/\\s+\\d+$/, '').trim();\n\nreturn [{ json: { archivo, equipo, subject } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [416, 0],
       "id": "9bbabc0e-88f4-4c4d-ae8f-69856734fb32",
       "name": "Extraer Equipo"
     },
@@ -21,41 +68,9 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [
-        416,
-        0
-      ],
+      "position": [624, 0],
       "id": "c7b8b029-4174-48b2-85fb-2acc3a1f6c72",
       "name": "Obtener Pedidos"
-    },
-    {
-      "parameters": {
-        "pollTimes": {
-          "item": [
-            {
-              "mode": "everyMinute"
-            }
-          ]
-        },
-        "filters": {
-          "q": "se ha descargado",
-          "sender": "noreply@wetransfer.com"
-        }
-      },
-      "type": "n8n-nodes-base.gmailTrigger",
-      "typeVersion": 1.3,
-      "position": [
-        0,
-        0
-      ],
-      "id": "529f772b-33ec-4e3e-b86a-9d900bc263a4",
-      "name": "Gmail WeTransfer",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "4D2s6JOWBaAK2fTO",
-          "name": "Gmail account"
-        }
-      }
     },
     {
       "parameters": {
@@ -63,10 +78,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        624,
-        0
-      ],
+      "position": [832, 0],
       "id": "eee71de5-fba3-49bb-9361-1d24f060a6b0",
       "name": "Buscar Pedido"
     },
@@ -78,10 +90,7 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [
-        832,
-        0
-      ],
+      "position": [1040, 0],
       "id": "8ce0535d-082e-449d-96fb-d166c55322cf",
       "name": "Send a text message",
       "webhookId": "2ea5b426-7feb-4cec-b33d-85c78a4f3440",
@@ -103,16 +112,46 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [
-        1040,
-        0
-      ],
+      "position": [1248, 0],
       "id": "265a86f7-e8d0-4d5c-bf70-6fe85dd55364",
       "name": "Registrar en App"
     }
   ],
   "pinData": {},
   "connections": {
+    "Cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Buscar Correos WeTransfer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Correos WeTransfer": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Nuevos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Nuevos": {
+      "main": [
+        [
+          {
+            "node": "Extraer Equipo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Extraer Equipo": {
       "main": [
         [
@@ -129,17 +168,6 @@
         [
           {
             "node": "Buscar Pedido",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Gmail WeTransfer": {
-      "main": [
-        [
-          {
-            "node": "Extraer Equipo",
             "type": "main",
             "index": 0
           }
