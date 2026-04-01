@@ -2651,3 +2651,45 @@ async function compartirDocWA(id) {
 setTimeout(cargarDocsServidor, 1500);
 setTimeout(sincronizarArreglosServidor, 2000);
 setTimeout(sincronizarSatelitesServidor, 2500);
+
+// ── Pendientes WeTransfer ─────────────────────────────────────
+async function cargarPendientesWT() {
+  try {
+    const r = await fetch('/api/pendientes-wt');
+    const data = await r.json();
+    const panel = document.getElementById('panel-pendientes-wt');
+    const lista = document.getElementById('lista-pendientes-wt');
+    const ts    = document.getElementById('pendientes-wt-ts');
+    if (!panel || !lista) return;
+
+    if (!data.pendientes || data.pendientes.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = 'block';
+    if (ts && data.ts) {
+      const fecha = new Date(data.ts);
+      ts.textContent = 'Última verificación: ' + fecha.toLocaleString('es-CO', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' });
+    }
+
+    lista.innerHTML = data.pendientes.map(p => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(239,68,68,0.05);border-radius:6px;border:1px solid rgba(239,68,68,0.15);">
+        <span style="font-size:0.75rem;">📄</span>
+        <span style="font-size:0.8rem;color:var(--text);flex:1;">${p.nombre}</span>
+        <span style="font-size:0.7rem;color:var(--text-muted);">${p.fecha || ''}</span>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+// Cargar pendientes al abrir la sección calandra
+(function() {
+  const _origCalandra = showSection;
+  showSection = function(id, navEl) {
+    _origCalandra(id, navEl);
+    if (id === 'calandra') cargarPendientesWT();
+  };
+})();
+
+setTimeout(cargarPendientesWT, 3000);

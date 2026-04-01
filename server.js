@@ -362,6 +362,40 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/pendientes-wt — n8n registra PDFs sin enviar ──
+  // Body: { pendientes: [{nombre, fecha}], semana }
+  if (req.method === 'POST' && req.url === '/api/pendientes-wt') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { pendientes, semana } = JSON.parse(body);
+        if (!Array.isArray(pendientes)) return json(res, 400, { error: 'pendientes debe ser array' });
+        const FILE = path.join(__dirname, 'data', 'pendientes-wt.json');
+        const registro = {
+          ts: new Date().toISOString(),
+          semana: semana || '',
+          pendientes,
+        };
+        fs.mkdirSync(path.dirname(FILE), { recursive: true });
+        fs.writeFileSync(FILE, JSON.stringify(registro, null, 2));
+        console.log(`[pendientes-wt] ${pendientes.length} pendientes registrados`);
+        return json(res, 200, { ok: true, total: pendientes.length });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/pendientes-wt — devuelve último reporte ────────
+  if (req.method === 'GET' && req.url === '/api/pendientes-wt') {
+    const FILE = path.join(__dirname, 'data', 'pendientes-wt.json');
+    let data = { pendientes: [], ts: null };
+    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+    return json(res, 200, data);
+  }
+
   // ── GET /api/arreglos ────────────────────────────────────────
   if (req.method === 'GET' && req.url === '/api/arreglos') {
     const FILE = path.join(__dirname, 'data', 'arreglos.json');
