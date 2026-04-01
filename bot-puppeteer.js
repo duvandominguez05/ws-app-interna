@@ -17,25 +17,20 @@ client.on('qr', (qr) => {
   console.log('Escanea el QR con WhatsApp del celular bot:');
   console.log('(Abre WhatsApp > Dispositivos vinculados > Vincular un dispositivo)');
   console.log('==============================\n');
-  // Mostrar QR en terminal
   const qrcode = require('qrcode-terminal');
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', async () => {
+client.on('ready', () => {
   console.log('✅ Bot WhatsApp conectado y listo!');
-  const chats = await client.getChats();
-  console.log('[bot] Chats disponibles:', chats.length);
-  chats.forEach(c => console.log(' -', c.name || c.id.user, '| isGroup:', c.isGroup));
 });
 
 client.on('disconnected', (reason) => {
   console.log('Bot desconectado:', reason);
-  client.initialize();
+  setTimeout(() => client.initialize(), 5000);
 });
 
 client.on('message', async (msg) => {
-  console.log('[bot] Mensaje recibido:', msg.body);
   const texto = msg.body || '';
   const match = texto.match(REGEX);
   if (!match) return;
@@ -57,10 +52,15 @@ client.on('message', async (msg) => {
     });
     const result = await res.json();
     if (result.ok) {
-      const equipoLinea = equipo ? `\nEquipo: ${equipo}` : '';
-      await msg.reply(`✅ ${tipo === 'pedido' ? 'Pedido' : 'Cotización'} #${result.id} creado\nVendedora: ${result.vendedora}\nTel: ${result.telefono}${equipoLinea}`);
+      const esPedido = tipo.toLowerCase() === 'pedido';
+      const equipoLinea = equipo ? `\n🏷️ *Equipo:* ${equipo}` : '';
+      const estadoLinea = esPedido ? `\n📋 *Estado:* En diseño` : '';
+      const texto = esPedido
+        ? `✅ *Pedido #${result.id} registrado*\n👤 *Vendedora:* ${result.vendedora}\n📞 *Teléfono:* ${result.telefono}${equipoLinea}${estadoLinea}`
+        : `✅ *Cotización #${result.id} registrada*\n👤 *Vendedora:* ${result.vendedora}\n📞 *Teléfono:* ${result.telefono}${equipoLinea}`;
+      await msg.reply(texto);
     } else {
-      await msg.reply(`❌ Error: ${result.error}`);
+      await msg.reply(`❌ *Error:* ${result.error}`);
     }
   } catch (e) {
     console.error('[bot] Error al crear venta:', e.message);
