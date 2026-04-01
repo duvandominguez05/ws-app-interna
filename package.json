@@ -4,7 +4,7 @@
   "description": "App interna W&S Textil",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js & node bot.js",
+    "start": "node server.js & node --experimental-global-webcrypto bot.js",
     "bot": "node bot.js"
   },
   "engines": {
