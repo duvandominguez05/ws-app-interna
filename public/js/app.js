@@ -49,6 +49,7 @@ const ESTADO_BADGE = {
 ════════════════════════════════════════════════════════════════ */
 let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
+const eliminadosLocales = new Set(JSON.parse(localStorage.getItem('ws_eliminados') || '[]'));
 let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
@@ -910,6 +911,8 @@ function eliminarPedido(id) {
   }
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
+  eliminadosLocales.add(id);
+  localStorage.setItem('ws_eliminados', JSON.stringify([...eliminadosLocales]));
   guardar();
   render();
   toast(`Pedido #${id} eliminado`, 'info');
@@ -1506,9 +1509,10 @@ function syncConServidor(silencioso = false) {
             notaWebhook: s.notaWebhook || l.notaWebhook,
             ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook,
             ultimoMovimiento: s.ultimoMovimiento || l.ultimoMovimiento });
-        } else if (s) {
-          merged.push(s);
-        } else {
+        } else if (s && !l) {
+          // Solo agregar si no fue eliminado explícitamente en este dispositivo
+          if (!eliminadosLocales.has(id)) merged.push(s);
+        } else if (l) {
           merged.push(l);
         }
       });
