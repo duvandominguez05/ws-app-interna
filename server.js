@@ -225,12 +225,16 @@ http.createServer((req, res) => {
           origen:    'drive',
         };
 
-        registros.push(registro);
-        fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
-        fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+        // Evitar duplicados por nombre de archivo
+        const yaExiste = registros.some(r => r.archivo === registro.archivo);
+        if (!yaExiste) {
+          registros.push(registro);
+          fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
+          fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+        }
 
-        console.log(`[calandra] ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
-        return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id });
+        console.log(`[calandra] ${yaExiste ? 'duplicado ignorado' : 'registrado'}: ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
+        return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id, duplicado: yaExiste });
 
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
@@ -264,6 +268,7 @@ http.createServer((req, res) => {
       if (fs.existsSync(CAL_FILE))
         registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
     } catch {}
+    registros.sort((a, b) => b.id - a.id);
     return json(res, 200, { registros });
   }
 
