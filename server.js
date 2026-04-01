@@ -190,7 +190,7 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { equipo, alto, ancho, archivo, disenador } = JSON.parse(body);
+        const { equipo, alto, ancho, archivo, disenador, fechaDrive, semana: semanaBody } = JSON.parse(body);
         if (!equipo || !alto)
           return json(res, 400, { error: 'Faltan campos: equipo, alto' });
 
@@ -206,23 +206,20 @@ http.createServer((req, res) => {
             registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
         } catch {}
 
-        // Clave de semana ISO (lunes como inicio)
-        const hoy = new Date();
-        const diaSemana = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
-        const lunes = new Date(hoy);
-        lunes.setDate(hoy.getDate() - diaSemana);
-        const semana = `${lunes.getFullYear()}-W${String(Math.ceil((lunes.getDate()) / 7)).padStart(2,'0')}-${lunes.getMonth()+1}`;
+        // Usar fecha real del PDF si viene, si no usar hoy
+        const fechaReal = fechaDrive || new Date().toLocaleDateString('es-CO');
+        const semana = semanaBody || fechaReal;
 
         const registro = {
-          id:        Date.now(),
-          equipo:    String(equipo).trim(),
-          alto:      altoCm,
+          id:         Date.now(),
+          equipo:     String(equipo).trim(),
+          alto:       altoCm,
           metros,
           semana,
-          fecha:     hoy.toLocaleDateString('es-CO'),
-          archivo:   archivo || '',
-          disenador: disenador || '',
-          origen:    'drive',
+          fecha:      fechaReal,
+          archivo:    archivo || '',
+          disenador:  disenador || '',
+          origen:     'drive',
         };
 
         // Evitar duplicados por nombre de archivo
@@ -267,6 +264,36 @@ http.createServer((req, res) => {
     fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
     console.log(`[calandra] borrado id=${id}, quedaron ${registros.length}/${antes}`);
     return json(res, 200, { ok: true, borrado: antes !== registros.length });
+  }
+
+  // ── GET /api/drive-pdfs — todos los PDFs de Drive ordenados por fecha real ──
+  if (req.method === 'GET' && req.url === '/api/drive-pdfs') {
+    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+    const WT_FILE  = path.join(__dirname, 'data', 'pendientes-wt.json');
+    let registros = [];
+    let enviados = new Set();
+    try {
+      if (fs.existsSync(CAL_FILE))
+        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
+    } catch {}
+    try {
+      if (fs.existsSync(WT_FILE)) {
+        const wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
+        const pendientes = (wt.pendientes || []).map(p => p.nombre.toLowerCase());
+        // Los que NO están en pendientes fueron enviados
+        registros.forEach(r => {
+          const nombre = (r.archivo || '').toLowerCase();
+          if (!pendientes.includes(nombre)) enviados.add(nombre);
+        });
+      }
+    } catch {}
+    // Ordenar del más nuevo al más viejo por fecha real
+    registros.sort((a, b) => b.id - a.id);
+    const result = registros.map(r => ({
+      ...r,
+      enviado: enviados.has((r.archivo || '').toLowerCase())
+    }));
+    return json(res, 200, { pdfs: result });
   }
 
   // ── GET /api/calandra — devuelve todos los registros ────────

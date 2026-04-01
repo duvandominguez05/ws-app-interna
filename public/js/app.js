@@ -1552,38 +1552,33 @@ function guardarCalandra_store() {
 // Sincroniza registros de Drive (vienen del servidor vía n8n) con los locales
 async function sincronizarCalandraServidor() {
   try {
-    const r = await fetch('/api/calandra');
+    const r = await fetch('/api/drive-pdfs');
     if (!r.ok) return;
-    const { registros: del_servidor } = await r.json();
-    if (!del_servidor || !del_servidor.length) return;
+    const { pdfs } = await r.json();
+    if (!pdfs || !pdfs.length) return;
 
-    // Normalizar registros del servidor al formato local
-    const normalizados = del_servidor.map(r => ({
-      id:       r.id,
-      equipo:   r.equipo,
-      altoCm:   r.alto,
-      metros:   r.metros,
-      fecha:    r.fecha,
-      hora:     '',
-      semana:   getSemanaKey((() => { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); })()),
-      archivo:  r.archivo || '',
+    // Reemplazar registros del servidor directamente (ya vienen ordenados y con estado WeTransfer)
+    const normalizados = pdfs.map(r => ({
+      id:        r.id,
+      equipo:    r.equipo,
+      altoCm:    r.alto,
+      metros:    r.metros,
+      fecha:     r.fecha,
+      hora:      '',
+      semana:    getSemanaKey((() => { try { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); } catch { return new Date(); } })()),
+      archivo:   r.archivo || '',
       disenador: r.disenador || '',
-      origen:   'drive',
+      origen:    'drive',
+      enviado:   r.enviado || false,
     }));
 
-    // Mezclar: no duplicar por id
-    const idsLocales = new Set(calandraRegistros.map(r => r.id));
-    const nuevos = normalizados.filter(r => !idsLocales.has(r.id));
-
-    if (nuevos.length) {
-      calandraRegistros = [...nuevos, ...calandraRegistros];
-      guardarCalandra_store();
-      renderCalandra();
-      renderDashboard();
-      nuevos.forEach(r => {
-        crearNotif('📄', `<strong>Drive:</strong> PDF <em>${esc(r.archivo || r.equipo)}</em> registrado — <strong>${r.metros.toFixed(2)} m</strong>`, 'info');
-      });
-    }
+    // Mezclar: no duplicar por id, los del servidor tienen prioridad
+    const idsServidor = new Set(normalizados.map(r => r.id));
+    const soloLocales = calandraRegistros.filter(r => !idsServidor.has(r.id));
+    calandraRegistros = [...normalizados, ...soloLocales].sort((a, b) => b.id - a.id);
+    guardarCalandra_store();
+    renderCalandra();
+    renderDashboard();
   } catch {}
 }
 
@@ -1706,12 +1701,17 @@ function renderCalItem(r, opaco = false) {
   const extra   = esDrive && r.archivo
     ? `<span style="font-size:0.7rem;color:#a78bfa;margin-left:6px;" title="${esc(r.archivo)}">Drive · ${esc(r.disenador || '')}</span>`
     : '';
+  const wtBadge = esDrive
+    ? (r.enviado
+        ? `<span style="font-size:0.7rem;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.3);border-radius:4px;padding:1px 6px;">✅ WeTransfer</span>`
+        : `<span style="font-size:0.7rem;background:rgba(239,68,68,0.12);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:4px;padding:1px 6px;">⚠️ Sin enviar</span>`)
+    : '';
   return `
     <div class="cal-item" style="${opaco ? 'opacity:0.65;' : ''}">
       <span style="font-size:1.3rem;">${icono}</span>
-      <div class="cal-item-info">
+      <div class="cal-item-info" style="flex:1;">
         <div class="cal-item-equipo">${esc(r.equipo)}${extra}</div>
-        <div class="cal-item-meta">${r.alto || r.altoCm || 0} cm alto · ${r.fecha} ${r.hora || ''}</div>
+        <div class="cal-item-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${r.alto || r.altoCm || 0} cm · ${r.fecha} ${r.hora || ''} ${wtBadge}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="cal-item-metros">${r.metros <= 0.01 ? '<span style="color:var(--orange);font-size:0.75em;font-weight:700;">⚠️ Sin métrica</span>' : r.metros.toFixed(2) + ' m'}</div>
