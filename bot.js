@@ -31,16 +31,25 @@ async function crearVenta(tipo, vendedora, telefono, equipo) {
   return res.json();
 }
 
+const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
+
 async function conectar() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
   sockGlobal = sock;
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+    if (qr && PHONE_NUMBER) {
+      try {
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log(`\n📱 PAIRING CODE: ${code}\nIngresa este código en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono\n`);
+      } catch (e) {
+        console.error('[bot] Error obteniendo pairing code:', e.message);
+      }
+    } else if (qr) {
       console.log('\n📱 Escanea este QR con WhatsApp del número del bot:\n');
       qrcode.generate(qr, { small: true });
     }
