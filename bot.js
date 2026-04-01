@@ -5,7 +5,7 @@ const path = require('path');
 const qrcode = require('qrcode-terminal');
 
 const API_URL  = process.env.API_URL   || 'https://ws-app-interna-production.up.railway.app';
-const AUTH_DIR = path.join(__dirname, 'data', 'wa_auth');
+const AUTH_DIR = path.join(__dirname, 'wa_auth_local');
 const GRUPO_ID = process.env.WA_GRUPO_ID || '573506974711-16128410420@g.us';
 
 const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+([A-Za-zÁÉÍÓÚáéíóúñÑ].+))?$/i;
