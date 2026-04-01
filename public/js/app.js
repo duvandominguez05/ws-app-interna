@@ -1557,27 +1557,38 @@ async function sincronizarCalandraServidor() {
     const { pdfs } = await r.json();
     if (!pdfs || !pdfs.length) return;
 
-    // Reemplazar registros del servidor directamente (ya vienen ordenados y con estado WeTransfer)
-    const normalizados = pdfs.map(r => ({
-      id:          r.id,
-      equipo:      r.equipo,
-      altoCm:      r.alto,
-      metros:      r.metros,
-      fecha:       r.fecha,
-      hora:        '',
-      semana:      getSemanaKey((() => { try { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); } catch { return new Date(); } })()),
-      archivo:     r.archivo || '',
-      disenador:   r.disenador || '',
-      origen:      'drive',
-      enviado:     r.enviado || false,
-      createdTime: r.createdTime || null,
-    }));
+    // Deduplicar por archivo (nombre único) — el servidor es fuente de verdad
+    const vistos = new Set();
+    const normalizados = pdfs
+      .filter(r => {
+        const key = (r.archivo || r.equipo || '').toLowerCase();
+        if (vistos.has(key)) return false;
+        vistos.add(key);
+        return true;
+      })
+      .map(r => ({
+        id:          r.id,
+        equipo:      r.equipo,
+        altoCm:      r.alto,
+        metros:      r.metros,
+        fecha:       r.fecha,
+        hora:        '',
+        semana:      getSemanaKey((() => { try { const [d,m,y] = r.fecha.split('/'); return new Date(+y, +m-1, +d); } catch { return new Date(); } })()),
+        archivo:     r.archivo || '',
+        disenador:   r.disenador || '',
+        origen:      'drive',
+        enviado:     r.enviado || false,
+        createdTime: r.createdTime || null,
+      }));
 
-    // Mezclar: no duplicar por id, los del servidor tienen prioridad
-    const idsServidor = new Set(normalizados.map(r => r.id));
-    const soloLocales = calandraRegistros.filter(r => !idsServidor.has(r.id));
+    // Solo conservar locales manuales (no drive) — los de Drive vienen del servidor
+    const soloLocales = calandraRegistros.filter(r => r.origen !== 'drive');
     // Ordenar por createdTime (fecha real Drive) del más nuevo al más viejo
-    calandraRegistros = [...normalizados, ...soloLocales].sort((a, b) => {
+    const archivosServidor = new Set(normalizados.map(r => (r.archivo || '').toLowerCase()));
+    calandraRegistros = [
+      ...normalizados,
+      ...soloLocales.filter(r => !archivosServidor.has((r.archivo || '').toLowerCase()))
+    ].sort((a, b) => {
       const ta = a.createdTime ? new Date(a.createdTime).getTime() : a.id;
       const tb = b.createdTime ? new Date(b.createdTime).getTime() : b.id;
       return tb - ta;
