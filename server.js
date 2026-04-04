@@ -352,7 +352,7 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { tipo, archivo, equipo } = JSON.parse(body);
+        const { tipo, archivo, equipo, gmailId } = JSON.parse(body);
         if (!tipo || !archivo)
           return json(res, 400, { error: 'Faltan campos: tipo, archivo' });
         if (!['enviado', 'descargado'].includes(tipo))
@@ -365,11 +365,16 @@ http.createServer((req, res) => {
             registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
         } catch {}
 
+        // Evitar duplicados por gmailId
+        if (gmailId && registros.some(r => r.gmailId === gmailId))
+          return json(res, 200, { ok: true, duplicado: true, gmailId });
+
         const registro = {
           id:      Date.now(),
           tipo,
           archivo: String(archivo).trim(),
           equipo:  equipo ? String(equipo).trim() : '',
+          gmailId: gmailId || null,
           fecha:   new Date().toLocaleDateString('es-CO'),
           hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
           ts:      new Date().toISOString(),
