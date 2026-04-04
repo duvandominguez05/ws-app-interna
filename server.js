@@ -37,6 +37,19 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
     return { ok: true, id: existnte.id, tipo: tipoNorm, vendedora: existnte.vendedora, telefono, duplicado: true };
   }
 
+  // Control de Duplicados por teléfono+mes
+  const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
+  const telLimpio = String(telefono).replace(/\s/g, '');
+  const dupTel = pedidos.find(p => {
+    const pTel = String(p.telefono).replace(/\s/g, '');
+    const pMes = (p.creadoEn || '').slice(-7);
+    return pTel === telLimpio && pMes === mesActual && p.tipoBandeja === tipoNorm;
+  });
+  if (dupTel) {
+    console.log(`[api] Duplicado por teléfono+mes ignorado: ${telLimpio}`);
+    return { ok: true, id: dupTel.id, tipo: tipoNorm, vendedora: dupTel.vendedora, telefono, duplicado: true };
+  }
+
   const nextId  = leerNextId();
 
   const nuevo = {

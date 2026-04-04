@@ -1,9 +1,23 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 
-const API_URL = process.env.API_URL || 'http://localhost:3000';
-const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d\s\-\+]+?)(?:\s+(.+))?$/i;
-const DIAS_HISTORICO = 3;
+const API_URL = process.env.API_URL || 'https://ws-app-interna-production.up.railway.app';
+const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d][\d\s\-\+]{6,14}[\d])(?:\s+(.+))?$/i;
+const DIAS_HISTORICO = 7;
+const LOG_FILE = path.join(__dirname, 'logs', 'bot.log');
+
+// Asegurar que la carpeta logs exista
+if (!fs.existsSync(path.join(__dirname, 'logs'))) {
+  fs.mkdirSync(path.join(__dirname, 'logs'));
+}
+
+function log(msg) {
+  const linea = `[${new Date().toLocaleString('es-CO')}] ${msg}`;
+  console.log(linea);
+  fs.appendFileSync(LOG_FILE, linea + '\n');
+}
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './wa_auth_puppeteer' }),
@@ -14,21 +28,18 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
-  console.log('\n==============================');
-  console.log('Escanea el QR con WhatsApp del celular bot:');
-  console.log('(Abre WhatsApp > Dispositivos vinculados > Vincular un dispositivo)');
-  console.log('==============================\n');
+  log('QR generado — escanea con WhatsApp > Dispositivos vinculados');
   const qrcode = require('qrcode-terminal');
   qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', async () => {
-  console.log('✅ Bot WhatsApp conectado y listo!');
+  log('✅ Bot WhatsApp conectado y listo!');
   await revisarHistorico();
 });
 
 client.on('disconnected', (reason) => {
-  console.log('Bot desconectado:', reason);
+  log(`Bot desconectado: ${reason}`);
   setTimeout(() => client.initialize(), 5000);
 });
 
@@ -67,7 +78,7 @@ async function revisarHistorico() {
     let procesados = 0;
 
     for (const grupo of grupos) {
-      const mensajes = await grupo.fetchMessages({ limit: 200 });
+      const mensajes = await grupo.fetchMessages({ limit: 500 });
       for (const msg of mensajes) {
         const ts = (msg.timestamp || 0) * 1000;
         if (ts < limite) continue;
@@ -79,17 +90,18 @@ async function revisarHistorico() {
         try {
           const result = await subirVenta(tipo, vendedora, telefono, equipo, msg.id._serialized);
           if (result.ok && !result.duplicado) {
-            console.log(`[historico] Subido: #${result.id} ${tipo} ${vendedora}`);
+            log(`[historico] ✅ Registrado: #${result.id} ${tipo} ${vendedora} ${telefono.trim()}${equipo ? ` | ${equipo}` : ''}`);
             procesados++;
+            await msg.reply(mensajeRespuesta(tipo, result, equipo));
           }
         } catch (e) {
-          console.error('[historico] Error:', e.message);
+          log(`[historico] ❌ Error: ${e.message}`);
         }
       }
     }
-    console.log(`[historico] Revisión completada — ${procesados} nuevo(s) registrado(s)`);
+    log(`[historico] Revisión completada — ${procesados} nuevo(s) registrado(s)`);
   } catch (e) {
-    console.error('[historico] Error revisando histórico:', e.message);
+    log(`[historico] ❌ Error revisando histórico: ${e.message}`);
   }
 }
 
@@ -99,19 +111,23 @@ client.on('message', async (msg) => {
   if (!match) return;
 
   const [, tipo, vendedora, telefono, equipo] = match;
-  console.log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono}${equipo ? ` | equipo: ${equipo}` : ''}`);
+  log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono.trim()}${equipo ? ` | equipo: ${equipo}` : ''}`);
 
   try {
     const result = await subirVenta(tipo, vendedora, telefono, equipo, msg.id._serialized);
     if (result.ok) {
       if (!result.duplicado) {
+        log(`[bot] ✅ Registrado: #${result.id} ${tipo} ${vendedora}`);
         await msg.reply(mensajeRespuesta(tipo, result, equipo));
+      } else {
+        log(`[bot] ⚠️ Duplicado ignorado: ${texto.trim()}`);
       }
     } else {
+      log(`[bot] ❌ Error API: ${result.error}`);
       await msg.reply(`❌ *Error:* ${result.error}`);
     }
   } catch (e) {
-    console.error('[bot] Error al crear venta:', e.message);
+    log(`[bot] ❌ Error al crear venta: ${e.message}`);
   }
 });
 
