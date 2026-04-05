@@ -1348,12 +1348,12 @@ function renderWT() {
   } else {
     html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hoy</div>`;
     // Ordenar: más reciente primero
-    html += [...hoy_list].reverse().map(e => renderFila(e, false)).join('');
+    html += [...hoy_list].sort((a,b) => (b.id||0)-(a.id||0)).map(e => renderFila(e, false)).join('');
   }
 
   if (hist.length) {
     html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
-    html += [...hist].reverse().slice(0, 30).map(e => renderFila(e, true)).join('');
+    html += [...hist].sort((a,b) => (b.id||0)-(a.id||0)).slice(0, 30).map(e => renderFila(e, true)).join('');
   }
 
   cont.innerHTML = html;
