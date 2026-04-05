@@ -375,8 +375,8 @@ http.createServer((req, res) => {
           archivo: String(archivo).trim(),
           equipo:  equipo ? String(equipo).trim() : '',
           gmailId: gmailId || null,
-          fecha:   new Date().toLocaleDateString('es-CO'),
-          hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+          fecha:   new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),
+          hora:    new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }),
           ts:      new Date().toISOString(),
         };
 
