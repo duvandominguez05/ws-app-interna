@@ -394,14 +394,6 @@ http.createServer((req, res) => {
     return;
   }
 
-  // ── DELETE /api/wetransfer/all — limpia todos los registros (temporal) ──
-  if (req.method === 'DELETE' && req.url === '/api/wetransfer/all') {
-    const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
-    fs.writeFileSync(WT_FILE, JSON.stringify([], null, 2));
-    console.log('[wetransfer] Registros limpiados');
-    return json(res, 200, { ok: true, msg: 'Registros eliminados' });
-  }
-
   // ── GET /api/wetransfer — devuelve todos los registros ──────
   if (req.method === 'GET' && req.url === '/api/wetransfer') {
     const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
