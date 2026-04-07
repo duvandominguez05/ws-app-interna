@@ -611,6 +611,7 @@ function tomarPedidoDiseno(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.disenadorAsignado = nombre;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`${nombre} tomó el pedido #${id}`, 'ok');
@@ -652,6 +653,7 @@ function confirmarFecha(id) {
   if (!p) return;
   const val = document.getElementById('fecha-edit-input').value;
   p.fechaEntrega = val;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   document.querySelector('.fecha-overlay')?.remove();
@@ -684,6 +686,7 @@ function confirmarEquipo(id) {
   const val = document.getElementById('equipo-edit-input').value.trim();
   if (!val) { toast('El nombre no puede estar vacío', 'error'); return; }
   p.equipo = val;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   document.querySelector('.equipo-overlay')?.remove();
@@ -695,6 +698,7 @@ function liberarPedidoDiseno(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.disenadorAsignado = '';
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`Pedido #${id} liberado`, 'info');
@@ -875,6 +879,7 @@ function registrarArreglo(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   p.arreglo = 'pendiente';
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`#${id} marcado con arreglo — escribe la descripción`, 'info');
@@ -888,6 +893,7 @@ function guardarDescArreglo(id) {
   const val = el ? el.value.trim() : '';
   if (!val) { toast('Escribe qué hay que arreglar', 'error'); return; }
   p.arreglo = val;
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   // No re-renderizar para no destruir el textarea — solo actualizar badges
   renderBadges();
@@ -900,6 +906,7 @@ function llegoFaltante(id) {
   if (!p) return;
   p.arreglo = null;
   p.estado  = 'costura';
+  p.ultimoMovimiento = new Date().toISOString();
   guardar();
   render();
   toast(`#${id} → Costura (faltante llegó)`, 'success');
@@ -990,6 +997,7 @@ function guardarCompletar() {
   // A partir de aquí aparece en la columna "Pedidos confirmados" con su etapa visible
   p.tipoBandeja = 'pedido';
   p.estado      = 'hacer-diseno';
+  p.ultimoMovimiento = new Date().toISOString();
 
   guardar();
   closeModal('modal-completar');
@@ -1508,11 +1516,19 @@ function syncConServidor(silencioso = false) {
         const s = mapaServer.get(id);
         const l = mapaLocal.get(id);
         if (s && l) {
-          merged.push({ ...l, estado: s.estado,
-            equipo: s.equipo || l.equipo,
-            notaWebhook: s.notaWebhook || l.notaWebhook,
-            ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook,
-            ultimoMovimiento: s.ultimoMovimiento || l.ultimoMovimiento });
+          const tS = s.ultimoMovimiento ? new Date(s.ultimoMovimiento).getTime() : 0;
+          const tL = l.ultimoMovimiento ? new Date(l.ultimoMovimiento).getTime() : 0;
+          
+          if (tS > tL) {
+            // El servidor tiene una versión más nueva, la tomamos completa
+            merged.push({ ...s });
+          } else {
+            // La local es más nueva o igual, conservamos la local pero preservamos campos clave de webhook
+            merged.push({ ...l, 
+              notaWebhook: s.notaWebhook || l.notaWebhook, 
+              ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook
+            });
+          }
         } else if (s && !l) {
           // Solo agregar si no fue eliminado explícitamente en este dispositivo
           if (!eliminadosLocales.has(id)) merged.push(s);

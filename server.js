@@ -154,6 +154,16 @@ http.createServer((req, res) => {
         const merged = incoming.map(p => {
           const e = mapaExisting.get(p.id);
           if (!e) return p;
+          
+          const tIn = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+          const tEx = e.ultimoMovimiento ? new Date(e.ultimoMovimiento).getTime() : 0;
+
+          // Si el servidor tiene datos más recientes, rechazar la actualización del cliente para este pedido
+          if (tEx > tIn) {
+            return e;
+          }
+
+          // Si el cliente tiene datos más recientes o iguales, aceptar los del cliente pero preservar webhooks
           return {
             ...p,
             equipo: p.equipo || e.equipo || '',
@@ -232,9 +242,18 @@ http.createServer((req, res) => {
             registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
         } catch {}
 
-        // Usar fecha real del PDF si viene, si no usar hoy
-        const fechaReal = fechaDrive || new Date().toLocaleDateString('es-CO');
-        const semana = semanaBody || fechaReal;
+        // Usar fecha real del PDF si viene, si no usar hoy en Colombia
+        const fechaReal = fechaDrive || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+
+        // Calcular semana como el lunes de esa semana (igual que el frontend getSemanaKey)
+        function getSemanaKey(fechaStr) {
+          const [d, m, y] = fechaStr.split('/');
+          const date = new Date(+y, +m - 1, +d);
+          date.setHours(0, 0, 0, 0);
+          date.setDate(date.getDate() - date.getDay() + 1); // lunes
+          return date.toLocaleDateString('es-CO');
+        }
+        const semana = semanaBody || getSemanaKey(fechaReal);
 
         // ID único aunque lleguen múltiples en el mismo ms
         const idBase = Date.now();
