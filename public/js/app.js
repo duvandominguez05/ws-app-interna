@@ -1685,8 +1685,8 @@ function renderCalandra() {
   const semanaKey = getSemanaKey(new Date());
 
   const sortByDate = (a, b) => {
-    const ta = a.createdTime ? new Date(a.createdTime).getTime() : a.id;
-    const tb = b.createdTime ? new Date(b.createdTime).getTime() : b.id;
+    const ta = a.modifiedTime ? new Date(a.modifiedTime).getTime() : (a.createdTime ? new Date(a.createdTime).getTime() : a.id);
+    const tb = b.modifiedTime ? new Date(b.modifiedTime).getTime() : (b.createdTime ? new Date(b.createdTime).getTime() : b.id);
     return tb - ta;
   };
   const hoyList   = calandraRegistros.filter(r => r.fecha === hoy).sort(sortByDate);

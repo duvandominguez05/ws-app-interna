@@ -14,7 +14,10 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
-      "position": [-1200, 112],
+      "position": [
+        -1200,
+        112
+      ],
       "id": "cc1feeb2-f8f6-44b3-b15c-4f45bf54fa37",
       "name": "Cada 5 minutos"
     },
@@ -28,7 +31,10 @@
       },
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [-960, 112],
+      "position": [
+        -960,
+        112
+      ],
       "id": "a1b2c3d4-0001-0001-0001-111111111111",
       "name": "Buscar PDFs en Drive",
       "credentials": {
@@ -40,33 +46,42 @@
     },
     {
       "parameters": {
-        "jsCode": "const archivos = $input.all();\n\n// Limpiar static data para forzar reprocesamiento\nconst staticData = $getWorkflowStaticData('global');\nstaticData.procesados = [];\nstaticData.procesadosTiempo = {};\n\n// Solo archivos de HOY\nconst ahora = new Date();\nconst hoy = new Date(ahora);\nhoy.setHours(0, 0, 0, 0);\n\nconst deHoy = archivos.filter(item => {\n  const creado = new Date(item.json.createdTime);\n  return creado >= hoy;\n});\n\nif (deHoy.length === 0) return [];\n\nreturn deHoy.map(item => ({ json: item.json }));\n"
+        "jsCode": "const archivos = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\n// Migrar formato antiguo (array) a nuevo (objeto con timestamps)\nif (Array.isArray(staticData.procesados)) staticData.procesados = {};\nif (!staticData.procesados) staticData.procesados = {};\n\n// Limpiar IDs de mas de 7 dias\nconst siete = Date.now() - 7 * 24 * 60 * 60 * 1000;\nObject.keys(staticData.procesados).forEach(id => {\n  if (staticData.procesados[id] < siete) delete staticData.procesados[id];\n});\n\n// Fecha de hoy en Colombia\nconst hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });\n\n// Todos los no procesados (sin filtro de fecha)\nconst nuevos = archivos.filter(item => !staticData.procesados[item.json.id]);\nif (nuevos.length === 0) return [];\n\n// Registrar como procesados\nnuevos.forEach(item => { staticData.procesados[item.json.id] = Date.now(); });\n\nreturn nuevos.map(item => ({\n  json: {\n    ...item.json,\n    fechaDrive: new Date(item.json.createdTime).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),\n    esDeHoy: new Date(item.json.createdTime).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) === hoyStr\n  }\n}));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-720, 112],
+      "position": [
+        -720,
+        112
+      ],
       "id": "a1b2c3d4-0001-0001-0001-222222222222",
       "name": "Filtrar Nuevos"
     },
     {
       "parameters": {
-        "jsCode": "const data = $('Filtrar Nuevos').first().json;\nconst nombreCompleto = data.name || '';\nconst nombreSinExtension = nombreCompleto.replace(/\\.pdf$/i, '');\n\nreturn [{ json: { \n  ...data,\n  nombreCompleto, \n  nombreSinExtension \n}}];\n"
+        "jsCode": "return $input.all().map(item => {\n  const data = item.json;\n  const nombreCompleto = data.name || '';\n  const nombreSinExtension = nombreCompleto.replace(/\\.pdf$/i, '');\n  return { json: { ...data, nombreCompleto, nombreSinExtension } };\n});"
       },
       "id": "95e04b4e-6430-4733-a178-fdeaa7c13327",
       "name": "Extraer Nombre Archivo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-512, 112]
+      "position": [
+        -512,
+        112
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const nombreCompleto = $('Extraer Nombre Archivo').first().json.nombreCompleto;\nconst nombreSinExtension = $('Extraer Nombre Archivo').first().json.nombreSinExtension;\n\nconst regex = /_(\\d+(?:[.,]\\d+)?)$/;\nconst match = nombreSinExtension.match(regex);\n\nlet altoCm = 0;\nif (match) {\n  altoCm = parseFloat(match[1].replace(',', '.'));\n}\n\nconst anchoM = 1.0;\nconst metros = altoCm > 0 ? Math.round((altoCm / 100) * anchoM * 1000) / 1000 : 0;\n\nreturn [{\n  json: {\n    equipo: nombreSinExtension,\n    alto: altoCm,\n    ancho: anchoM * 100,\n    metros,\n    archivo: nombreCompleto,\n    disenador: '',\n    pdfLeido: altoCm > 0,\n    debug: 'nombre=[' + nombreSinExtension + '] match=' + JSON.stringify(match)\n  }\n}];\n"
+        "jsCode": "return $input.all().map(item => {\n  const nombreCompleto = item.json.nombreCompleto || '';\n  const nombreSinExtension = item.json.nombreSinExtension || '';\n  const regex = /_(\\d+(?:[.,]\\d+)?)$/;\n  const match = nombreSinExtension.match(regex);\n  let altoCm = 0;\n  if (match) altoCm = parseFloat(match[1].replace(',', '.'));\n  const anchoM = 1.0;\n  const metros = altoCm > 0 ? Math.round((altoCm / 100) * anchoM * 1000) / 1000 : 0;\n  return {\n    json: {\n      ...item.json,\n      equipo: nombreSinExtension,\n      alto: altoCm,\n      ancho: anchoM * 100,\n      metros,\n      archivo: nombreCompleto,\n      disenador: '',\n      pdfLeido: altoCm > 0\n    }\n  };\n});"
       },
       "id": "1f37ceb5-14e0-4531-8f92-d830373c3366",
       "name": "Extraer Dimensiones PDF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-272, 112]
+      "position": [
+        -272,
+        112
+      ]
     },
     {
       "parameters": {
@@ -95,7 +110,10 @@
       "name": "¿Alto > 0?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-32, 112]
+      "position": [
+        -32,
+        112
+      ]
     },
     {
       "parameters": {
@@ -112,7 +130,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"semana\": \"{{ $json.semana }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\"\n}",
+        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\",\n  \"modifiedTime\": \"{{ $json.modifiedTime }}\"\n}",
         "options": {
           "timeout": 30000
         }
@@ -121,7 +139,10 @@
       "name": "POST a Railway API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [208, 0]
+      "position": [
+        208,
+        0
+      ]
     },
     {
       "parameters": {
@@ -136,7 +157,10 @@
       "name": "Telegram - PDF Registrado",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [448, 0],
+      "position": [
+        448,
+        0
+      ],
       "webhookId": "e29777ad-515d-4fa4-8a84-3fcde6a77dc3",
       "credentials": {
         "telegramApi": {
@@ -158,7 +182,10 @@
       "name": "Telegram - Alto No Detectado",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [208, 224],
+      "position": [
+        208,
+        224
+      ],
       "webhookId": "eff30b33-b492-496d-bef7-d041679a4962",
       "credentials": {
         "telegramApi": {
@@ -166,11 +193,44 @@
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "es-de-hoy",
+              "leftValue": "={{ $json.esDeHoy }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-es-de-hoy",
+      "name": "¿Es de hoy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        328,
+        0
+      ]
     }
   ],
   "pinData": {},
   "connections": {
-    "Cada minuto": {
+    "Cada 5 minutos": {
       "main": [
         [
           {
@@ -247,11 +307,23 @@
       "main": [
         [
           {
-            "node": "Telegram - PDF Registrado",
+            "node": "¿Es de hoy?",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "¿Es de hoy?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - PDF Registrado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
