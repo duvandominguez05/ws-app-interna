@@ -276,15 +276,18 @@ http.createServer((req, res) => {
           driveIndex:  driveIndex !== undefined ? driveIndex : null,
         };
 
-        // Evitar duplicados por nombre de archivo
-        const yaExiste = registros.some(r => r.archivo === registro.archivo);
+        // Evitar duplicados por nombre de archivo, pero actualizar driveIndex si ya existe
+        const existeIdx = registros.findIndex(r => r.archivo === registro.archivo);
+        const yaExiste = existeIdx !== -1;
         if (!yaExiste) {
           registros.push(registro);
-          fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
-          fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+        } else if (driveIndex !== undefined && driveIndex !== null) {
+          registros[existeIdx].driveIndex = driveIndex;
         }
+        fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
+        fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
 
-        console.log(`[calandra] ${yaExiste ? 'duplicado ignorado' : 'registrado'}: ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
+        console.log(`[calandra] ${yaExiste ? 'actualizado driveIndex' : 'registrado'}: ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
         return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id, duplicado: yaExiste });
 
       } catch (e) {
