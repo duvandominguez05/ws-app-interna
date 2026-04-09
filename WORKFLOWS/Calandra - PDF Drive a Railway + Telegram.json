@@ -130,7 +130,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\",\n  \"modifiedTime\": \"{{ $json.modifiedTime }}\",\n  \"driveIndex\": {{ $json.driveIndex }}\n}",
+        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"driveIndex\": {{ $json.driveIndex ?? 0 }}\n}",
         "options": {
           "timeout": 30000
         }
