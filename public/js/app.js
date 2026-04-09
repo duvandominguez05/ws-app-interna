@@ -1603,6 +1603,8 @@ async function sincronizarCalandraServidor() {
         origen:      'drive',
         enviado:     r.enviado || false,
         createdTime: r.createdTime || null,
+        modifiedTime: r.modifiedTime || null,
+        driveIndex:  r.driveIndex !== undefined ? r.driveIndex : null,
       }));
 
     // Solo conservar locales manuales (no drive) — los de Drive vienen del servidor
