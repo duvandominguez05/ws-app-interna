@@ -1685,6 +1685,9 @@ function renderCalandra() {
   const semanaKey = getSemanaKey(new Date());
 
   const sortByDate = (a, b) => {
+    if (a.driveIndex !== null && a.driveIndex !== undefined && b.driveIndex !== null && b.driveIndex !== undefined) {
+      return a.driveIndex - b.driveIndex;
+    }
     const ta = a.modifiedTime ? new Date(a.modifiedTime).getTime() : (a.createdTime ? new Date(a.createdTime).getTime() : 0);
     const tb = b.modifiedTime ? new Date(b.modifiedTime).getTime() : (b.createdTime ? new Date(b.createdTime).getTime() : 0);
     if (ta !== tb) return tb - ta;

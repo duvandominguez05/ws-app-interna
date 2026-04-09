@@ -226,7 +226,7 @@ http.createServer((req, res) => {
     req.on('data', d => body += d);
     req.on('end', () => {
       try {
-        const { equipo, alto, ancho, archivo, disenador, fechaDrive, semana: semanaBody, createdTime, modifiedTime } = JSON.parse(body);
+        const { equipo, alto, ancho, archivo, disenador, fechaDrive, semana: semanaBody, createdTime, modifiedTime, driveIndex } = JSON.parse(body);
         if (!equipo || !alto)
           return json(res, 400, { error: 'Faltan campos: equipo, alto' });
 
@@ -273,6 +273,7 @@ http.createServer((req, res) => {
           origen:      'drive',
           createdTime: createdTime || null,
           modifiedTime: modifiedTime || null,
+          driveIndex:  driveIndex !== undefined ? driveIndex : null,
         };
 
         // Evitar duplicados por nombre de archivo

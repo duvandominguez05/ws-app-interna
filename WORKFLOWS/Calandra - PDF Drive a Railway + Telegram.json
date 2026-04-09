@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const archivos = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\n// Migrar formato antiguo (array) a nuevo (objeto con timestamps)\nif (Array.isArray(staticData.procesados)) staticData.procesados = {};\nif (!staticData.procesados) staticData.procesados = {};\n\n// Limpiar IDs de mas de 7 dias\nconst siete = Date.now() - 7 * 24 * 60 * 60 * 1000;\nObject.keys(staticData.procesados).forEach(id => {\n  if (staticData.procesados[id] < siete) delete staticData.procesados[id];\n});\n\n// Fecha de hoy en Colombia\nconst hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });\n\n// Todos los no procesados (sin filtro de fecha)\nconst nuevos = archivos.filter(item => !staticData.procesados[item.json.id]);\nif (nuevos.length === 0) return [];\n\n// Registrar como procesados\nnuevos.forEach(item => { staticData.procesados[item.json.id] = Date.now(); });\n\nreturn nuevos.map(item => ({\n  json: {\n    ...item.json,\n    fechaDrive: new Date(item.json.createdTime).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),\n    esDeHoy: new Date(item.json.createdTime).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) === hoyStr\n  }\n}));"
+        "jsCode": "const archivos = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\nif (Array.isArray(staticData.procesados)) staticData.procesados = {};\nif (!staticData.procesados) staticData.procesados = {};\n\nconst siete = Date.now() - 7 * 24 * 60 * 60 * 1000;\nObject.keys(staticData.procesados).forEach(id => {\n  if (staticData.procesados[id] < siete) delete staticData.procesados[id];\n});\n\nconst hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });\n\nconst nuevos = archivos.filter(item => !staticData.procesados[item.json.id]);\nif (nuevos.length === 0) return [];\n\nnuevos.forEach(item => { staticData.procesados[item.json.id] = Date.now(); });\n\nreturn nuevos.map((item, index) => ({\n  json: {\n    ...item.json,\n    fechaDrive: hoyStr,\n    esDeHoy: true,\n    driveIndex: index\n  }\n}));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -130,7 +130,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\",\n  \"modifiedTime\": \"{{ $json.modifiedTime }}\"\n}",
+        "jsonBody": "={\n  \"equipo\": \"{{ $json.equipo }}\",\n  \"alto\": {{ $json.alto }},\n  \"ancho\": 1.50,\n  \"archivo\": \"{{ $json.archivo }}\",\n  \"disenador\": \"{{ $json.disenador }}\",\n  \"fechaDrive\": \"{{ $json.fechaDrive }}\",\n  \"createdTime\": \"{{ $json.createdTime }}\",\n  \"modifiedTime\": \"{{ $json.modifiedTime }}\",\n  \"driveIndex\": {{ $json.driveIndex }}\n}",
         "options": {
           "timeout": 30000
         }
