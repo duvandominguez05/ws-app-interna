@@ -1309,7 +1309,6 @@ function renderWT() {
 
   const hoy = new Date().toLocaleDateString('es-CO');
   const hoy_list = wtRegistros.filter(e => e.fecha === hoy);
-  const hist     = wtRegistros.filter(e => e.fecha !== hoy);
 
   // Contar enviados y descargados hoy
   const envHoy  = hoy_list.filter(e => e.tipo === 'enviado').length;
@@ -1357,21 +1356,34 @@ function renderWT() {
       </div>`;
   }
 
-  let html = '';
-  if (!hoy_list.length) {
-    html += `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin registros hoy</div>`;
-  } else {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hoy</div>`;
-    // Ordenar: más reciente primero
-    html += [...hoy_list].sort((a,b) => (b.id||0)-(a.id||0)).map(e => renderFila(e, false)).join('');
+  // Separar por tipo
+  const enviados    = [...wtRegistros].filter(e => e.tipo === 'enviado').sort((a,b) => (b.id||0)-(a.id||0));
+  const descargados = [...wtRegistros].filter(e => e.tipo === 'descargado').sort((a,b) => (b.id||0)-(a.id||0));
+
+  function renderLista(items, emptyMsg) {
+    if (!items.length) return `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">${emptyMsg}</div>`;
+    return items.slice(0, 40).map(e => {
+      const dim = e.fecha !== new Date().toLocaleDateString('es-CO');
+      return renderFila(e, dim);
+    }).join('');
   }
 
-  if (hist.length) {
-    html += `<div style="font-size:0.72rem;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:1px;">Días anteriores</div>`;
-    html += [...hist].sort((a,b) => (b.id||0)-(a.id||0)).slice(0, 30).map(e => renderFila(e, true)).join('');
-  }
-
-  cont.innerHTML = html;
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:0.78rem;font-weight:700;color:#67e8f9;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          📤 Enviados <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(${enviados.length})</span>
+        </div>
+        ${renderLista(enviados, 'Sin envíos registrados')}
+      </div>
+      <div>
+        <div style="font-size:0.78rem;font-weight:700;color:#4ade80;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          ✅ Descargados <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);">(${descargados.length})</span>
+        </div>
+        ${renderLista(descargados, 'Sin descargas registradas')}
+      </div>
+    </div>
+  `;
 }
 
 /* ════════════════════════════════════════════════════════════════
