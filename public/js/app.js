@@ -96,6 +96,8 @@ const HEADER_INFO = {
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
   'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
+  'wetransfer':    { icon: '📤', title: 'WeTransfer' },
+  'calandra':      { icon: '📏', title: 'Calandra' },
   'satelites':     { icon: '🧵', title: 'Satélites de costura' },
   'cotizaciones':  { icon: '🧾', title: 'Facturas y Cotizaciones' },
 };
@@ -2841,7 +2843,8 @@ async function cargarPendientesWT() {
     if (id === 'cotizaciones') { cargarDocsServidor(); renderDocHistorial(); }
     if (id === 'arreglos')     { sincronizarArreglosServidor(); }
     if (id === 'satelites')    { sincronizarSatelitesServidor(); }
-    if (id === 'produccion')   { cargarPendientesWT(); }
+    if (id === 'wetransfer')   { cargarWT(); cargarPendientesWT(); }
+    if (id === 'calandra')     { sincronizarCalandraServidor(); }
   };
 })();
 

@@ -69,11 +69,24 @@
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
-      <!-- Secciones secundarias restauradas -->
       <div class="nav-item" onclick="showSection('arreglos', this)">
         <span class="nav-icon">🛠️</span>
         <span>Arreglos</span>
         <span class="nav-badge" id="badge-arreglos">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('wetransfer', this)">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </span>
+        <span>WeTransfer</span>
+        <span class="nav-badge" id="badge-wt">0</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('calandra', this)">
+        <span class="nav-icon">📏</span>
+        <span>Calandra</span>
+        <span class="nav-badge" id="badge-calandra">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('satelites', this)">
@@ -288,34 +301,6 @@
 
     <!-- ─── DISEÑO ─────────────────────────────────────────────── -->
     <section id="diseno" class="section-content">
-      
-      <!-- WeTransfer Anidado en la Cabecera de Diseño -->
-      <div style="background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div class="section-heading" style="margin-top:0;">
-          <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
-          Control WeTransfer — Enviados y Descargados
-        </div>
-        <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">📤 Registrar envío</button>
-          <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">✅ Registrar descarga</button>
-          <button class="btn btn-glass btn-sm" onclick="cargarWT()">↺ Actualizar</button>
-          <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automáticamente vía Gmail.</span>
-        </div>
-        <div id="form-wt" style="display:none;background:rgba(255,255,255,0.02);border:1px solid rgba(6,182,212,0.15);border-radius:6px;padding:12px;margin-bottom:12px;">
-          <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envío WeTransfer</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:12px;" id="wt-form-sub"></div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label">Nombre del archivo PDF</label><input type="text" class="form-input" id="wt-archivo"></div>
-            <div class="form-group"><label class="form-label">Equipo (opcional)</label><input type="text" class="form-input" id="wt-equipo"></div>
-          </div>
-          <div class="form-actions" style="margin-top:10px;padding-top:10px;">
-            <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-wt').style.display='none'">Cancelar</button>
-            <button class="btn btn-success btn-sm" id="wt-btn-guardar" onclick="guardarWT()">Guardar</button>
-          </div>
-        </div>
-        <div id="wt-resumen-hoy" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;"></div>
-        <div id="lista-wt"></div>
-      </div>
       <div class="kanban-board">
         <div class="kanban-col col-hacer-diseno">
           <div class="kanban-col-header">
@@ -343,58 +328,6 @@
 
     <!-- ─── PRODUCCIÓN ─────────────────────────────────────────── -->
     <section id="produccion" class="section-content">
-      
-      <!-- Calandra Anidado en la Cabecera de Producción -->
-      <div style="background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
-        <div>
-          <div class="section-heading" style="margin-top:0;margin-bottom:8px;">
-            <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span> Control de metraje enviado a Calandra
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="abrirFormCalandra()">+ Registrar envío</button>
-            <div style="font-size:0.75rem;color:var(--text-muted);">
-              Ancho tela: <strong style="color:var(--text);">1.50 m</strong>
-            </div>
-          </div>
-        </div>
-        
-        <div class="cal-metrics" style="margin-left:auto;margin-top:0;">
-          <div class="metric-card metric-card-sm" style="--metric-color:#a78bfa;margin-bottom:0;min-width:110px;">
-            <div class="metric-label">Esta semana</div>
-            <div class="metric-value" id="cal-metros-semana" style="font-size:1.1rem;">0.00</div>
-          </div>
-          <div class="metric-card metric-card-sm" style="--metric-color:#67e8f9;margin-bottom:0;min-width:110px;">
-            <div class="metric-label">Metros hoy</div>
-            <div class="metric-value" id="cal-metros-hoy" style="font-size:1.1rem;">0.00</div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Formulario oculto Calandra -->
-      <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#c4b5fd;margin-bottom:12px;">Nuevo registro de envío a calandra</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Alto del PDF (cm)</label><input type="number" step="0.01" class="form-input" id="cal-alto" placeholder="Ej: 150"></div>
-          <div class="form-group"><label class="form-label">Equipo</label><input type="text" class="form-input" id="cal-equipo"></div>
-        </div>
-        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
-          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
-          <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="guardarCalandra()">Guardar envío</button>
-        </div>
-      </div>
-
-      <!-- Panel PDFs pendientes de envío WeTransfer -->
-      <div id="panel-pendientes-wt" style="display:none;margin-bottom:18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:16px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <span style="font-size:1rem;">⚠️</span>
-          <span style="font-size:0.85rem;font-weight:700;color:#fca5a5;">PDFs en Drive sin enviar por WeTransfer</span>
-          <span style="font-size:0.7rem;color:var(--text-muted);margin-left:auto;" id="pendientes-wt-ts"></span>
-        </div>
-        <div id="lista-pendientes-wt" style="display:flex;flex-direction:column;gap:6px;"></div>
-      </div>
-
-      <div id="lista-calandra"></div>
-
       <div class="kanban-board">
         <div class="kanban-col col-llego-impresion">
           <div class="kanban-col-header">
@@ -442,7 +375,86 @@
       </div>
     </section>
 
-    <!-- ─── WETRANSFER REMOVED (Embed) ──────────────────────────────────────────── -->
+    <!-- ─── WETRANSFER ──────────────────────────────────────────── -->
+    <section id="wetransfer" class="section-content">
+      <div style="background:var(--card-bg);border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div class="section-heading" style="margin-top:0;">
+          <span class="dot" style="background:#06b6d4;box-shadow:0 0 6px #06b6d4;"></span>
+          Control WeTransfer — Enviados y Descargados
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="registrarWT('enviado')">📤 Registrar envío</button>
+          <button class="btn btn-success btn-sm" onclick="registrarWT('descargado')">✅ Registrar descarga</button>
+          <button class="btn btn-glass btn-sm" onclick="cargarWT()">↺ Actualizar</button>
+          <span style="font-size:0.72rem;color:var(--text-muted);">n8n detecta descargas automáticamente vía Gmail.</span>
+        </div>
+        <div id="form-wt" style="display:none;background:rgba(255,255,255,0.02);border:1px solid rgba(6,182,212,0.15);border-radius:6px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:0.82rem;font-weight:700;color:#67e8f9;margin-bottom:4px;" id="wt-form-title">Registrar envío WeTransfer</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:12px;" id="wt-form-sub"></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Nombre del archivo PDF</label><input type="text" class="form-input" id="wt-archivo"></div>
+            <div class="form-group"><label class="form-label">Equipo (opcional)</label><input type="text" class="form-input" id="wt-equipo"></div>
+          </div>
+          <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+            <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-wt').style.display='none'">Cancelar</button>
+            <button class="btn btn-success btn-sm" id="wt-btn-guardar" onclick="guardarWT()">Guardar</button>
+          </div>
+        </div>
+        <div id="wt-resumen-hoy" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;"></div>
+        <div id="lista-wt"></div>
+      </div>
+
+      <!-- Panel PDFs pendientes de envío WeTransfer -->
+      <div id="panel-pendientes-wt" style="display:none;margin-bottom:18px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:1rem;">⚠️</span>
+          <span style="font-size:0.85rem;font-weight:700;color:#fca5a5;">PDFs en Drive sin enviar por WeTransfer</span>
+          <span style="font-size:0.7rem;color:var(--text-muted);margin-left:auto;" id="pendientes-wt-ts"></span>
+        </div>
+        <div id="lista-pendientes-wt" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+    </section>
+
+    <!-- ─── CALANDRA ──────────────────────────────────────────── -->
+    <section id="calandra" class="section-content">
+      <div style="background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+        <div>
+          <div class="section-heading" style="margin-top:0;margin-bottom:8px;">
+            <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span> Control de metraje enviado a Calandra
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="abrirFormCalandra()">+ Registrar envío</button>
+            <div style="font-size:0.75rem;color:var(--text-muted);">
+              Ancho tela: <strong style="color:var(--text);">1.50 m</strong>
+            </div>
+          </div>
+        </div>
+        <div class="cal-metrics" style="margin-left:auto;margin-top:0;">
+          <div class="metric-card metric-card-sm" style="--metric-color:#a78bfa;margin-bottom:0;min-width:110px;">
+            <div class="metric-label">Esta semana</div>
+            <div class="metric-value" id="cal-metros-semana" style="font-size:1.1rem;">0.00</div>
+          </div>
+          <div class="metric-card metric-card-sm" style="--metric-color:#67e8f9;margin-bottom:0;min-width:110px;">
+            <div class="metric-label">Metros hoy</div>
+            <div class="metric-value" id="cal-metros-hoy" style="font-size:1.1rem;">0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.82rem;font-weight:700;color:#c4b5fd;margin-bottom:12px;">Nuevo registro de envío a calandra</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Alto del PDF (cm)</label><input type="number" step="0.01" class="form-input" id="cal-alto" placeholder="Ej: 150"></div>
+          <div class="form-group"><label class="form-label">Equipo</label><input type="text" class="form-input" id="cal-equipo"></div>
+        </div>
+        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
+          <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="guardarCalandra()">Guardar envío</button>
+        </div>
+      </div>
+
+      <div id="lista-calandra"></div>
+    </section>
 
     <!-- ─── ARREGLOS ──────────────────────────────────────────── -->
     <section id="arreglos" class="section-content">
