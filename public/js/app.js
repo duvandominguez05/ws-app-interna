@@ -1862,6 +1862,16 @@ function renderSatelites() {
   const contLista   = document.getElementById('lista-satelites');
   if (!contResumen || !contLista) return;
 
+  // Precios estandarizados para cálculo ciego de caja
+  const VALOR_PRENDA = {
+    'Sublimado completo': 1500,
+    'Sudadera': 2000,
+    'Camiseta': 1200,
+    'Polo': 1800,
+    'Chaqueta': 3500,
+    'Pantaloneta': 1000
+  };
+
   // Badge sidebar
   const pendTotal = SATELITES.reduce((sum, s) => {
     const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
@@ -1879,12 +1889,28 @@ function renderSatelites() {
     'Cristina':    { border: 'rgba(236,72,153,0.35)', header: '#f9a8d4', dot: '#db2777' },
   };
 
+  // Botón Admin Secreto para ver la nómina
+  window.verNominaSatelites = function() {
+    const pass = prompt('Clave de Admin:');
+    if (pass === '777') {
+      document.querySelectorAll('.liq-secreta').forEach(el => el.style.display = 'block');
+    }
+  };
+
   // Resumen por satélite
-  contResumen.innerHTML = SATELITES.map(s => {
+  contResumen.innerHTML = `
+    <div style="width:100%; display:flex; justify-content: flex-end; margin-bottom: 10px;">
+       <button class="btn btn-glass btn-xs" onclick="verNominaSatelites()">🔒 Liquidación</button>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:16px;">
+  ` + SATELITES.map(s => {
     const entregado = satMovimientos.filter(m => m.satelite === s && m.tipo === 'entrega').reduce((a, m) => a + m.cantidad, 0);
     const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
     const pendiente = Math.max(0, entregado - recibido);
     const col = SAT_COLORS[s] || { border: 'rgba(255,255,255,0.1)', header: '#94a3b8', dot: '#64748b' };
+
+    // Cálculo Ciego (Dinero que se debe por prendas RECIBIDAS)
+    let saldoAdeudado = 0;
 
     // Prendas pendientes por tipo
     const prendasMap = {};
@@ -1892,7 +1918,18 @@ function renderSatelites() {
       const p = m.prenda || 'Sin tipo';
       if (!prendasMap[p]) prendasMap[p] = 0;
       prendasMap[p] += m.tipo === 'entrega' ? m.cantidad : -m.cantidad;
+      
+      // La plata se debe basada en lo que devuelven ya cosido (recepción)
+      if (m.tipo === 'recepcion') {
+         const valor = VALOR_PRENDA[p] || 1000; // 1000 base si no existe
+         saldoAdeudado += m.cantidad * valor;
+      }
+      // Nota: Si se implementaran anticipos habría que restarlos, esto cubre el total de producción
     });
+    
+    // Formatear a pesos colombianos
+    const saldoFormateado = '$' + saldoAdeudado.toLocaleString('es-CO');
+
     const prendasPend = Object.entries(prendasMap).filter(([, v]) => v > 0);
     const prendasHtml = prendasPend.length
       ? `<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px;">
@@ -1901,7 +1938,7 @@ function renderSatelites() {
       : '';
 
     return `
-      <div class="sat-card" style="border-color:${col.border};">
+      <div class="sat-card" style="border-color:${col.border}; width: 100%; max-width: 280px; flex: 1; margin:0;">
         <div class="sat-card-nombre" style="color:${col.header};display:flex;align-items:center;gap:7px;">
           <span style="width:9px;height:9px;border-radius:50%;background:${col.dot};flex-shrink:0;"></span>
           ${esc(s)}
@@ -1920,9 +1957,15 @@ function renderSatelites() {
           <span class="sat-stat-val ${pendiente > 0 ? 'sat-pendiente' : 'sat-recibido'}">${pendiente}</span>
         </div>
         ${prendasHtml}
+        
+        <!-- Contabilidad Ciega -->
+        <div class="liq-secreta" style="display:none; margin-top:12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; padding:8px; text-align:center;">
+           <div style="font-size:0.65rem; color:#4ade80; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Deuda Acumulada</div>
+           <div style="font-size:1.1rem; color:#fff; font-weight:700;">${saldoFormateado}</div>
+        </div>
       </div>
     `;
-  }).join('');
+  }).join('') + `</div>`;
 
   // Lista de movimientos recientes
   if (!satMovimientos.length) {

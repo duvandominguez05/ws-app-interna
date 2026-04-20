@@ -66,39 +66,12 @@
       </div>
 
       <div class="divider"></div>
-      <div class="nav-label">Control</div>
-
-      <div class="nav-item" onclick="showSection('wetransfer', this)">
-        <span class="nav-icon">📤</span>
-        <span>WeTransfer</span>
-        <span class="nav-badge" id="badge-wt">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('arreglos', this)">
-        <span class="nav-icon">🔧</span>
-        <span>Arreglos</span>
-        <span class="nav-badge" id="badge-arreglos">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('calandra', this)">
-        <span class="nav-icon">📐</span>
-        <span>Calandra</span>
-        <span class="nav-badge" id="badge-calandra">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('satelites', this)">
-        <span class="nav-icon">🧵</span>
-        <span>Satélites</span>
-        <span class="nav-badge" id="badge-satelites">0</span>
-      </div>
-
-      <div class="nav-label">Comercial</div>
-
-      <div class="nav-item" onclick="showSection('cotizaciones', this)">
-        <span class="nav-icon">🧾</span>
-        <span>Facturas</span>
-      </div>
-
+      
+      <!-- Secciones secundarias integradas:
+           Las opciones de WeTransfer, Arreglos, Calandra, Satélites y Facturas
+           han sido ocultadas del menú lateral para evitar confusiones de operarios,
+           y ahora la app las muestra contextualmente o avanzan automáticamente. -->
+      
     </nav>
 
     <div class="sidebar-footer">
@@ -246,8 +219,12 @@
 
     <!-- ─── BANDEJA ────────────────────────────────────────────── -->
     <section id="bandeja" class="section-content">
-      <div style="margin-bottom:14px;">
-        <input type="search" id="buscar-pedidos" class="form-input" placeholder="🔍 Buscar por equipo o teléfono…" oninput="buscarPedidos(this.value)" style="max-width:400px;">
+      <div style="display:flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; gap: 10px;">
+        <input type="search" id="buscar-pedidos" class="form-input" placeholder="🔍 Buscar por equipo o teléfono…" oninput="buscarPedidos(this.value)" style="max-width:400px; flex: 1;">
+        <div style="display:flex; gap: 8px;">
+           <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion'); showSection('cotizaciones', null);">🧾 Generar Cotización (PDF)</button>
+           <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura'); showSection('cotizaciones', null);">📄 Generar Factura (PDF)</button>
+        </div>
       </div>
       <div class="bandeja-cols">
         <div class="bandeja-col bandeja-col-cotizar">
@@ -298,6 +275,13 @@
 
     <!-- ─── PRODUCCIÓN ─────────────────────────────────────────── -->
     <section id="produccion" class="section-content">
+      
+      <!-- Panel de herramientas integrado en producción -->
+      <div style="display:flex; justify-content:flex-end; gap: 8px; margin-bottom: 12px; flex-wrap:wrap;">
+        <button class="btn btn-glass btn-sm" onclick="showSection('calandra', null)" title="Ver metrajes de calandra">📐 Dash Calandra</button>
+        <button class="btn btn-glass btn-sm" onclick="showSection('wetransfer', null)" title="Ver descargas WeTransfer">📤 Dash WeTransfer</button>
+      </div>
+
       <div class="kanban-board">
         <div class="kanban-col col-llego-impresion">
           <div class="kanban-col-header">
@@ -314,16 +298,24 @@
           <div class="kanban-cards" id="col-corte"></div>
         </div>
         <div class="kanban-col col-calidad">
-          <div class="kanban-col-header">
+          <div class="kanban-col-header" style="position:relative;">
             <div class="kanban-col-title">Control calidad</div>
             <div class="kanban-col-count" id="cnt-calidad">0</div>
           </div>
           <div class="kanban-cards" id="col-calidad"></div>
         </div>
-        <div class="kanban-col col-costura">
-          <div class="kanban-col-header">
-            <div class="kanban-col-title">Costura</div>
-            <div class="kanban-col-count" id="cnt-costura">0</div>
+        <div class="kanban-col col-costura" style="min-width:300px;">
+          <div class="kanban-col-header" style="flex-direction:column; align-items:flex-start; gap:8px;">
+            <div style="display:flex; width:100%; justify-content:space-between; align-items:center;">
+              <div class="kanban-col-title">Costura & Satélites</div>
+              <div class="kanban-col-count" id="cnt-costura">0</div>
+            </div>
+            <!-- Integración de formulario y Dash de satélites rápido -->
+            <div style="width:100%; display:flex; gap:6px;">
+               <button class="btn btn-success btn-xs" style="flex:1;" onclick="abrirFormSat('entrega'); showSection('satelites', null)">📦 Entregar</button>
+               <button class="btn btn-glass btn-xs" style="flex:1;" onclick="abrirFormSat('recepcion'); showSection('satelites', null)">✅ Recibir</button>
+               <button class="btn btn-glass btn-xs" style="flex:1;" onclick="showSection('satelites', null)">🧵 Dash</button>
+            </div>
           </div>
           <div class="kanban-cards" id="col-costura"></div>
         </div>

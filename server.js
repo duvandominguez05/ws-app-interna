@@ -218,6 +218,89 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/webhook/chatwoot — Auto-creación de ventas por etiqueta ──
+  if (req.method === 'POST' && req.url === '/api/webhook/chatwoot') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        
+        // Extraer etiquetas de Chatwoot o de Evolution plano
+        let labels = [];
+        if (Array.isArray(payload.labels)) labels = payload.labels;
+        else if (payload.conversation && Array.isArray(payload.conversation.labels)) labels = payload.conversation.labels;
+        else if (payload.tags) labels = Array.isArray(payload.tags) ? payload.tags : [payload.tags];
+        
+        // Extraer telefono
+        let telefono = '';
+        let nombreCliente = '';
+        if (payload.meta && payload.meta.sender) {
+          telefono = payload.meta.sender.phone_number || '';
+          nombreCliente = payload.meta.sender.name || '';
+        } else if (payload.contact) {
+          telefono = payload.contact.phone_number || payload.contact.phone || payload.contact.id || '';
+          nombreCliente = payload.contact.name || '';
+        }
+        
+        telefono = telefono.replace(/\D/g, ''); // Solo números (quita el +)
+
+        let accionRealizada = false;
+        let resultadoApi = null;
+
+        if (labels.length > 0 && telefono) {
+          const vendedoras = ['Betty', 'Graciela', 'Ney', 'Wendy', 'Paola'];
+          
+          for (let etiqueta of labels) {
+            let etiqUpper = etiqueta.toUpperCase();
+            
+            // Si la etiqueta indica Cotización
+            if (etiqUpper.includes('COTIZACI') || etiqUpper.includes('COTIZAR')) {
+               const vendedora = vendedoras.find(v => etiqUpper.includes(v.toUpperCase())) || 'Betty';
+               resultadoApi = crearVentaInterna('cotizar', vendedora, telefono, null, nombreCliente);
+               accionRealizada = true;
+               break;
+            }
+            
+            // Si la etiqueta indica Pedido Confirmado (Abono)
+            if (etiqUpper.includes('CONFIRMADO') || etiqUpper.includes('ABONO') || etiqUpper.includes('PEDIDO')) {
+               const vendedora = vendedoras.find(v => etiqUpper.includes(v.toUpperCase())) || 'Betty';
+               
+               // Buscar si ya existía como cotización para no duplicar sino avanzar
+               const pedidos = leerPedidos();
+               const pd = pedidos.find(p => p.telefono.replace(/\D/g, '') === telefono && p.tipoBandeja === 'cotizar');
+               
+               if (pd) {
+                 // Convertir cotización en pedido
+                 pd.tipoBandeja = 'pedido';
+                 pd.estado = 'confirmado'; // O diseño, según prefiera el dashboard
+                 pd.ultimoMovimiento = new Date().toISOString();
+                 const nextId = leerNextId();
+                 guardarPedidos(pedidos, nextId);
+                 
+                 console.log(`[webhook] Cotización #${pd.id} avanzada a Pedido Confirmado por etiqueta`);
+                 resultadoApi = { ok: true, id: pd.id, accion: 'avanzado' };
+               } else {
+                 // Es nuevo
+                 resultadoApi = crearVentaInterna('pedido', vendedora, telefono, null, nombreCliente);
+               }
+               accionRealizada = true;
+               break;
+            }
+          }
+        }
+
+        return json(res, 200, { ok: true, webhook_recibido: true, accionRealizada, resultadoApi });
+      } catch (e) {
+        console.error('[webhook error]', e);
+        // Responder 200 igual para que chatwoot no reintente locamente en caso de json no esperado
+        return json(res, 200, { ok: true, aviso: 'Parse error en webhook' });
+      }
+    });
+    return;
+  }
+
+
   // ── POST /api/calandra — n8n registra envío de PDF a calandra ─
   // Body: { equipo, alto, ancho?, archivo?, diseñador? }
   // alto en cm, ancho en metros (opcional, default 1.50)
@@ -287,8 +370,33 @@ http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
         fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
 
+        // 🔥 HIPER-AUTOMATIZACIÓN: Si N8N reporta calandra, buscar pedido y avanzarlo a "llego-impresion"
+        let pedidoAutmovido = null;
+        if (equipo) {
+           const eqTarget = String(equipo).toLowerCase().trim();
+           const pedidos = leerPedidos();
+           // Buscar pedido activo que coincida vagamente con el nombre del equipo y esté en diseño o confirmado
+           const pd = pedidos.find(p => {
+               if (p.estado === 'llego-impresion' || p.estado === 'corte' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
+               const eqP = (p.equipo || '').toLowerCase().trim();
+               // eqTarget puede tener "Galaktiturkos 1.50m", validamos si se incluye
+               return eqP && (eqTarget.includes(eqP) || eqP.includes(eqTarget));
+           });
+
+           if (pd) {
+               console.log(`[auto-avance] Pedido #${pd.id} movido a 'llego-impresion' gracias a Calandra Drive.`);
+               pd.estado = 'llego-impresion';
+               pd.ultimoMovimiento = new Date().toISOString();
+               // También guardar el diseñador si viene
+               if (disenador && !pd.disenador) pd.disenador = disenador;
+               const nId = leerNextId();
+               guardarPedidos(pedidos, nId);
+               pedidoAutmovido = pd.id;
+           }
+        }
+
         console.log(`[calandra] ${yaExiste ? 'actualizado driveIndex' : 'registrado'}: ${equipo} — ${altoCm}cm = ${metros}m | ${archivo || ''}`);
-        return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id, duplicado: yaExiste });
+        return json(res, 200, { ok: true, metros, equipo, semana, id: registro.id, duplicado: yaExiste, automovimiento: pedidoAutmovido });
 
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
@@ -408,8 +516,33 @@ http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(WT_FILE), { recursive: true });
         fs.writeFileSync(WT_FILE, JSON.stringify(registros, null, 2));
 
+        // 🔥 HIPER-AUTOMATIZACIÓN: Si N8N reporta WeTransfer Descargado, buscar pedido y avanzar a "enviado-final"
+        let pedidoAutmovido = null;
+        if (tipo === 'descargado' && archivo) {
+           const archivoTarget = String(archivo).toLowerCase().trim();
+           // A veces el archivo viene como "Galaktiturkos.pdf", tratamos de extraer la base
+           const baseName = archivoTarget.replace('.pdf', '').trim();
+           
+           const pedidos = leerPedidos();
+           const pd = pedidos.find(p => {
+               if (p.estado === 'enviado-final') return false; // ya está ahí
+               const eqP = (p.equipo || '').toLowerCase().trim();
+               // Extra check to see if the filename includes the team name
+               return eqP && (baseName.includes(eqP) || eqP.includes(baseName));
+           });
+
+           if (pd) {
+               console.log(`[auto-avance] Pedido #${pd.id} movido a 'enviado-final' gracias a descarga WT.`);
+               pd.estado = 'enviado-final';
+               pd.ultimoMovimiento = new Date().toISOString();
+               const nId = leerNextId();
+               guardarPedidos(pedidos, nId);
+               pedidoAutmovido = pd.id;
+           }
+        }
+
         console.log(`[wetransfer] ${tipo} — ${archivo} ${equipo ? `(${equipo})` : ''}`);
-        return json(res, 200, { ok: true, id: registro.id, tipo, archivo });
+        return json(res, 200, { ok: true, id: registro.id, tipo, archivo, automovimiento: pedidoAutmovido });
 
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });

@@ -832,8 +832,15 @@
     }
 
     .kanban-card.arreglo {
-      border-color: rgba(239,68,68,0.4);
-      background: linear-gradient(135deg, rgba(239,68,68,0.06), var(--card-bg));
+      border-color: #ef4444;
+      background: linear-gradient(135deg, rgba(239,68,68,0.15), var(--card-bg));
+      box-shadow: 0 0 15px rgba(239,68,68,0.4);
+      animation: pulseArreglo 2s infinite;
+    }
+    @keyframes pulseArreglo {
+      0%   { box-shadow: 0 0 10px rgba(239,68,68,0.3); }
+      50%  { box-shadow: 0 0 20px rgba(239,68,68,0.6); }
+      100% { box-shadow: 0 0 10px rgba(239,68,68,0.3); }
     }
 
     .kanban-card-id {
