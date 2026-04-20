@@ -1847,6 +1847,10 @@ body.modo-tv .card-id { font-size: 1rem; }
   filter: brightness(1.15);
 }
 
+/* Clases de utilidad para navegación */
+.sidebar.hidden { display: none !important; }
+body.no-sidebar .main-area { margin-left: 0 !important; }
+
 /* Responsive: en pantallas chicas, 2 columnas */
 @media (max-width: 800px) {
   #home-roles [style*="grid-template-columns"] {

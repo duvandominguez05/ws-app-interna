@@ -104,10 +104,21 @@ const HEADER_INFO = {
 
 function showSection(id, navEl) {
   document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (navEl) navEl.classList.add('active');
+
+  // Ajuste de Sidebar para el Hub y TV
+  const sidebar = document.getElementById('sidebar');
+  if (id === 'home-roles' || id === 'torre-tv') {
+    sidebar.classList.add('hidden');
+    document.body.classList.add('no-sidebar');
+  } else {
+    sidebar.classList.remove('hidden');
+    document.body.classList.remove('no-sidebar');
+  }
 
   const info = HEADER_INFO[id] || {};
   document.getElementById('header-icon').textContent      = info.icon || '';
