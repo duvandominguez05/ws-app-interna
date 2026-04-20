@@ -134,8 +134,52 @@
       </div>
     </div>
 
+    <!-- ─── HUB DE ROLES (ENTRADA PRINCIPAL) ─────────────────────────────────── -->
+    <section id="home-roles" class="section-content active">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:40px;">
+        <div style="text-align:center;margin-bottom:40px;">
+          <div style="font-size:3rem;margin-bottom:10px;">⚡</div>
+          <h1 style="font-family:'Outfit',sans-serif;font-weight:900;font-size:3.5rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.5px;">W&S Enterprise</h1>
+          <p style="color:var(--text-muted);font-size:1.1rem;margin-top:10px;">Selecciona tu módulo de trabajo</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:24px;width:100%;max-width:1000px;">
+          <!-- Card: TV -->
+          <div onclick="activarModoTV()" style="background:linear-gradient(180deg, var(--sidebar-bg), #000);border:1px solid rgba(255,255,255,0.05);border-radius:20px;padding:30px 20px;text-align:center;cursor:pointer;transition:var(--transition);box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <div style="font-size:3.5rem;margin-bottom:15px;">🖥️</div>
+            <h3 style="font-family:'Outfit',sans-serif;font-size:1.4rem;margin-bottom:5px;">Torre TV</h3>
+            <p style="font-size:0.85rem;color:var(--text-muted);">Monitoreo Cero Clics</p>
+          </div>
+          <!-- Card: Ventas -->
+          <div onclick="showSection('bandeja_pedidos', false); document.querySelector('.sidebar').classList.remove('hidden-for-miniapp');" style="background:linear-gradient(180deg, rgba(249,115,22,0.1), var(--card-bg));border:1px solid rgba(249,115,22,0.2);border-radius:20px;padding:30px 20px;text-align:center;cursor:pointer;transition:var(--transition);">
+            <div style="font-size:3.5rem;margin-bottom:15px;">💼</div>
+            <h3 style="font-family:'Outfit',sans-serif;font-size:1.4rem;margin-bottom:5px;color:#f97316;">Ventas</h3>
+            <p style="font-size:0.85rem;color:var(--text-muted);">Cotizaciones y CRM</p>
+          </div>
+          <!-- Card: Diseño -->
+          <div onclick="showSection('diseno', false); document.body.classList.add('modo-miniapp');" style="background:linear-gradient(180deg, rgba(6,182,212,0.1), var(--card-bg));border:1px solid rgba(6,182,212,0.2);border-radius:20px;padding:30px 20px;text-align:center;cursor:pointer;transition:var(--transition);">
+            <div style="font-size:3.5rem;margin-bottom:15px;">🎨</div>
+            <h3 style="font-family:'Outfit',sans-serif;font-size:1.4rem;margin-bottom:5px;color:#06b6d4;">Diseño</h3>
+            <p style="font-size:0.85rem;color:var(--text-muted);">WeTransfer y Arte</p>
+          </div>
+          <!-- Card: Producción -->
+          <div onclick="showSection('produccion', false); document.body.classList.add('modo-miniapp');" style="background:linear-gradient(180deg, rgba(167,139,250,0.1), var(--card-bg));border:1px solid rgba(167,139,250,0.2);border-radius:20px;padding:30px 20px;text-align:center;cursor:pointer;transition:var(--transition);">
+            <div style="font-size:3.5rem;margin-bottom:15px;">⚙️</div>
+            <h3 style="font-family:'Outfit',sans-serif;font-size:1.4rem;margin-bottom:5px;color:#a78bfa;">Producción</h3>
+            <p style="font-size:0.85rem;color:var(--text-muted);">Calandra y Calidad</p>
+          </div>
+          <!-- Card: Satélites -->
+          <div onclick="showSection('satelites', false); document.body.classList.add('modo-miniapp');" style="background:linear-gradient(180deg, rgba(16,185,129,0.1), var(--card-bg));border:1px solid rgba(16,185,129,0.2);border-radius:20px;padding:30px 20px;text-align:center;cursor:pointer;transition:var(--transition);">
+            <div style="font-size:3.5rem;margin-bottom:15px;">🧵</div>
+            <h3 style="font-family:'Outfit',sans-serif;font-size:1.4rem;margin-bottom:5px;color:#10b981;">Satélites</h3>
+            <p style="font-size:0.85rem;color:var(--text-muted);">Entregas e Inventario</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
-    <section id="vista-general" class="section-content active section-bg">
+    <section id="vista-general" class="section-content section-bg">
 
       <!-- Fila central: alertas + pipeline + satélites + calandra -->
       <div class="dash-grid">

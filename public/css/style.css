@@ -1771,3 +1771,54 @@
       }
       /* cant — col 1, precio — col 2-3, total — col 3, x — col 4 */
     }
+/* ─── MODOS DE VISTA (TV Y MINI-APP) ──────────────────────────────── */
+body.modo-miniapp .sidebar { display: none !important; }
+body.modo-miniapp .main-header { display: none !important; }
+body.modo-miniapp .section-content { height: 100vh; overflow-y: auto; padding-top: 16px; }
+
+/* Botón flotante para salir de miniapp */
+.btn-salir-miniapp {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--red);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 50px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 9999;
+  box-shadow: 0 4px 15px rgba(244,63,94,0.4);
+  border: none;
+  font-size: 1rem;
+}
+
+body.modo-tv .sidebar { display: none !important; }
+body.modo-tv .main-header { display: none !important; }
+body.modo-tv .notif-panel { display: none !important; }
+body.modo-tv .section-content { height: 100vh; overflow: hidden; padding: 20px; }
+
+/* Escalar interfaz en TV y evitar clics */
+body.modo-tv .kanban-card button,
+body.modo-tv .kanban-card .card-actions,
+body.modo-tv .section-heading button,
+body.modo-tv .cal-metrics button { display: none !important; }
+
+body.modo-tv .kanban-board { 
+  font-size: 1.1rem; 
+  gap: 24px; 
+  padding: 20px 0;
+  /* Animación AutoScroll */
+  animation: autoscroll-tv 60s linear infinite alternate;
+}
+
+body.modo-tv .kanban-col { min-width: 350px; }
+body.modo-tv .kanban-card { padding: 20px; margin-bottom: 20px; pointer-events: none; }
+body.modo-tv .card-equipo { font-size: 1.3rem; }
+body.modo-tv .card-id { font-size: 1rem; }
+
+@keyframes autoscroll-tv {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-100vw + 600px)); }
+}

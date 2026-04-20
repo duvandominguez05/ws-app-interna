@@ -2846,3 +2846,60 @@ async function cargarPendientesWT() {
 })();
 
 setTimeout(cargarPendientesWT, 3000);
+
+/* ─── MODOS DE ENTORNO (SPA) ──────────────────────────────────── */
+
+function activarModoTV() {
+  document.body.classList.add('modo-tv');
+  // En TV mostramos las columnas de diseño y de produccion juntas.
+  // Podríamos tener una vista unificada pero ahora usaremos 'produccion' y 'diseno'
+  // o mejor, vista-general.
+  showSection('vista-general', null);
+  
+  // Opcional: mostrar un banner de TV o hacer pantalla completa
+  if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(e => console.log(e));
+  }
+}
+
+function salirDeModos() {
+  document.body.classList.remove('modo-miniapp');
+  document.body.classList.remove('modo-tv');
+  showSection('home-roles', null);
+  const btn = document.getElementById('btn-salir-miniapp');
+  if (btn) btn.style.display = 'none';
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(e => console.log(e));
+  }
+}
+
+function modoMiniApp(seccion) {
+  document.body.classList.add('modo-miniapp');
+  // Inyectar o mostrar botón de salir
+  let btn = document.getElementById('btn-salir-miniapp');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'btn-salir-miniapp';
+    btn.className = 'btn-salir-miniapp';
+    btn.innerHTML = '← Regresar al Inicio';
+    btn.onclick = salirDeModos;
+    document.body.appendChild(btn);
+  }
+  btn.style.display = 'block';
+}
+
+// Al inicio de la aplicación verificamos si hay algún Hash
+window.addEventListener('DOMContentLoaded', () => {
+  const hash = window.location.hash;
+  if(hash === '#/ventas') {
+    showSection('bandeja_pedidos'); document.querySelector('.sidebar').classList.remove('hidden-for-miniapp');
+  } else if(hash === '#/diseno') {
+    showSection('diseno'); modoMiniApp('diseno');
+  } else if(hash === '#/produccion') {
+    showSection('produccion'); modoMiniApp('produccion');
+  } else if(hash === '#/satelites') {
+    showSection('satelites'); modoMiniApp('satelites');
+  } else if(hash === '#/tv') {
+    activarModoTV();
+  }
+});
