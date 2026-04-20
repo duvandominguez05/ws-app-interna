@@ -1987,24 +1987,46 @@ function renderSatelites() {
     `;
   }).join('') + `</div>`;
 
-  // Lista de movimientos recientes
+  // Lista de movimientos por satélite — cada uno su columna
   if (!satMovimientos.length) {
     contLista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin movimientos registrados</div>`;
     return;
   }
 
-  contLista.innerHTML = `
-    <div class="cal-semana-header" style="color:var(--text-muted);">Movimientos recientes</div>
-    ${satMovimientos.slice(0, 40).map(m => `
-      <div class="sat-item ${m.tipo}">
-        <span style="font-size:1.1rem;">${m.tipo === 'entrega' ? '📦' : '✅'}</span>
+  function renderMovItem(m) {
+    return `
+      <div class="sat-item ${m.tipo}" style="margin-bottom:6px;">
+        <span style="font-size:0.9rem;">${m.tipo === 'entrega' ? '📦' : '✅'}</span>
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:700;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.satelite)} — ${esc(m.equipo)}</div>
-          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(m.prenda)} · ${m.fecha} ${m.hora}</div>
+          <div style="font-weight:700;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.equipo)}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);">${esc(m.prenda)} · ${m.fecha} ${m.hora}</div>
         </div>
         <span class="sat-tipo-badge" style="${m.tipo === 'entrega' ? 'background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);' : 'background:rgba(16,185,129,0.15);color:#4ade80;border:1px solid rgba(16,185,129,0.3);'}">${m.tipo === 'entrega' ? '+' : '-'}${m.cantidad}</span>
-      </div>
-    `).join('')}
+      </div>`;
+  }
+
+  contLista.innerHTML = `
+    <div class="cal-semana-header" style="color:var(--text-muted);">Movimientos por satélite</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:16px;margin-top:10px;">
+      ${SATELITES.map(s => {
+        const col = SAT_COLORS[s] || { border: 'rgba(255,255,255,0.1)', header: '#94a3b8', dot: '#64748b' };
+        const movs = satMovimientos.filter(m => m.satelite === s);
+        const movsHtml = movs.length
+          ? movs.slice(0, 25).map(renderMovItem).join('')
+          : `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.75rem;">Sin movimientos</div>`;
+        return `
+          <div style="background:var(--card-bg);border:1px solid ${col.border};border-radius:var(--radius);padding:14px;overflow:hidden;">
+            <div style="font-size:0.82rem;font-weight:700;color:${col.header};margin-bottom:10px;display:flex;align-items:center;gap:7px;">
+              <span style="width:9px;height:9px;border-radius:50%;background:${col.dot};flex-shrink:0;"></span>
+              ${esc(s)}
+              <span style="font-size:0.7rem;font-weight:400;color:var(--text-muted);margin-left:auto;">${movs.length} mov.</span>
+            </div>
+            <div style="max-height:400px;overflow-y:auto;">
+              ${movsHtml}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
   `;
 }
 
