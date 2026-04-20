@@ -95,9 +95,7 @@ const HEADER_INFO = {
   'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
-  'wetransfer':    { icon: '📤', title: 'WeTransfer — envíos a calandra' },
   'arreglos':      { icon: '🔧', title: 'Control de arreglos' },
-  'calandra':      { icon: '📐', title: 'Metraje — Control Calandra' },
   'satelites':     { icon: '🧵', title: 'Satélites de costura' },
   'cotizaciones':  { icon: '🧾', title: 'Facturas y Cotizaciones' },
 };
@@ -110,9 +108,9 @@ function showSection(id, navEl) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (navEl) navEl.classList.add('active');
 
-  // Ajuste de Sidebar para el Hub y TV
+  // Ajuste de Sidebar para TV
   const sidebar = document.getElementById('sidebar');
-  if (id === 'home-roles' || id === 'torre-tv') {
+  if (id === 'torre-tv') {
     sidebar.classList.add('hidden');
     document.body.classList.add('no-sidebar');
   } else {
@@ -1315,7 +1313,8 @@ function renderWT() {
   const envHoy  = hoy_list.filter(e => e.tipo === 'enviado').length;
   const descHoy = hoy_list.filter(e => e.tipo === 'descargado').length;
 
-  document.getElementById('badge-wt').textContent = hoy_list.length;
+  const badgeWt = document.getElementById('badge-wt');
+  if (badgeWt) badgeWt.textContent = hoy_list.length;
 
   if (resumen) {
     resumen.innerHTML = `
@@ -1443,7 +1442,8 @@ function renderArreglos() {
 
   // Arreglos de pedidos activos
   const conArreglo = pedidos.filter(p => p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'enviado-final');
-  document.getElementById('badge-arreglos').textContent = conArreglo.length + arreglosManuales.filter(a => !a.resuelto).length;
+  const badgeArr = document.getElementById('badge-arreglos');
+  if (badgeArr) badgeArr.textContent = conArreglo.length + arreglosManuales.filter(a => !a.resuelto).length;
 
   if (!conArreglo.length) {
     contPed.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin arreglos en pedidos activos</div>`;
@@ -1723,8 +1723,8 @@ function renderCalandra() {
   if (elArch)   elArch.textContent   = hoyList.length;
 
   // Badge sidebar
-  const badge = document.getElementById('badge-calandra');
-  if (badge) badge.textContent = hoyList.length;
+  const badgeCal = document.getElementById('badge-calandra');
+  if (badgeCal) badgeCal.textContent = hoyList.length;
 
   let html = '';
 
@@ -1884,8 +1884,8 @@ function renderSatelites() {
     const recibido  = satMovimientos.filter(m => m.satelite === s && m.tipo === 'recepcion').reduce((a, m) => a + m.cantidad, 0);
     return sum + Math.max(0, entregado - recibido);
   }, 0);
-  const badge = document.getElementById('badge-satelites');
-  if (badge) badge.textContent = pendTotal;
+  const badgeSat = document.getElementById('badge-satelites');
+  if (badgeSat) badgeSat.textContent = pendTotal;
 
   // Colores únicos por satélite
   const SAT_COLORS = {
@@ -2802,22 +2802,6 @@ async function compartirDocWA(id) {
   }
 }
 
-// Hook showSection para renderizar historial al abrir la sección
-(function() {
-  const _orig = showSection;
-  showSection = function(id, navEl) {
-    _orig(id, navEl);
-    if (id === 'cotizaciones') { cargarDocsServidor(); renderDocHistorial(); }
-    if (id === 'arreglos')     { sincronizarArreglosServidor(); }
-    if (id === 'satelites')    { sincronizarSatelitesServidor(); }
-  };
-})();
-
-// Sync inicial con servidor para todos los módulos
-setTimeout(cargarDocsServidor, 1500);
-setTimeout(sincronizarArreglosServidor, 2000);
-setTimeout(sincronizarSatelitesServidor, 2500);
-
 // ── Pendientes WeTransfer ─────────────────────────────────────
 async function cargarPendientesWT() {
   try {
@@ -2849,15 +2833,22 @@ async function cargarPendientesWT() {
   } catch(e) {}
 }
 
-// Cargar pendientes al abrir la sección calandra
+// Hook showSection — un solo hook consolidado para sincronizar datos al abrir secciones
 (function() {
-  const _origCalandra = showSection;
+  const _orig = showSection;
   showSection = function(id, navEl) {
-    _origCalandra(id, navEl);
-    if (id === 'calandra') cargarPendientesWT();
+    _orig(id, navEl);
+    if (id === 'cotizaciones') { cargarDocsServidor(); renderDocHistorial(); }
+    if (id === 'arreglos')     { sincronizarArreglosServidor(); }
+    if (id === 'satelites')    { sincronizarSatelitesServidor(); }
+    if (id === 'produccion')   { cargarPendientesWT(); }
   };
 })();
 
+// Sync inicial con servidor para todos los módulos
+setTimeout(cargarDocsServidor, 1500);
+setTimeout(sincronizarArreglosServidor, 2000);
+setTimeout(sincronizarSatelitesServidor, 2500);
 setTimeout(cargarPendientesWT, 3000);
 
 /* ─── MODOS DE ENTORNO (SPA) ──────────────────────────────────── */
@@ -2901,7 +2892,7 @@ function activarModoTV() {
 function salirDeModos() {
   document.body.classList.remove('modo-miniapp');
   document.body.classList.remove('modo-tv');
-  showSection('home-roles', null);
+  showSection('vista-general', document.querySelector('[onclick*="vista-general"]'));
   const btn = document.getElementById('btn-salir-miniapp');
   if (btn) btn.style.display = 'none';
   if (document.fullscreenElement) {
@@ -2928,14 +2919,15 @@ function modoMiniApp(seccion) {
 window.addEventListener('DOMContentLoaded', () => {
   const hash = window.location.hash;
   if(hash === '#/ventas') {
-    showSection('bandeja_pedidos'); document.querySelector('.sidebar').classList.remove('hidden-for-miniapp');
+    showSection('bandeja', document.querySelector('[onclick*="bandeja"]'));
   } else if(hash === '#/diseno') {
-    showSection('diseno'); modoMiniApp('diseno');
+    showSection('diseno', document.querySelector('[onclick*="diseno"]'));
   } else if(hash === '#/produccion') {
-    showSection('produccion'); modoMiniApp('produccion');
+    showSection('produccion', document.querySelector('[onclick*="produccion"]'));
   } else if(hash === '#/satelites') {
-    showSection('satelites'); modoMiniApp('satelites');
+    showSection('satelites', document.querySelector('[onclick*="satelites"]'));
   } else if(hash === '#/tv') {
     activarModoTV();
   }
+  // Por defecto ya muestra Vista General (active en HTML)
 });

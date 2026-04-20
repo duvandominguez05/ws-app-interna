@@ -73,23 +73,13 @@
       <div class="nav-item" onclick="showSection('arreglos', this)">
         <span class="nav-icon">🛠️</span>
         <span>Arreglos</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('wetransfer', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </span>
-        <span>WeTransfer</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('calandra', this)">
-        <span class="nav-icon">📏</span>
-        <span>Calandra</span>
+        <span class="nav-badge" id="badge-arreglos">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('satelites', this)">
         <span class="nav-icon">🧵</span>
         <span>Satélites</span>
+        <span class="nav-badge" id="badge-satelites">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('cotizaciones', this)">
@@ -102,6 +92,9 @@
       <button class="btn-new-pedido" onclick="openModalNuevo()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nuevo pedido
+      </button>
+      <button onclick="activarModoTV()" style="width:100%;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;transition:var(--transition);" onmouseover="this.style.background='rgba(124,58,237,0.15)';this.style.color='#c4b5fd'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.color='var(--text-muted)'">
+        🖥️ Modo Torre TV
       </button>
     </div>
   </aside>
@@ -154,49 +147,7 @@
       </div>
     </div>
 
-    <!-- ─── HUB DE ROLES (ENTRADA PRINCIPAL) ─────────────────────────────────── -->
-    <section id="home-roles" class="section-content active" style="overflow-y:auto;">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;padding:30px 24px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="font-size:2.2rem;margin-bottom:6px;">⚡</div>
-          <h1 style="font-family:'Outfit',sans-serif;font-weight:900;font-size:2.5rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.5px;">W&S Enterprise</h1>
-          <p style="color:var(--text-muted);font-size:0.95rem;margin-top:6px;">Selecciona tu módulo de trabajo</p>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:16px;width:100%;max-width:1050px;">
-          <!-- Card: TV -->
-          <div onclick="activarModoTV()" class="hub-card" style="background:linear-gradient(180deg, rgba(255,255,255,0.03), #000);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:24px 14px;text-align:center;cursor:pointer;transition:var(--transition);box-shadow:0 8px 20px rgba(0,0,0,0.4);">
-            <div style="font-size:2.2rem;margin-bottom:10px;">🖥️</div>
-            <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;margin-bottom:3px;color:var(--text);">Torre TV</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.3;">Monitoreo Cero Clics</p>
-          </div>
-          <!-- Card: Ventas -->
-          <div onclick="showSection('bandeja_pedidos', false);" class="hub-card" style="background:linear-gradient(180deg, rgba(249,115,22,0.08), var(--card-bg));border:1px solid rgba(249,115,22,0.15);border-radius:16px;padding:24px 14px;text-align:center;cursor:pointer;transition:var(--transition);">
-            <div style="font-size:2.2rem;margin-bottom:10px;">💼</div>
-            <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;margin-bottom:3px;color:#f97316;">Ventas</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.3;">Cotizaciones y CRM</p>
-          </div>
-          <!-- Card: Diseño -->
-          <div onclick="showSection('diseno', false);" class="hub-card" style="background:linear-gradient(180deg, rgba(6,182,212,0.08), var(--card-bg));border:1px solid rgba(6,182,212,0.15);border-radius:16px;padding:24px 14px;text-align:center;cursor:pointer;transition:var(--transition);">
-            <div style="font-size:2.2rem;margin-bottom:10px;">🎨</div>
-            <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;margin-bottom:3px;color:#06b6d4;">Diseño</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.3;">WeTransfer y Arte</p>
-          </div>
-          <!-- Card: Producción -->
-          <div onclick="showSection('produccion', false);" class="hub-card" style="background:linear-gradient(180deg, rgba(167,139,250,0.08), var(--card-bg));border:1px solid rgba(167,139,250,0.15);border-radius:16px;padding:24px 14px;text-align:center;cursor:pointer;transition:var(--transition);">
-            <div style="font-size:2.2rem;margin-bottom:10px;">⚙️</div>
-            <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;margin-bottom:3px;color:#a78bfa;">Producción</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.3;">Calandra y Calidad</p>
-          </div>
-          <!-- Card: Satélites -->
-          <div onclick="showSection('satelites', false);" class="hub-card" style="background:linear-gradient(180deg, rgba(16,185,129,0.08), var(--card-bg));border:1px solid rgba(16,185,129,0.15);border-radius:16px;padding:24px 14px;text-align:center;cursor:pointer;transition:var(--transition);">
-            <div style="font-size:2.2rem;margin-bottom:10px;">🧵</div>
-            <h3 style="font-family:'Outfit',sans-serif;font-size:1.1rem;margin-bottom:3px;color:#10b981;">Satélites</h3>
-            <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.3;">Entregas e Inventario</p>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- Hub de Roles eliminado — la app abre directo en Vista General -->
 
     <!-- ─── TORRE TV (AEROPUERTO) ───────────────────────── -->
     <section id="torre-tv" class="section-content section-bg" style="overflow:hidden; padding:0;">
@@ -218,7 +169,35 @@
     </section>
 
     <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
-    <section id="vista-general" class="section-content section-bg">
+    <section id="vista-general" class="section-content section-bg active">
+
+      <!-- KPIs rápidos (arriba, lo primero que ves) -->
+      <div class="dash-metrics-top">
+        <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
+          <div class="dash-kpi-val" id="m-total">0</div>
+          <div class="dash-kpi-label">Activos</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#fb923c;">
+          <div class="dash-kpi-val" id="m-diseno">0</div>
+          <div class="dash-kpi-label">Diseño</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#67e8f9;">
+          <div class="dash-kpi-val" id="m-produccion">0</div>
+          <div class="dash-kpi-label">Producción</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#4ade80;">
+          <div class="dash-kpi-val" id="m-listos">0</div>
+          <div class="dash-kpi-label">Listos</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#a78bfa;">
+          <div class="dash-kpi-val" id="m-cal-semana">0</div>
+          <div class="dash-kpi-label">m² calandra</div>
+        </div>
+        <div class="dash-kpi" style="--kpi-color:#f472b6;">
+          <div class="dash-kpi-val" id="m-sat-pend">0</div>
+          <div class="dash-kpi-label">Pend. satél.</div>
+        </div>
+      </div>
 
       <!-- Fila central: alertas + pipeline + satélites + calandra -->
       <div class="dash-grid">
@@ -257,7 +236,7 @@
         <div class="dash-panel">
           <div class="dash-panel-title">
             📐 Calandra — esta semana
-            <a onclick="showSection('calandra', document.querySelector('[onclick*=calandra]'))">Ver detalle →</a>
+            <a onclick="showSection('produccion', document.querySelector('[onclick*=produccion]'))">Ver detalle →</a>
           </div>
           <div id="dash-calandra">
             <div class="dash-empty">Sin registros esta semana</div>
@@ -274,33 +253,7 @@
         <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
 
-      <!-- KPIs rápidos (al final) -->
-      <div class="dash-metrics-top">
-        <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
-          <div class="dash-kpi-val" id="m-total">0</div>
-          <div class="dash-kpi-label">Activos</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#fb923c;">
-          <div class="dash-kpi-val" id="m-diseno">0</div>
-          <div class="dash-kpi-label">Diseño</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#67e8f9;">
-          <div class="dash-kpi-val" id="m-produccion">0</div>
-          <div class="dash-kpi-label">Producción</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#4ade80;">
-          <div class="dash-kpi-val" id="m-listos">0</div>
-          <div class="dash-kpi-label">Listos</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#a78bfa;">
-          <div class="dash-kpi-val" id="m-cal-semana">0</div>
-          <div class="dash-kpi-label">m² calandra</div>
-        </div>
-        <div class="dash-kpi" style="--kpi-color:#f472b6;">
-          <div class="dash-kpi-val" id="m-sat-pend">0</div>
-          <div class="dash-kpi-label">Pend. satél.</div>
-        </div>
-      </div>
+      <!-- KPIs movidos arriba -->
 
     </section>
 
@@ -398,7 +351,7 @@
             <span class="dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span> Control de metraje enviado a Calandra
           </div>
           <div style="display:flex;gap:10px;align-items:center;">
-            <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="registrarCal()">+ Registrar envío</button>
+            <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="abrirFormCalandra()">+ Registrar envío</button>
             <div style="font-size:0.75rem;color:var(--text-muted);">
               Ancho tela: <strong style="color:var(--text);">1.50 m</strong>
             </div>
@@ -418,15 +371,15 @@
       </div>
       
       <!-- Formulario oculto Calandra -->
-      <div id="form-cal" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+      <div id="form-calandra" style="display:none;background:var(--card-bg);border:1px solid rgba(167,139,250,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
         <div style="font-size:0.82rem;font-weight:700;color:#c4b5fd;margin-bottom:12px;">Nuevo registro de envío a calandra</div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Metros enviados</label><input type="number" step="0.01" class="form-input" id="cal-metros"></div>
+          <div class="form-group"><label class="form-label">Alto del PDF (cm)</label><input type="number" step="0.01" class="form-input" id="cal-alto" placeholder="Ej: 150"></div>
           <div class="form-group"><label class="form-label">Equipo</label><input type="text" class="form-input" id="cal-equipo"></div>
         </div>
         <div class="form-actions" style="margin-top:10px;padding-top:10px;">
-          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-cal').style.display='none'">Cancelar</button>
-          <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="guardarCal()">Guardar envío</button>
+          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-calandra').style.display='none'">Cancelar</button>
+          <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="guardarCalandra()">Guardar envío</button>
         </div>
       </div>
 
