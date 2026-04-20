@@ -1817,6 +1817,12 @@ body.modo-tv .card-equipo { font-size: 1.3rem; }
 body.modo-tv .card-id { font-size: 1rem; }
 
 /* ─── Torre TV: scroll vertical automático ─────────────────── */
+#torre-tv.active {
+  display: flex !important;
+  flex-direction: column;
+  height: 100vh;
+}
+
 #torre-tv .kanban-board {
   display: flex;
   flex-wrap: nowrap;
