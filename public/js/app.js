@@ -23,8 +23,7 @@ const ESTADO_LABELS = {
   'confirmado':        'Confirmado',
   'enviado-calandra':  'En calandra',
   'llego-impresion':   'Llegó impresión',
-  'corte':             'Corte',
-  'calidad':           'Calidad',
+  'calidad':           'Control Calidad',
   'costura':           'Costura',
   'listo':             'Listo',
   'enviado-final':     'Enviado',
@@ -36,7 +35,6 @@ const ESTADO_BADGE = {
   'confirmado':        'badge-diseno',
   'enviado-calandra':  'badge-diseno',
   'llego-impresion':   'badge-produccion',
-  'corte':             'badge-produccion',
   'calidad':           'badge-calidad',
   'costura':           'badge-produccion',
   'listo':             'badge-listo',
@@ -438,7 +436,6 @@ const ETAPA_COLOR = {
   'confirmado':        '#06b6d4',
   'enviado-calandra':  '#f97316',
   'llego-impresion':   '#f97316',
-  'corte':             '#eab308',
   'calidad':           '#ef4444',
   'costura':           '#10b981',
   'listo':             '#10b981',
@@ -524,17 +521,23 @@ function renderBandejaPedidos(arr) {
 function renderKanban(estado) {
   const col = document.getElementById(`col-${estado}`);
   const cnt = document.getElementById(`cnt-${estado}`);
-  if (!col) return;
-
+  const colTv = document.getElementById(`col-tv-${estado}`);
+  const cntTv = document.getElementById(`badge-tv-${estado}`);
+  
   const items = pedidos.filter(p => p.estado === estado);
   if (cnt) cnt.textContent = items.length;
+  if (cntTv) cntTv.textContent = items.length;
 
-  if (!items.length) {
-    col.innerHTML = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
-    return;
+  const html = items.length ? items.map(p => renderKanbanCard(p)).join('') : `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
+
+  if (col) col.innerHTML = html;
+  
+  if (colTv) {
+    let htmlTv = html.replace(/<button[^>]*>.*?<\/button>/g, '');
+    htmlTv = htmlTv.replace(/<select[^>]*>.*?<\/select>/g, '');
+    htmlTv = htmlTv.replace(/<div class="kanban-card-actions".*?<\/div>/gs, '');
+    colTv.innerHTML = htmlTv;
   }
-
-  col.innerHTML = items.map(p => renderKanbanCard(p)).join('');
 }
 
 function renderKanbanCardDiseno(p) {
@@ -1015,8 +1018,7 @@ function getBandejaBotonLabel(estado) {
     'hacer-diseno':      '→ Diseño listo',
     'confirmado':        '→ Enviar a calandra',
     'enviado-calandra':  '→ Llegó impresión',
-    'llego-impresion':   '→ Corte',
-    'corte':             '→ Calidad',
+    'llego-impresion':   '→ Calidad',
     'calidad':           '→ Costura',
     'costura':           '→ Listo',
     'listo':             '→ Entregar / Enviar',
@@ -2851,15 +2853,38 @@ setTimeout(cargarPendientesWT, 3000);
 
 function activarModoTV() {
   document.body.classList.add('modo-tv');
-  // En TV mostramos las columnas de diseño y de produccion juntas.
-  // Podríamos tener una vista unificada pero ahora usaremos 'produccion' y 'diseno'
-  // o mejor, vista-general.
-  showSection('vista-general', null);
+  showSection('torre-tv', null);
   
-  // Opcional: mostrar un banner de TV o hacer pantalla completa
   if (document.documentElement.requestFullscreen) {
     document.documentElement.requestFullscreen().catch(e => console.log(e));
   }
+
+  // Generar columnas base para la TV (solo una vez)
+  const ktv = document.getElementById('kanban-tv');
+  if (ktv.children.length === 0) {
+    const etapasTV = ['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo'];
+    ktv.innerHTML = etapasTV.map(e => `
+      <div class="kanban-col" style="min-width:400px;">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title">
+            <span class="icon">${NOTIF_ICONS[e] || ''}</span>
+            <span class="title-text">${ESTADO_LABELS[e] || e}</span>
+          </div>
+          <span class="kanban-badge" id="badge-tv-${e}">0</span>
+        </div>
+        <div class="kanban-cards" id="col-tv-${e}"></div>
+      </div>
+    `).join('');
+  }
+
+  // Reloj
+  setInterval(() => {
+    const d = new Date();
+    document.getElementById('reloj-tv').textContent = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
+  }, 1000);
+
+  // Forzar un render para llenar la info
+  render();
 }
 
 function salirDeModos() {

@@ -1809,8 +1809,6 @@ body.modo-tv .kanban-board {
   font-size: 1.1rem; 
   gap: 24px; 
   padding: 20px 0;
-  /* Animación AutoScroll */
-  animation: autoscroll-tv 60s linear infinite alternate;
 }
 
 body.modo-tv .kanban-col { min-width: 350px; }
@@ -1818,7 +1816,26 @@ body.modo-tv .kanban-card { padding: 20px; margin-bottom: 20px; pointer-events: 
 body.modo-tv .card-equipo { font-size: 1.3rem; }
 body.modo-tv .card-id { font-size: 1rem; }
 
+/* ─── Torre TV: scroll vertical automático ─────────────────── */
+#torre-tv .kanban-board {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: hidden;
+  animation: autoscroll-tv 45s linear infinite alternate;
+}
+
 @keyframes autoscroll-tv {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(calc(-100vw + 600px)); }
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(calc(-100% + 100vw)); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.08); }
+}
+
+/* ─── Hub de Roles: hover interactivo ──────────────────────── */
+#home-roles [onclick]:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.6) !important;
 }

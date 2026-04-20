@@ -1,0 +1,10 @@
+node_modules
+data
+logs
+bot-log.txt
+wa_auth_local
+wa_auth_puppeteer
+.git
+.wwebjs_cache
+*.bat
+*.ps1

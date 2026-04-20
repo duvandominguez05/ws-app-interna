@@ -377,7 +377,7 @@ http.createServer((req, res) => {
            const pedidos = leerPedidos();
            // Buscar pedido activo que coincida vagamente con el nombre del equipo y esté en diseño o confirmado
            const pd = pedidos.find(p => {
-               if (p.estado === 'llego-impresion' || p.estado === 'corte' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
+               if (p.estado === 'llego-impresion' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
                const eqP = (p.equipo || '').toLowerCase().trim();
                // eqTarget puede tener "Galaktiturkos 1.50m", validamos si se incluye
                return eqP && (eqTarget.includes(eqP) || eqP.includes(eqTarget));
@@ -518,22 +518,22 @@ http.createServer((req, res) => {
 
         // 🔥 HIPER-AUTOMATIZACIÓN: Si N8N reporta WeTransfer Descargado, buscar pedido y avanzar a "enviado-final"
         let pedidoAutmovido = null;
-        if (tipo === 'descargado' && archivo) {
+        if ((tipo === 'enviado' || tipo === 'descargado') && archivo) {
            const archivoTarget = String(archivo).toLowerCase().trim();
            // A veces el archivo viene como "Galaktiturkos.pdf", tratamos de extraer la base
            const baseName = archivoTarget.replace('.pdf', '').trim();
            
            const pedidos = leerPedidos();
            const pd = pedidos.find(p => {
-               if (p.estado === 'enviado-final') return false; // ya está ahí
+               if (p.estado === 'enviado-calandra' || p.estado === 'llego-impresion' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
                const eqP = (p.equipo || '').toLowerCase().trim();
                // Extra check to see if the filename includes the team name
                return eqP && (baseName.includes(eqP) || eqP.includes(baseName));
            });
 
            if (pd) {
-               console.log(`[auto-avance] Pedido #${pd.id} movido a 'enviado-final' gracias a descarga WT.`);
-               pd.estado = 'enviado-final';
+               console.log(`[auto-avance] Pedido #${pd.id} movido a 'enviado-calandra' gracias a WT ${tipo}.`);
+               pd.estado = 'enviado-calandra';
                pd.ultimoMovimiento = new Date().toISOString();
                const nId = leerNextId();
                guardarPedidos(pedidos, nId);
