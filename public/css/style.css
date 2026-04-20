@@ -2,28 +2,34 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --bg:         #0a0b0f;
-      --sidebar-bg: #0d0e14;
-      --card-bg:    #12141c;
-      --card-border: rgba(255,255,255,0.06);
-      --accent:     #7c3aed;
-      --accent2:    #06b6d4;
+      --bg:         #07080a; /* Más oscuro, más premium */
+      --sidebar-bg: #0b0c10;
+      --card-bg:    #101218;
+      --card-border: rgba(255,255,255,0.03); /* Más sutil */
+      --accent:     #8b5cf6; /* Morado ligeramente más brillante */
+      --accent2:    #0ea5e9;
       --orange:     #f97316;
       --green:      #10b981;
-      --red:        #ef4444;
-      --yellow:     #eab308;
-      --text:       #f1f5f9;
-      --text-muted: #64748b;
-      --radius:     10px;
+      --red:        #f43f5e; /* Rojo rosa más premium */
+      --yellow:     #fbbf24;
+      --text:       #f8fafc;
+      --text-muted: #94a3b8;
+      --radius:     12px; /* Más redondeado y moderno */
       --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     html, body {
       height: 100%;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', -apple-system, blinkmacsystemfont, sans-serif;
       background: var(--bg);
       color: var(--text);
       overflow: hidden;
+      letter-spacing: -0.01em;
+    }
+
+    /* Fuentes y Logos con Outfit */
+    .logo-text, .kanban-col-title, .section-heading, .metric-label, .metric-value {
+      font-family: 'Outfit', sans-serif;
     }
 
     /* ─── SCROLLBAR ────────────────────────────────────────────────────── */

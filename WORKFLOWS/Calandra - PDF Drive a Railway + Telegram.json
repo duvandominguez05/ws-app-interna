@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const archivos = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\nif (Array.isArray(staticData.procesados)) staticData.procesados = {};\nif (!staticData.procesados) staticData.procesados = {};\n\nconst siete = Date.now() - 7 * 24 * 60 * 60 * 1000;\nObject.keys(staticData.procesados).forEach(id => {\n  if (staticData.procesados[id] < siete) delete staticData.procesados[id];\n});\n\nconst hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });\n\n// Asignar driveIndex ANTES de filtrar para mantener orden original de Drive\nconst archivosConIndice = archivos.map((item, index) => ({\n  json: { ...item.json, driveIndex: index, fechaDrive: hoyStr, esDeHoy: true }\n}));\n\nconst nuevos = archivosConIndice.filter(item => !staticData.procesados[item.json.id]);\nif (nuevos.length === 0) return [];\n\nnuevos.forEach(item => { staticData.procesados[item.json.id] = Date.now(); });\n\nreturn nuevos;"
+        "jsCode": "const archivos = $input.all();\nconst staticData = $getWorkflowStaticData('global');\n\nif (Array.isArray(staticData.procesados)) staticData.procesados = {};\nif (!staticData.procesados) staticData.procesados = {};\nif (!staticData.alertados) staticData.alertados = {};\n\nconst siete = Date.now() - 7 * 24 * 60 * 60 * 1000;\nconst treinta = Date.now() - 30 * 24 * 60 * 60 * 1000;\nObject.keys(staticData.procesados).forEach(id => {\n  if (staticData.procesados[id] < siete) delete staticData.procesados[id];\n});\nObject.keys(staticData.alertados).forEach(id => {\n  if (staticData.alertados[id] < treinta) delete staticData.alertados[id];\n});\n\nconst hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });\n\n// Asignar driveIndex ANTES de filtrar para mantener orden original de Drive\nconst archivosConIndice = archivos.map((item, index) => ({\n  json: { ...item.json, driveIndex: index, fechaDrive: hoyStr, esDeHoy: true }\n}));\n\nconst nuevos = archivosConIndice.filter(item => !staticData.procesados[item.json.id]);\nif (nuevos.length === 0) return [];\n\nnuevos.forEach(item => { staticData.procesados[item.json.id] = Date.now(); });\n\nreturn nuevos;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -171,8 +171,21 @@
     },
     {
       "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.alertados) staticData.alertados = {};\n\nconst nuevosAlertar = $input.all().filter(item => {\n  const id = item.json.id;\n  return !staticData.alertados[id];\n});\n\nnuevosAlertar.forEach(item => {\n  staticData.alertados[item.json.id] = Date.now();\n});\n\nreturn nuevosAlertar;"
+      },
+      "id": "filtrar-ya-alertados",
+      "name": "Filtrar Ya Alertados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        340
+      ]
+    },
+    {
+      "parameters": {
         "chatId": "-5135765805",
-        "text": "=⚠️ *PDF sin dimensiones detectadas*\n📄 {{ $json.archivo }}\n❌ No se pudo leer el alto del nombre del PDF.\nVerifica el archivo manualmente o súbelo de nuevo.",
+        "text": "=⚠️ *PDF sin dimensiones detectadas*\n📄 {{ $json.archivo }}\n❌ El nombre no tiene el alto al final (ej: _150).\nRevisa el archivo y renómbralo correctamente.\n\n_Este aviso solo se envía una vez por archivo._",
         "additionalFields": {
           "disable_notification": false,
           "parse_mode": "Markdown"
@@ -294,6 +307,17 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Filtrar Ya Alertados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Ya Alertados": {
+      "main": [
         [
           {
             "node": "Telegram - Alto No Detectado",

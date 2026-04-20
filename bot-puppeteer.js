@@ -4,19 +4,74 @@ const fs = require('fs');
 const path = require('path');
 
 const API_URL = process.env.API_URL || 'https://ws-app-interna-production.up.railway.app';
-const REGEX = /^#(cotizar|pedido)\s+(\w+)\s+([\d][\d\s\-\+]{6,14}[\d])(?:\s+(.+))?$/i;
+// Formatos aceptados:
+//   #pedido nombre telefono [equipo]
+//   #pedido telefono nombre [equipo]
+// El teléfono puede tener espacios: "324 9900664"
+const REGEX = /^#(cotizar|pedido)\s+(.+)$/i;
+
+function parsearMensaje(texto) {
+  const m = texto.match(REGEX);
+  if (!m) return null;
+  const tipo = m[1];
+  const resto = m[2].trim();
+
+  // Buscar la primera secuencia que sea un teléfono (>= 7 dígitos, puede incluir espacios/guiones entre dígitos)
+  const telMatch = resto.match(/\d(?:[\s\-\+]?\d){6,14}/);
+  if (!telMatch) return null;
+
+  const telefono = telMatch[0].replace(/\s+/g, ''); // quitar espacios internos
+  const antes = resto.slice(0, telMatch.index).trim();
+  const despues = resto.slice(telMatch.index + telMatch[0].length).trim();
+
+  let vendedora, equipo;
+  if (antes) {
+    // nombre telefono [equipo]
+    vendedora = antes.split(/\s+/)[0];
+    equipo = despues;
+  } else {
+    // telefono nombre [equipo]
+    const parts = despues.split(/\s+/);
+    vendedora = parts[0];
+    equipo = parts.slice(1).join(' ');
+  }
+
+  if (!vendedora) return null;
+  return [null, tipo, vendedora, telefono, equipo || undefined];
+}
 const DIAS_HISTORICO = 7;
 const LOG_FILE = path.join(__dirname, 'logs', 'bot.log');
+const PROCESADOS_FILE = path.join(__dirname, 'logs', 'procesados.json');
 
 // Asegurar que la carpeta logs exista
 if (!fs.existsSync(path.join(__dirname, 'logs'))) {
   fs.mkdirSync(path.join(__dirname, 'logs'));
 }
 
+// Borrar lock file de Chrome si quedo colgado
+function limpiarLockChrome() {
+  const lockFile = path.join(__dirname, 'wa_auth_puppeteer', 'session', 'SingletonLock');
+  try { if (fs.existsSync(lockFile)) { fs.unlinkSync(lockFile); } } catch {}
+}
+
 function log(msg) {
   const linea = `[${new Date().toLocaleString('es-CO')}] ${msg}`;
   console.log(linea);
   fs.appendFileSync(LOG_FILE, linea + '\n');
+}
+
+// Registro local de mensajes ya procesados
+function leerProcesados() {
+  try {
+    if (!fs.existsSync(PROCESADOS_FILE)) return new Set();
+    return new Set(JSON.parse(fs.readFileSync(PROCESADOS_FILE, 'utf8')));
+  } catch { return new Set(); }
+}
+
+function guardarProcesado(waMsgId) {
+  const set = leerProcesados();
+  set.add(waMsgId);
+  fs.writeFileSync(PROCESADOS_FILE, JSON.stringify([...set]));
 }
 
 const client = new Client({
@@ -40,7 +95,18 @@ client.on('ready', async () => {
 
 client.on('disconnected', (reason) => {
   log(`Bot desconectado: ${reason}`);
-  setTimeout(() => client.initialize(), 5000);
+  setTimeout(() => { limpiarLockChrome(); client.initialize(); }, 5000);
+});
+
+// Reiniciar automaticamente si puppeteer falla al inicializar
+process.on('unhandledRejection', (reason) => {
+  log(`Error no manejado: ${reason}`);
+  if (String(reason).includes('Execution context was destroyed') ||
+      String(reason).includes('browser is already running') ||
+      String(reason).includes('Session closed')) {
+    log('Reiniciando bot en 5 segundos...');
+    setTimeout(() => { limpiarLockChrome(); client.initialize(); }, 5000);
+  }
 });
 
 async function subirVenta(tipo, vendedora, telefono, equipo, waMsgId) {
@@ -70,36 +136,51 @@ function mensajeRespuesta(tipo, result, equipo) {
 
 async function revisarHistorico() {
   try {
+    const procesados = leerProcesados();
     const chats = await client.getChats();
     const grupos = chats.filter(c => c.isGroup);
     if (!grupos.length) return;
 
     const limite = Date.now() - DIAS_HISTORICO * 24 * 60 * 60 * 1000;
-    let procesados = 0;
+    let procesadosNuevos = 0;
 
     for (const grupo of grupos) {
-      const mensajes = await grupo.fetchMessages({ limit: 500 });
+      let mensajes;
+      try {
+        mensajes = await grupo.fetchMessages({ limit: 500 });
+      } catch (e) {
+        log(`[historico] ⚠️ No se pudo leer grupo "${grupo.name}": ${e.message}`);
+        continue;
+      }
       for (const msg of mensajes) {
         const ts = (msg.timestamp || 0) * 1000;
         if (ts < limite) continue;
         const texto = msg.body || '';
-        const match = texto.match(REGEX);
+        const match = parsearMensaje(texto);
         if (!match) continue;
+
+        const waMsgId = msg.id._serialized;
+
+        // Si ya fue procesado antes, saltar
+        if (procesados.has(waMsgId)) continue;
 
         const [, tipo, vendedora, telefono, equipo] = match;
         try {
-          const result = await subirVenta(tipo, vendedora, telefono, equipo, msg.id._serialized);
+          const result = await subirVenta(tipo, vendedora, telefono, equipo, waMsgId);
+          guardarProcesado(waMsgId);
           if (result.ok && !result.duplicado) {
             log(`[historico] ✅ Registrado: #${result.id} ${tipo} ${vendedora} ${telefono.trim()}${equipo ? ` | ${equipo}` : ''}`);
-            procesados++;
+            procesadosNuevos++;
             await msg.reply(mensajeRespuesta(tipo, result, equipo));
+          } else {
+            log(`[historico] ⚠️ Duplicado ignorado: ${texto.trim()}`);
           }
         } catch (e) {
           log(`[historico] ❌ Error: ${e.message}`);
         }
       }
     }
-    log(`[historico] Revisión completada — ${procesados} nuevo(s) registrado(s)`);
+    log(`[historico] Revisión completada — ${procesadosNuevos} nuevo(s) registrado(s)`);
   } catch (e) {
     log(`[historico] ❌ Error revisando histórico: ${e.message}`);
   }
@@ -107,14 +188,16 @@ async function revisarHistorico() {
 
 client.on('message', async (msg) => {
   const texto = msg.body || '';
-  const match = texto.match(REGEX);
+  const match = parsearMensaje(texto);
   if (!match) return;
 
   const [, tipo, vendedora, telefono, equipo] = match;
+  const waMsgId = msg.id._serialized;
   log(`[bot] Detectado: #${tipo} ${vendedora} ${telefono.trim()}${equipo ? ` | equipo: ${equipo}` : ''}`);
 
   try {
-    const result = await subirVenta(tipo, vendedora, telefono, equipo, msg.id._serialized);
+    const result = await subirVenta(tipo, vendedora, telefono, equipo, waMsgId);
+    guardarProcesado(waMsgId);
     if (result.ok) {
       if (!result.duplicado) {
         log(`[bot] ✅ Registrado: #${result.id} ${tipo} ${vendedora}`);
@@ -131,4 +214,5 @@ client.on('message', async (msg) => {
   }
 });
 
+limpiarLockChrome();
 client.initialize();

@@ -2518,120 +2518,185 @@ function verDocHistorial(id) {
 
 function buildDocHTML(d) {
   const esCot   = d.tipo === 'cotizacion';
-  const titulo  = esCot ? 'COTIZACION' : 'FACTURA';
-  const color1  = '#c8a96e';
-  const color2  = '#f5e6c8';
+  const titulo  = esCot ? 'COTIZACIÓN' : 'FACTURA COMERCIAL';
+  const color1  = '#0ea5e9'; // Acento primario W&S (Cyan/Azul)
+  const color2  = '#1e293b'; // Fondo oscuro premium para header
 
   const filasItems = d.items.filter(it => it.desc).map(it => {
     const tot = (it.cant || 1) * (it.precio || 0);
     return `<tr>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;color:#c8501a;">${it.cant}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;text-transform:uppercase;">${esc(it.desc)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(it.precio || 0)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(tot)}</td>
+      <td style="text-align:center;padding:12px 10px;font-size:13px;font-weight:700;color:#64748b;">${it.cant}</td>
+      <td style="padding:12px 10px;font-size:13px;font-weight:600;color:#334155;">${esc(it.desc)}</td>
+      <td style="text-align:right;padding:12px 10px;font-size:13px;color:#64748b;">${fmtPesoNum(it.precio || 0)}</td>
+      <td style="text-align:right;padding:12px 10px;font-size:13px;font-weight:700;color:#0f172a;">${fmtPesoNum(tot)}</td>
     </tr>`;
   }).join('');
 
   const itemsValidos = d.items.filter(it => it.desc).length;
   const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
-    .map(() => `<tr><td style="padding:10px 6px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
+    .map(() => `<tr><td style="padding:12px 10px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
 
   const abonoFila = !esCot && d.abono > 0 ? `<tr>
-    <td colspan="2"></td>
-    <td style="text-align:right;font-weight:600;padding:6px 6px;">ABONO:</td>
-    <td style="text-align:center;padding:6px 6px;">
-      <span style="background:${color1};color:white;padding:2px 10px;border-radius:3px;font-weight:700;">${fmtPesoNum(d.abono)}</span>
+    <td colspan="2" style="border:none;"></td>
+    <td style="text-align:right;font-weight:600;padding:8px 10px;font-size:12px;color:#64748b;">ABONO RECIBIDO:</td>
+    <td style="text-align:right;padding:8px 10px;">
+      <span style="background:#10b981;color:white;padding:4px 10px;border-radius:6px;font-weight:700;font-size:13px;">- ${fmtPesoNum(d.abono)}</span>
     </td>
   </tr>` : '';
 
-  const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
-    <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
-    TELA<br>
-    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
-    BONOS<br>
-    por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
-    por compra de +100 uniformes obsequiamos descuento del 5%
+  const notaCot = esCot ? `<div style="margin-top:24px;padding:16px;background:#f8fafc;border-left:4px solid ${color1};border-radius:0 8px 8px 0;font-size:11px;color:#475569;line-height:1.6;">
+    <strong style="text-transform:uppercase;font-size:12px;color:${color1};margin-bottom:6px;display:inline-block;">Notas Comerciales:</strong><br>
+    <strong>TELA:</strong> Microfibra poliéster semilicrado 8005 (Brillo, suavidad y resistente).<br><br>
+    <strong>BONOS:</strong><br>
+    • Por la compra de 35 uniformes obsequiamos bandera 1m x 1.50m.<br>
+    • Por la compra de +100 uniformes aplicamos descuento del 5%.
   </div>` : '';
 
   // Cuenta bancolombia (usar la seleccionada actualmente, o la 1 por defecto)
   const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
 
-  return `<!DOCTYPE html><html style="background:white;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
+  return `<!DOCTYPE html><html style="background:#f1f5f9;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{font-family:Arial,sans-serif;font-size:12px;color:#333 !important;background:white !important;color-scheme:light !important}
-  .page{width:800px;margin:0 auto;padding:30px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-  .empresa-info{font-size:11px;line-height:1.7}
-  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
-  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
-  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
-  .campo{color:#999;min-width:60px;display:inline-block}
-  table{width:100%;border-collapse:collapse}
-  thead tr{background:${color1}}
-  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
-  tbody tr:nth-child(even){background:${color2}}
-  tbody tr{border-bottom:1px solid #e8d8b8}
-  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
-  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
-  .cuenta{text-align:center;font-size:10px;line-height:1.7}
-  .cuenta strong{font-size:11px;text-transform:uppercase}
-  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  html,body{font-family:'Inter',sans-serif;background:white !important;color-scheme:light !important}
+  .page{width:800px;min-height:900px;margin:0 auto;background:white;position:relative;}
+  
+  .header-bg { background:${color2}; color:white; padding:40px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 20px 20px; margin-bottom:30px; border-bottom:6px solid ${color1}; }
+  .logo-box { display:flex; align-items:center; gap:10px; }
+  .logo-icon { width:45px; height:45px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; font-family:'Outfit'; }
+  .logo-text { font-family:'Outfit'; font-size:28px; font-weight:900; letter-spacing:0.5px; }
+  .logo-sub { font-size:11px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8; font-weight:600; margin-top:2px; }
+  
+  .company-dt { text-align:right; font-size:12px; color:#cbd5e1; line-height:1.6; }
+  .company-dt strong { color:white; font-size:14px; }
+  
+  .doc-meta { padding:0 40px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:30px; }
+  .doc-meta-left { display:flex; gap:40px; }
+  .doc-meta-item { display:flex; flex-direction:column; gap:4px; }
+  .doc-meta-lbl { font-size:11px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1px; }
+  .doc-meta-val { font-size:14px; color:#0f172a; font-weight:600; }
+  .doc-title { text-align:right; }
+  .doc-title h1 { font-family:'Outfit'; font-size:36px; color:${color1}; font-weight:900; letter-spacing:1px; line-height:1; }
+  .doc-title .num { font-size:18px; font-weight:700; color:#64748b; margin-top:4px; }
+  
+  .client-box { margin:0 40px 30px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:20px; }
+  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  
+  .table-wrap { padding:0 40px; margin-bottom:30px; }
+  table { width:100%; border-collapse:separate; border-spacing:0; }
+  thead th { background:#f1f5f9; padding:12px 10px; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
+  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:8px 0 0 8px; }
+  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 8px 8px 0; }
+  tbody td { border-bottom:1px solid #e2e8f0; }
+  
+  .totals-row td { background:#f8fafc; }
+  .totals-row.final td { background:#fff; border-bottom:none; }
+  .total-val { font-size:18px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:6px 12px; border-radius:8px; display:inline-block; }
+  
+  .footer { padding:0 40px; margin-top:10px; }
+  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:12px; text-align:center; font-size:10px; font-weight:700; color:#be123c; margin-bottom:20px; line-height:1.5; }
+  
+  .banks-title { text-align:center; font-family:'Outfit'; font-weight:800; font-size:14px; color:#334155; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; }
+  .cuentas { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
+  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; font-size:11px; color:#475569; line-height:1.6; }
+  .cuenta strong { display:block; font-size:13px; color:#0f172a; font-family:'Outfit'; margin-bottom:4px; }
+  
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head><body>
 <div class="page">
-  <div class="header">
-    <div>
-      <div class="empresa-info">
-        <strong>W&S DEPORTIVO</strong><br>1030675743-0<br>CARRERA 90A # 4-40<br>Bogotá D.C<br>(350) 697-4711<br>301 663 94 30
+  
+  <div class="header-bg">
+    <div class="logo-box">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <div class="logo-text">W&S TEXTIL</div>
+        <div class="logo-sub">Producción Deportiva</div>
       </div>
     </div>
-    <div class="titulo-doc">
+    <div class="company-dt">
+      <strong>NIT: 1030675743-0</strong><br>
+      Carrera 90A # 4-40, Bogotá D.C.<br>
+      350 697-4711 • 301 663-9430
+    </div>
+  </div>
+
+  <div class="doc-meta">
+    <div class="doc-meta-left">
+      <div class="doc-meta-item">
+        <span class="doc-meta-lbl">Fecha Emisión</span>
+        <span class="doc-meta-val">${d.fecha}</span>
+      </div>
+      <div class="doc-meta-item">
+        <span class="doc-meta-lbl">Asesor / Vendedor</span>
+        <span class="doc-meta-val" style="display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;"></span> ${esc(d.vendedora)}
+        </span>
+      </div>
+    </div>
+    <div class="doc-title">
       <h1>${titulo}</h1>
-      <div class="num"># ${d.numero}</div>
-      <div style="text-align:right;font-size:11px;margin-top:10px;">
-        Fecha: ${d.fecha}<br><strong>VENDEDOR: ${esc(d.vendedora)}</strong>
+      <div class="num">Nº ${d.numero}</div>
+    </div>
+  </div>
+  
+  <div class="client-box">
+    <div class="doc-meta-lbl" style="margin-bottom:12px;">Datos del Cliente</div>
+    <div class="client-grid">
+      <div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Señor(es) / Equipo:</div>
+        <div style="font-size:14px;font-weight:700;color:#0f172a;">${esc(d.cliente)}</div>
+      </div>
+      <div>
+        ${d.telefono ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Teléfono:</div>
+        <div style="font-size:13px;font-weight:600;color:#334155;">${d.telefono}</div>` : ''}
       </div>
     </div>
   </div>
-  <hr>
-  <div style="margin-bottom:16px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
-    <div style="font-size:11px;line-height:1.8;">
-      <span class="campo">Nombre</span> ${esc(d.cliente)}<br>
-      ${d.telefono ? `<span class="campo">Teléfono</span> ${d.telefono}<br>` : ''}
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:80px">Cant.</th><th>Descripción del Producto</th>
+        <th style="width:120px;text-align:right;">Valor Unit.</th><th style="width:130px;text-align:right;">Total</th>
+      </tr></thead>
+      <tbody>
+        ${filasItems}${filasVacias}
+        <tr class="totals-row">
+          <td colspan="2" style="border:none;"></td>
+          <td style="text-align:right;font-weight:600;padding:12px 10px;color:#64748b;font-size:12px;">SUBTOTAL:</td>
+          <td style="text-align:right;font-weight:700;padding:12px 10px;font-size:13px;color:#334155;">${fmtPesoNum(d.subtotal)}</td>
+        </tr>
+        ${abonoFila}
+        <tr class="totals-row final">
+          <td colspan="2" style="border:none;"></td>
+          <td style="text-align:right;font-weight:800;font-size:14px;padding:16px 10px;color:#0f172a;">TOTAL A PAGAR:</td>
+          <td style="text-align:right;padding:12px 0 12px 10px;"><span class="total-val">${fmtPesoNum(d.total)}</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="footer">
+    ${notaCot}
+    
+    <div class="footer-alert">
+      RECUERDE: EL UNIFORME DE NIÑO VALE $5.000 MENOS QUE EL UNIFORME DE ADULTO.<br>
+      PARA INICIAR PRODUCCIÓN SE REQUIERE UN ANTICIPO INICIAL DEL 50% DEL TOTAL DEL PEDIDO.
+    </div>
+
+    <div class="banks-title">Cuentas Bancarias Autorizadas</div>
+    <div class="cuentas">
+      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta.num}<br>${cta.nombre}<br>${cta.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta.tipo}</span></div>
+      <div class="cuenta"><strong>NEQUI</strong>350 697 47 11<br>301 663 94 30</div>
+      <div class="cuenta"><strong>DAVIPLATA</strong>350 697 47 11<br>301 663 94 30</div>
     </div>
   </div>
-  <table>
-    <thead><tr>
-      <th style="width:80px">CANTIDAD</th><th>DESCRIPCION</th>
-      <th style="width:110px">PRECIO</th><th style="width:110px">TOTAL</th>
-    </tr></thead>
-    <tbody>
-      ${filasItems}${filasVacias}
-      <tr><td colspan="2"></td>
-        <td style="text-align:right;font-weight:600;padding:8px 6px;">SUBTOTAL:</td>
-        <td style="text-align:center;font-weight:700;padding:8px 6px;">${fmtPesoNum(d.subtotal)}</td>
-      </tr>
-      ${abonoFila}
-      <tr style="background:${color2};">
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:800;font-size:13px;padding:8px 6px;">TOTAL:</td>
-        <td style="text-align:center;font-weight:800;font-size:14px;padding:8px 6px;">${fmtPesoNum(d.total)}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="footer-text">
-    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
-    SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
-  </div>
-  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
-  <div class="cuentas">
-    <div class="cuenta"><strong>BANCOLOMBIA</strong><br>${cta.num}<br>${cta.nombre}<br>${cta.cc}<br>${cta.tipo}</div>
-    <div class="cuenta"><strong>NEQUI</strong><br>350 697 47 11<br>301 663 94 30</div>
-    <div class="cuenta"><strong>DAVIPLATA</strong><br>350 697 47 11<br>301 663 94 30</div>
-  </div>
-  ${notaCot}
-</div></body></html>`;
+
+</div>
+</body></html>`;
 }
 
 // Convierte una URL de imagen a base64 para embeber en el PDF

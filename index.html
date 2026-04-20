@@ -10,6 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="W&S Textil">
   <meta name="theme-color" content="#7c3aed">
   <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel='stylesheet' href='/css/style.css'>
 </head>
@@ -23,11 +26,12 @@
        SIDEBAR
   ════════════════════════════════════════════════════════════ -->
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-text">
+    <div class="sidebar-logo" style="text-align:center; padding: 24px 16px 20px;">
+      <img src="/img/logo.png" alt="W&S Textil" onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex';" style="max-width:100%; height:auto; max-height:45px; filter: drop-shadow(0 0 10px rgba(124,58,237,0.3)); cursor:pointer;" onclick="showSection('bandeja_pedidos', this)">
+      <div id="logo-fallback" class="logo-text" style="display:none; justify-content:center; cursor:pointer;" onclick="showSection('bandeja_pedidos', this)">
         <span class="bolt">⚡</span> W<span style="-webkit-text-fill-color:#f97316;">&</span>S
       </div>
-      <div class="logo-sub">Producción textil</div>
+      <div class="logo-sub">Textil Enterprise ERP</div>
     </div>
 
     <nav class="sidebar-nav">

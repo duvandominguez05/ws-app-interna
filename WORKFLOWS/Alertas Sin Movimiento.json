@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const { pedidos } = $('Obtener Pedidos').item.json;\n\nconst ahora = new Date();\nconst DIAS = 3;\n\nconst inactivos = pedidos.filter(p => {\n  if (p.estado === 'enviado-final') return false;\n  if (p.estado === 'bandeja') return false;\n  const ref = p.ultimoMovimiento || p.ultimaActWebhook || null;\n  if (!ref) return true; // sin fecha = lleva mucho tiempo\n  const diff = (ahora - new Date(ref)) / (1000 * 60 * 60 * 24);\n  return diff >= DIAS;\n});\n\nreturn inactivos.map(p => ({ json: p }));\n"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n// Migrar de array a objeto si es necesario\nif (Array.isArray(staticData.notificados)) staticData.notificados = {};\nif (!staticData.notificados) staticData.notificados = {};\n\nconst { pedidos } = $('Obtener Pedidos').item.json;\n\nconst ahora = new Date();\nconst DIAS_INACTIVO = 3;\nconst DIAS_RE_NOTIFICAR = 3; // Re-notificar si siguen inactivos tras 3 días\n\nconst inactivos = pedidos.filter(p => {\n  if (p.estado === 'enviado-final') return false;\n  if (p.estado === 'bandeja') return false;\n  const ref = p.ultimoMovimiento || p.ultimaActWebhook || null;\n  if (!ref) return true;\n  const diff = (ahora - new Date(ref)) / (1000 * 60 * 60 * 24);\n  return diff >= DIAS_INACTIVO;\n});\n\n// Solo notificar si no fue notificado en los últimos 3 días\nconst limiteTiempo = ahora.getTime() - DIAS_RE_NOTIFICAR * 24 * 60 * 60 * 1000;\nconst nuevos = inactivos.filter(p => {\n  const ultima = staticData.notificados[p.id];\n  return !ultima || ultima < limiteTiempo;\n});\n\nif (nuevos.length === 0) return [];\n\n// Registrar con timestamp\nfor (const p of nuevos) staticData.notificados[p.id] = ahora.getTime();\n\n// Limpiar pedidos que ya se entregaron\nconst idsActivos = pedidos.filter(p => p.estado !== 'enviado-final').map(p => String(p.id));\nfor (const id of Object.keys(staticData.notificados)) {\n  if (!idsActivos.includes(id)) delete staticData.notificados[id];\n}\n\nreturn nuevos.map(p => ({ json: p }));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -64,8 +64,10 @@
     {
       "parameters": {
         "chatId": "-1003751103154",
-        "text": "=🔴 *Pedidos sin movimiento +3 días*\n\n{{ $input.all().map(i => `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — estado: ${i.json.estado}`).join('\\n') }}\n\n¡Revisar y avanzar! 👆\n",
-        "additionalFields": {}
+        "text": "=🔴 *Pedidos sin movimiento +3 días*\n\n{{ $input.all().map(i => { const dias = i.json.ultimoMovimiento ? Math.floor((Date.now() - new Date(i.json.ultimoMovimiento)) / (1000*60*60*24)) : '?'; return `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — ${i.json.estado} (${dias}d parado)`; }).join('\\n') }}\n\n¡Revisar y avanzar! 👆\n_Solo se avisa una vez por pedido cada 3 días_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,

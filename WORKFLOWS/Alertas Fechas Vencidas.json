@@ -36,7 +36,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const { pedidos } = $('Obtener Pedidos').item.json;\n\nconst hoy = new Date();\nhoy.setHours(0, 0, 0, 0);\n\nconst vencidos = pedidos.filter(p => {\n  if (!p.fechaEntrega) return false;\n  if (p.estado === 'enviado-final') return false;\n  const fecha = new Date(p.fechaEntrega);\n  return fecha < hoy;\n});\n\nreturn vencidos.map(p => ({ json: p }));\n"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n// Migrar de array a objeto si es necesario\nif (Array.isArray(staticData.notificados)) staticData.notificados = {};\nif (!staticData.notificados) staticData.notificados = {};\n\nconst { pedidos } = $('Obtener Pedidos').item.json;\n\nconst hoy = new Date();\nhoy.setHours(0, 0, 0, 0);\nconst hoyStr = hoy.toISOString().slice(0, 10);\n\nconst vencidos = pedidos.filter(p => {\n  if (!p.fechaEntrega) return false;\n  if (p.estado === 'enviado-final') return false;\n  const fecha = new Date(p.fechaEntrega);\n  return fecha < hoy;\n});\n\n// Solo notificar una vez por día por pedido\nconst nuevos = vencidos.filter(p => staticData.notificados[p.id] !== hoyStr);\n\nif (nuevos.length === 0) return [];\n\n// Registrar con fecha de hoy\nfor (const p of nuevos) staticData.notificados[p.id] = hoyStr;\n\n// Limpiar los que ya se entregaron\nconst idsActivos = pedidos.filter(p => p.estado !== 'enviado-final').map(p => String(p.id));\nfor (const id of Object.keys(staticData.notificados)) {\n  if (!idsActivos.includes(id)) delete staticData.notificados[id];\n}\n\nreturn nuevos.map(p => ({ json: p }));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -83,7 +83,7 @@
     {
       "parameters": {
         "chatId": "-5135765805",
-        "text": "=⚠️ *Pedidos con fecha vencida*\n\n{{ $input.all().map(i => `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — venció el ${i.json.fechaEntrega} (${i.json.estado})`).join('\\n') }}\n\nRevisar en la app 👆\n",
+        "text": "=⚠️ *Pedidos con fecha vencida*\n\n{{ $input.all().map(i => { const hoy = new Date(); hoy.setHours(0,0,0,0); const venc = new Date(i.json.fechaEntrega); const diasVencido = Math.round((hoy - venc) / (1000*60*60*24)); return `• #${i.json.id} *${i.json.equipo || i.json.telefono}* — venció hace *${diasVencido}d* (${i.json.estado})`; }).join('\\n') }}\n\nRevisar en la app 👆\n_Se avisa una vez por día por pedido_",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
