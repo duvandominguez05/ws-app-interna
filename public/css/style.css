@@ -1835,7 +1835,15 @@ body.modo-tv .card-id { font-size: 1rem; }
 }
 
 /* ─── Hub de Roles: hover interactivo ──────────────────────── */
-#home-roles [onclick]:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.6) !important;
+.hub-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.5) !important;
+  filter: brightness(1.15);
+}
+
+/* Responsive: en pantallas chicas, 2 columnas */
+@media (max-width: 800px) {
+  #home-roles [style*="grid-template-columns"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
