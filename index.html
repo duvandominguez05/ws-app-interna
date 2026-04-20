@@ -69,13 +69,33 @@
         <span class="nav-badge" id="badge-prod">0</span>
       </div>
 
-      <div class="divider"></div>
-      
-      <!-- Secciones secundarias integradas:
-           Las opciones de WeTransfer, Arreglos, Calandra, Satélites y Facturas
-           han sido ocultadas del menú lateral para evitar confusiones de operarios,
-           y ahora la app las muestra contextualmente o avanzan automáticamente. -->
-      
+      <!-- Secciones secundarias restauradas -->
+      <div class="nav-item" onclick="showSection('arreglos', this)">
+        <span class="nav-icon">🛠️</span>
+        <span>Arreglos</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('wetransfer', this)">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </span>
+        <span>WeTransfer</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('calandra', this)">
+        <span class="nav-icon">📏</span>
+        <span>Calandra</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('satelites', this)">
+        <span class="nav-icon">🧵</span>
+        <span>Satélites</span>
+      </div>
+
+      <div class="nav-item" onclick="showSection('cotizaciones', this)">
+        <span class="nav-icon">🧾</span>
+        <span>Facturas</span>
+      </div>
     </nav>
 
     <div class="sidebar-footer">
