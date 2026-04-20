@@ -9,8 +9,7 @@ const SIGUIENTE = {
   'hacer-diseno':     'confirmado',
   'confirmado':       'enviado-calandra',
   'enviado-calandra': 'llego-impresion',
-  'llego-impresion':  'corte',
-  'corte':            'calidad',
+  'llego-impresion':  'calidad',
   'calidad':          'costura',
   'costura':          'listo',
   'listo':            'enviado-final',
@@ -151,7 +150,6 @@ function render() {
   renderKanban('confirmado');
   renderKanban('enviado-calandra');
   renderKanban('llego-impresion');
-  renderKanban('corte');
   renderKanban('calidad');
   renderKanban('costura');
   renderKanban('listo');
@@ -165,7 +163,7 @@ function render() {
 /* ─── Métricas ────────────────────────────────────────────────── */
 function renderMetricas() {
   const total     = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  const enProd    = pedidos.filter(p => ['llego-impresion','corte','calidad','costura'].includes(p.estado)).length;
+  const enProd    = pedidos.filter(p => ['llego-impresion','calidad','costura'].includes(p.estado)).length;
   const listos    = pedidos.filter(p => p.estado === 'listo').length;
   const enDiseno  = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
 
@@ -224,7 +222,6 @@ function renderDashboard() {
     { key: 'confirmado',       label: 'Confirmado',            color: '#fb923c' },
     { key: 'enviado-calandra', label: 'Enviado calandra',      color: '#06b6d4' },
     { key: 'llego-impresion',  label: 'Llegó impresión',       color: '#38bdf8' },
-    { key: 'corte',            label: 'Corte',                 color: '#a78bfa' },
     { key: 'calidad',          label: 'Control calidad',       color: '#fbbf24' },
     { key: 'costura',          label: 'Costura',               color: '#f472b6' },
     { key: 'listo',            label: 'Listo p/entregar',      color: '#4ade80' },
@@ -302,7 +299,7 @@ function renderDashboard() {
 function renderBadges() {
   const bandeja  = pedidos.filter(p => p.estado === 'bandeja').length;
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
-  const prod     = pedidos.filter(p => ['llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length;
+  const prod     = pedidos.filter(p => ['llego-impresion','calidad','costura','listo'].includes(p.estado)).length;
   const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
   document.getElementById('badge-general').textContent = total;
   document.getElementById('badge-bandeja').textContent = bandeja;
@@ -317,7 +314,6 @@ const TL_ETAPAS = [
   { key: 'confirmado',       label: 'Confirmado' },
   { key: 'enviado-calandra', label: 'Calandra'   },
   { key: 'llego-impresion',  label: 'Impresión'  },
-  { key: 'corte',            label: 'Corte'      },
   { key: 'calidad',          label: 'Calidad'    },
   { key: 'arreglo',          label: 'Arreglo'    },
   { key: 'costura',          label: 'Costura'    },
@@ -456,7 +452,6 @@ function irAlPedido(id) {
     'confirmado':        'diseno',
     'enviado-calandra':  'diseno',
     'llego-impresion':   'produccion',
-    'corte':             'produccion',
     'calidad':           'produccion',
     'costura':           'produccion',
     'listo':             'envios',
@@ -799,8 +794,7 @@ function getBotonLabel(estado) {
     'hacer-diseno':     '✓ Confirmado',
     'confirmado':       '→ Calandra',
     'enviado-calandra': '→ Llegó impresión',
-    'llego-impresion':  '→ Corte',
-    'corte':            '→ Calidad',
+    'llego-impresion':  '→ Calidad',
     'costura':          '→ Listo',
     'listo':            '→ Enviar',
   };
@@ -816,7 +810,6 @@ const NOTIF_ICONS = {
   'confirmado':       '✅',
   'enviado-calandra': '📤',
   'llego-impresion':  '🖨️',
-  'corte':            '✂️',
   'calidad':          '🔍',
   'costura':          '🧵',
   'listo':            '📦',
@@ -843,7 +836,7 @@ function avanzar(id) {
   } else if (sig === 'enviado-calandra') {
     crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> enviado a <strong>calandra</strong>`, 'info', id);
   } else if (sig === 'llego-impresion') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>corte</strong>`, 'info', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>calidad</strong>`, 'info', id);
   } else if (sig === 'enviado-final') {
     crearNotif('🚀', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> — pedido completado`, 'success', id);
   } else {
