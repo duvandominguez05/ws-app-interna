@@ -163,8 +163,8 @@
     <!-- Hub de Roles eliminado — la app abre directo en Vista General -->
 
     <!-- ─── TORRE TV (AEROPUERTO) ───────────────────────── -->
-    <section id="torre-tv" class="section-content section-bg" style="overflow:hidden; padding:0;">
-      <div style="background:#0a0b0f; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index:10;">
+    <section id="torre-tv" class="section-content section-bg" style="display:flex; flex-direction:column; padding:0; height:100vh;">
+      <div style="background:#0a0b0f; padding:20px 40px; display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index:10; flex-shrink:0;">
         <div style="display:flex; align-items:center; gap:20px;">
           <div style="font-size:2.5rem; animation: pulse 2s infinite;">⚡</div>
           <div>
@@ -174,7 +174,7 @@
         </div>
         <div style="font-family:'Outfit',sans-serif; font-size:2.5rem; font-weight:800; color:var(--text); opacity:0.8;" id="reloj-tv">00:00</div>
       </div>
-      <div style="flex:1; overflow-y:auto; position:relative; scrollbar-width:none;" class="tv-scroll-wrapper">
+      <div class="tv-scroll-wrapper" style="flex:1; min-height:0; overflow-y:scroll; scrollbar-width:none;">
         <div id="tv-lista" style="padding:20px 40px;">
           <!-- Se llenará desde JS -->
         </div>
