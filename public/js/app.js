@@ -167,6 +167,7 @@ function render() {
   renderArreglos();
   renderCalandra();
   renderSatelites();
+  if (document.body.classList.contains('modo-tv')) renderTVLista();
 }
 
 /* ─── Métricas ────────────────────────────────────────────────── */
@@ -530,63 +531,17 @@ function renderBandejaPedidos(arr) {
 
 /* ─── Kanban ─────────────────────────────────────────────────── */
 
-function renderTimelineTV(p) {
-  const curIdx = TL_ORDER.indexOf(p.estado);
-  const arregloIdx = TL_ORDER.indexOf('arreglo');
-  const steps = TL_ETAPAS.map((etapa, i) => {
-    let cls = '';
-    if (etapa.key === 'arreglo') {
-      if (p.arreglo && p.estado === 'calidad') cls = 'active';
-      else if (p.arreglo && curIdx > arregloIdx) cls = 'done';
-      else if (curIdx > arregloIdx) cls = 'done';
-    } else {
-      if (i < arregloIdx) {
-        if (i < curIdx) cls = 'done';
-        if (i === curIdx) cls = 'active';
-      } else if (i > arregloIdx) {
-        const realI = i - 1;
-        if (realI < curIdx) cls = 'done';
-        if (realI === curIdx) cls = 'active';
-      }
-    }
-    return `<div class="tl-step ${cls}"><div class="tl-dot"></div><div class="tl-label">${etapa.label}</div></div>`;
-  }).join('');
-  return `<div class="timeline-bar" style="margin-top:8px;">${steps}</div>`;
-}
-
-function renderKanbanCardTV(p) {
-  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '';
-  return `
-    <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}" style="padding-bottom:10px;">
-      <div class="kanban-card-id">#${p.id}</div>
-      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);">
-        ${esc(p.equipo || p.telefono)}
-      </div>
-      <div class="kanban-card-vendor">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        ${esc(p.vendedora || '—')}
-      </div>
-      ${fechaTxt ? `<div class="kanban-card-date">📅 ${fechaTxt}</div>` : ''}
-      ${renderTimelineTV(p)}
-    </div>
-  `;
-}
 
 function renderKanban(estado) {
   const col = document.getElementById(`col-${estado}`);
   const cnt = document.getElementById(`cnt-${estado}`);
-  const colTv = document.getElementById(`col-tv-${estado}`);
-  const cntTv = document.getElementById(`badge-tv-${estado}`);
 
   const items = pedidos.filter(p => p.estado === estado);
   if (cnt) cnt.textContent = items.length;
-  if (cntTv) cntTv.textContent = items.length;
 
   const emptyHtml = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
 
   if (col) col.innerHTML = items.length ? items.map(p => renderKanbanCard(p)).join('') : emptyHtml;
-
-  if (colTv) colTv.innerHTML = items.length ? items.map(p => renderKanbanCardTV(p)).join('') : emptyHtml;
 }
 
 function renderKanbanCardDiseno(p) {
@@ -2928,30 +2883,64 @@ setTimeout(cargarPendientesWT, 3000);
 
 /* ─── MODOS DE ENTORNO (SPA) ──────────────────────────────────── */
 
+let tvScrollInterval = null;
+let tvRefreshInterval = null;
+
+function renderTVLista() {
+  const cont = document.getElementById('tv-lista');
+  if (!cont) return;
+  const activos = pedidos.filter(p => p.estado !== 'enviado-final');
+
+  cont.innerHTML = `
+    <div style="color:var(--text-muted);font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin-bottom:16px;">
+      ⟳ Estado de todos los pedidos activos — ${activos.length} pedidos
+    </div>
+  ` + activos.map(p => {
+    const curIdx = TL_ORDER.indexOf(p.estado);
+    const arregloIdx = TL_ORDER.indexOf('arreglo');
+    const steps = TL_ETAPAS.map((etapa, i) => {
+      let cls = '';
+      if (etapa.key === 'arreglo') {
+        if (p.arreglo && p.estado === 'calidad') cls = 'active';
+        else if (p.arreglo && curIdx > arregloIdx) cls = 'done';
+        else if (curIdx > arregloIdx) cls = 'done';
+      } else {
+        if (i < arregloIdx) {
+          if (i < curIdx) cls = 'done';
+          if (i === curIdx) cls = 'active';
+        } else if (i > arregloIdx) {
+          const realI = i - 1;
+          if (realI < curIdx) cls = 'done';
+          if (realI === curIdx) cls = 'active';
+        }
+      }
+      return `<div class="tl-step ${cls}"><div class="tl-dot"></div><div class="tl-label">${etapa.label}</div></div>`;
+    }).join('');
+
+    const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '';
+    const itemsTxt = p.items && p.items.length ? p.items.map(i => esc(i.prenda)).join(', ') : '';
+
+    return `
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--card-bg);border:1px solid rgba(255,255,255,0.06);border-radius:10px;margin-bottom:8px;">
+        <div style="font-size:0.75rem;color:var(--text-muted);font-weight:700;min-width:40px;">#${p.id}</div>
+        <div style="font-size:0.95rem;font-weight:700;color:var(--text);min-width:160px;">${esc(p.equipo || p.telefono)}</div>
+        <div style="flex:1;"><div class="timeline-bar">${steps}</div></div>
+        <div style="display:flex;align-items:center;gap:12px;min-width:200px;justify-content:flex-end;">
+          <span style="font-size:0.78rem;color:var(--text-muted);">${esc(p.vendedora || '—')}</span>
+          ${itemsTxt ? `<span style="font-size:0.72rem;color:var(--text-muted);opacity:0.7;">${esc(itemsTxt)}</span>` : ''}
+          ${fechaTxt ? `<span style="font-size:0.75rem;color:var(--accent2);font-weight:600;">📅 ${fechaTxt}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function activarModoTV() {
   document.body.classList.add('modo-tv');
   showSection('torre-tv', null);
-  
+
   if (document.documentElement.requestFullscreen) {
     document.documentElement.requestFullscreen().catch(e => console.log(e));
-  }
-
-  // Generar columnas base para la TV (solo una vez)
-  const ktv = document.getElementById('kanban-tv');
-  if (ktv.children.length === 0) {
-    const etapasTV = ['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo'];
-    ktv.innerHTML = etapasTV.map(e => `
-      <div class="kanban-col" style="min-width:400px;">
-        <div class="kanban-col-header">
-          <div class="kanban-col-title">
-            <span class="icon">${NOTIF_ICONS[e] || ''}</span>
-            <span class="title-text">${ESTADO_LABELS[e] || e}</span>
-          </div>
-          <span class="kanban-badge" id="badge-tv-${e}">0</span>
-        </div>
-        <div class="kanban-cards" id="col-tv-${e}"></div>
-      </div>
-    `).join('');
   }
 
   // Reloj
@@ -2960,11 +2949,32 @@ function activarModoTV() {
     document.getElementById('reloj-tv').textContent = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true});
   }, 1000);
 
-  // Forzar un render para llenar la info
-  render();
+  // Render inicial
+  renderTVLista();
+
+  // Auto-scroll suave vertical
+  const wrapper = document.getElementById('tv-lista').parentElement;
+  let scrollDir = 1;
+  if (tvScrollInterval) clearInterval(tvScrollInterval);
+  tvScrollInterval = setInterval(() => {
+    wrapper.scrollTop += scrollDir * 0.5;
+    if (wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2) scrollDir = -1;
+    if (wrapper.scrollTop <= 0) scrollDir = 1;
+  }, 30);
+
+  // Refrescar datos cada 60s
+  if (tvRefreshInterval) clearInterval(tvRefreshInterval);
+  tvRefreshInterval = setInterval(() => {
+    fetch('/api/pedidos').then(r => r.json()).then(d => {
+      pedidos = d.pedidos || d;
+      renderTVLista();
+    }).catch(() => {});
+  }, 60000);
 }
 
 function salirDeModos() {
+  if (tvScrollInterval) { clearInterval(tvScrollInterval); tvScrollInterval = null; }
+  if (tvRefreshInterval) { clearInterval(tvRefreshInterval); tvRefreshInterval = null; }
   document.body.classList.remove('modo-miniapp');
   document.body.classList.remove('modo-tv');
   showSection('vista-general', document.querySelector('[onclick*="vista-general"]'));

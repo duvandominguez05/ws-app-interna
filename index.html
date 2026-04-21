@@ -174,8 +174,8 @@
         </div>
         <div style="font-family:'Outfit',sans-serif; font-size:2.5rem; font-weight:800; color:var(--text); opacity:0.8;" id="reloj-tv">00:00</div>
       </div>
-      <div style="flex:1; overflow:hidden; position:relative; padding-top:20px;">
-        <div class="kanban-board" id="kanban-tv" style="animation: autoscroll-tv 40s linear infinite alternate; padding-left:40px;">
+      <div style="flex:1; overflow-y:auto; position:relative; scrollbar-width:none;" class="tv-scroll-wrapper">
+        <div id="tv-lista" style="padding:20px 40px;">
           <!-- Se llenará desde JS -->
         </div>
       </div>

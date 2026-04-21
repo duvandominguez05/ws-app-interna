@@ -1797,43 +1797,16 @@ body.modo-miniapp .section-content { height: 100vh; overflow-y: auto; padding-to
 body.modo-tv .sidebar { display: none !important; }
 body.modo-tv .main-header { display: none !important; }
 body.modo-tv .notif-panel { display: none !important; }
-body.modo-tv .section-content { height: 100vh; overflow: hidden; padding: 20px; }
+body.modo-tv .section-content { height: 100vh; overflow: hidden; padding: 0; }
 
-/* Escalar interfaz en TV y evitar clics */
-body.modo-tv .kanban-card button,
-body.modo-tv .kanban-card .card-actions,
-body.modo-tv .section-heading button,
-body.modo-tv .cal-metrics button { display: none !important; }
-
-body.modo-tv .kanban-board { 
-  font-size: 1.1rem; 
-  gap: 24px; 
-  padding: 20px 0;
-}
-
-body.modo-tv .kanban-col { min-width: 350px; }
-body.modo-tv .kanban-card { padding: 20px; margin-bottom: 20px; pointer-events: none; }
-body.modo-tv .card-equipo { font-size: 1.3rem; }
-body.modo-tv .card-id { font-size: 1rem; }
-
-/* ─── Torre TV: scroll vertical automático ─────────────────── */
+/* ─── Torre TV: lista con scroll automático ─────────────────── */
 #torre-tv.active {
   display: flex !important;
   flex-direction: column;
   height: 100vh;
 }
 
-#torre-tv .kanban-board {
-  display: flex;
-  flex-wrap: nowrap;
-  overflow-x: hidden;
-  animation: autoscroll-tv 45s linear infinite alternate;
-}
-
-@keyframes autoscroll-tv {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(calc(-100% + 100vw)); }
-}
+.tv-scroll-wrapper::-webkit-scrollbar { display: none; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
