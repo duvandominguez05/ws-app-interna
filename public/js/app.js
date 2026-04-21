@@ -1349,9 +1349,17 @@ function renderWT() {
       </div>`;
   }
 
-  // Separar por tipo
-  const enviados    = [...wtRegistros].filter(e => e.tipo === 'enviado').sort((a,b) => (b.id||0)-(a.id||0));
-  const descargados = [...wtRegistros].filter(e => e.tipo === 'descargado').sort((a,b) => (b.id||0)-(a.id||0));
+  // Separar por tipo y deduplicar por archivo (quedarse con el más reciente)
+  function dedup(arr) {
+    const mapa = {};
+    arr.forEach(e => {
+      const key = (e.archivo || '').toLowerCase().trim();
+      if (!mapa[key] || (e.id||0) > (mapa[key].id||0)) mapa[key] = e;
+    });
+    return Object.values(mapa).sort((a,b) => (b.id||0)-(a.id||0));
+  }
+  const enviados    = dedup(wtRegistros.filter(e => e.tipo === 'enviado'));
+  const descargados = dedup(wtRegistros.filter(e => e.tipo === 'descargado'));
 
   function renderLista(items, emptyMsg) {
     if (!items.length) return `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">${emptyMsg}</div>`;
