@@ -724,7 +724,7 @@ function renderKanbanCard(p) {
     : '';
 
   const arregloInfoHtml = (p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'calidad')
-    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">⚠ Arreglo: ${esc(p.arreglo)}${p.arregloDisenador ? ` (🎨 ${esc(p.arregloDisenador)}${p.arregloEnviado ? ' — enviado' : ''})` : ''}</div>`
+    ? `<div style="font-size:0.68rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:5px;padding:4px 7px;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">⚠ Arreglo: ${esc(p.arreglo)}</div>`
     : '';
 
   let actionsHtml = '';
@@ -732,39 +732,14 @@ function renderKanbanCard(p) {
   if (p.estado === 'calidad') {
     if (p.arreglo) {
       const descActual = (p.arreglo === 'pendiente') ? '' : esc(p.arreglo);
-      const DISENADORES_ARR = ['Camilo', 'Wendy', 'Ney', 'Paola'];
-      const disAsignado = p.arregloDisenador || '';
-      const arregloEnviado = p.arregloEnviado || false;
-
-      if (!disAsignado) {
-        // Paso 1: escribir descripción + asignar diseñador
-        const optsD = DISENADORES_ARR.map(d => `<option value="${d}" style="background:#1e1b2e;color:#e2e8f0;">${d}</option>`).join('');
-        actionsHtml = `
-          <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">⚠ ¿Qué hay que arreglar?</div>
-          <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
-          <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;">🎨 Asignar diseñador:</div>
-          <select id="arreglo-dis-${p.id}" style="width:100%;background:#1e1b2e;border:1px solid #4c1d95;border-radius:6px;color:#e2e8f0;font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;">
-            <option value="" style="background:#1e1b2e;color:#e2e8f0;">Seleccionar diseñador...</option>${optsD}
-          </select>
-          <button class="btn btn-primary btn-xs" onclick="guardarArregloConDisenador(${p.id})" style="width:100%;">Guardar arreglo</button>
-        `;
-      } else if (!arregloEnviado) {
-        // Paso 2: esperando que el diseñador lo envíe
-        actionsHtml = `
-          <div style="font-size:0.72rem;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">🔧 ${descActual}</div>
-          <div style="font-size:0.72rem;color:#a78bfa;font-weight:600;margin-bottom:8px;">🎨 Diseñador: ${esc(disAsignado)}</div>
-          <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:6px;">⏳ Esperando que el diseñador envíe el arreglo</div>
-          <button class="btn btn-xs" onclick="marcarArregloEnviado(${p.id})" style="width:100%;background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.35);color:#67e8f9;font-size:0.75rem;padding:6px 10px;border-radius:6px;cursor:pointer;">📤 Diseñador lo envió</button>
-        `;
-      } else {
-        // Paso 3: diseñador ya lo envió, esperando que llegue
-        actionsHtml = `
-          <div style="font-size:0.72rem;color:#fca5a5;margin-bottom:6px;white-space:pre-line;">🔧 ${descActual}</div>
-          <div style="font-size:0.72rem;color:#a78bfa;font-weight:600;margin-bottom:4px;">🎨 ${esc(disAsignado)}</div>
-          <div style="font-size:0.65rem;color:#67e8f9;margin-bottom:8px;">📤 Enviado por el diseñador</div>
-          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})" style="width:100%;font-size:0.75rem;padding:6px 10px;">✅ Ya llegó — quitar arreglo</button>
-        `;
-      }
+      actionsHtml = `
+        <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">⚠ ¿Qué hay que arreglar?</div>
+        <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo (Enter = nueva línea)..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
+        <div class="kanban-card-actions">
+          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">✓ Llegó</button>
+          <button class="btn btn-xs" onclick="guardarDescArreglo(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.72rem;padding:4px 8px;border-radius:5px;cursor:pointer;">Guardar</button>
+        </div>
+      `;
     } else {
       actionsHtml = `
         <div class="kanban-card-actions">
@@ -1483,20 +1458,45 @@ async function sincronizarArreglosServidor() {
 function registrarArregloManual() {
   document.getElementById('ar-equipo').value = '';
   document.getElementById('ar-faltante').value = '';
+  document.getElementById('ar-disenador').value = '';
   document.getElementById('form-arreglo').style.display = 'block';
   document.getElementById('ar-equipo').focus();
 }
 
 function guardarArregloManual() {
-  const equipo   = document.getElementById('ar-equipo').value.trim();
-  const faltante = document.getElementById('ar-faltante').value.trim();
+  const equipo    = document.getElementById('ar-equipo').value.trim();
+  const faltante  = document.getElementById('ar-faltante').value.trim();
+  const disenador = document.getElementById('ar-disenador').value;
   if (!equipo) { toast('Ingresa el nombre del equipo', 'error'); return; }
   if (!faltante) { toast('Ingresa qué falta', 'error'); return; }
-  arreglosManuales.unshift({ id: Date.now(), equipo, faltante, fecha: new Date().toLocaleDateString('es-CO'), resuelto: false });
+  if (!disenador) { toast('Selecciona un diseñador', 'error'); return; }
+  arreglosManuales.unshift({
+    id: Date.now(), equipo, faltante, disenador,
+    enviado: false, resuelto: false,
+    fecha: new Date().toLocaleDateString('es-CO')
+  });
   guardarArreglos_store();
   document.getElementById('form-arreglo').style.display = 'none';
   renderArreglos();
-  toast(`Arreglo registrado: ${equipo}`, 'info');
+  toast(`Arreglo registrado: ${equipo} → ${disenador}`, 'info');
+}
+
+function enviarArregloManual(id) {
+  const a = arreglosManuales.find(x => x.id === id);
+  if (!a) return;
+  a.enviado = true;
+  guardarArreglos_store();
+  renderArreglos();
+  toast(`Arreglo de ${a.equipo} — enviado por ${a.disenador}`, 'info');
+}
+
+function llegoArregloManual(id) {
+  const a = arreglosManuales.find(x => x.id === id);
+  if (!a) return;
+  a.resuelto = true;
+  guardarArreglos_store();
+  renderArreglos();
+  toast(`Arreglo de ${a.equipo} — llegó, resuelto ✓`, 'success');
 }
 
 function resolverArregloManual(id) {
@@ -1521,24 +1521,16 @@ function renderArreglos() {
   if (!conArreglo.length) {
     contPed.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin arreglos en pedidos activos</div>`;
   } else {
-    contPed.innerHTML = conArreglo.map(p => {
-      const dis = p.arregloDisenador ? `<span style="font-size:0.68rem;color:#a78bfa;font-weight:600;">🎨 ${esc(p.arregloDisenador)}</span>` : '';
-      const estadoBadge = p.arregloEnviado
-        ? `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 7px;">📤 Enviado</span>`
-        : p.arregloDisenador
-          ? `<span style="font-size:0.65rem;background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3);border-radius:10px;padding:2px 7px;">⏳ Esperando envío</span>`
-          : `<span style="font-size:0.65rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">pendiente</span>`;
-      return `
-      <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),var(--card-bg));border:1px solid ${p.arregloEnviado ? 'rgba(6,182,212,0.3)' : 'rgba(239,68,68,0.3)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+    contPed.innerHTML = conArreglo.map(p => `
+      <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),var(--card-bg));border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
           <span style="font-size:0.65rem;color:var(--text-muted);">#${p.id}</span>
           <span style="font-weight:700;font-size:0.88rem;">${esc(p.equipo || p.telefono)}</span>
-          ${dis}
-          ${estadoBadge}
+          <span style="font-size:0.68rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">calidad</span>
         </div>
         <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">🔧 ${esc(p.arreglo)}</div>
-      </div>`;
-    }).join('');
+      </div>
+    `).join('');
   }
 
   const pendientes = arreglosManuales.filter(a => !a.resuelto);
@@ -1549,16 +1541,37 @@ function renderArreglos() {
     return;
   }
 
-  contMan.innerHTML = [...pendientes, ...resueltos].map(a => `
-    <div style="background:var(--card-bg);border:1px solid ${a.resuelto ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;${a.resuelto ? 'opacity:0.55;' : ''}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+  contMan.innerHTML = [...pendientes, ...resueltos].map(a => {
+    const dis = a.disenador ? `<span style="font-size:0.72rem;color:#a78bfa;font-weight:600;">🎨 ${esc(a.disenador)}</span>` : '';
+
+    let estadoBadge = '';
+    let accionHtml = '';
+
+    if (a.resuelto) {
+      estadoBadge = `<span style="font-size:0.65rem;background:rgba(16,185,129,0.15);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:2px 7px;">✅ Llegó</span>`;
+      accionHtml = `<span style="font-size:0.7rem;color:#6ee7b7;">✅ Resuelto</span>`;
+    } else if (a.enviado) {
+      estadoBadge = `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 7px;">📤 Enviado</span>`;
+      accionHtml = `<button class="btn btn-success btn-xs" onclick="llegoArregloManual(${a.id})">✅ Ya llegó</button>`;
+    } else {
+      estadoBadge = `<span style="font-size:0.65rem;background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3);border-radius:10px;padding:2px 7px;">⏳ Esperando envío</span>`;
+      accionHtml = `<button class="btn btn-xs" onclick="enviarArregloManual(${a.id})" style="background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.35);color:#67e8f9;font-size:0.72rem;padding:4px 10px;border-radius:5px;cursor:pointer;">📤 Diseñador lo envió</button>`;
+    }
+
+    const borderColor = a.resuelto ? 'rgba(16,185,129,0.2)' : a.enviado ? 'rgba(6,182,212,0.2)' : 'rgba(239,68,68,0.2)';
+
+    return `
+    <div style="background:var(--card-bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;${a.resuelto ? 'opacity:0.55;' : ''}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
         <span style="font-weight:700;font-size:0.88rem;">${esc(a.equipo)}</span>
+        ${dis}
+        ${estadoBadge}
         <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);">${a.fecha}</span>
       </div>
       <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">🔧 ${esc(a.faltante)}</div>
-      ${!a.resuelto ? `<button class="btn btn-success btn-xs" onclick="resolverArregloManual(${a.id})">✓ Resuelto</button>` : `<span style="font-size:0.7rem;color:#6ee7b7;">✓ Resuelto</span>`}
-    </div>
-  `).join('');
+      ${accionHtml}
+    </div>`;
+  }).join('');
 }
 
 /* ════════════════════════════════════════════════════════════════
