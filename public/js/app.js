@@ -529,26 +529,64 @@ function renderBandejaPedidos(arr) {
 }
 
 /* ─── Kanban ─────────────────────────────────────────────────── */
+
+function renderTimelineTV(p) {
+  const curIdx = TL_ORDER.indexOf(p.estado);
+  const arregloIdx = TL_ORDER.indexOf('arreglo');
+  const steps = TL_ETAPAS.map((etapa, i) => {
+    let cls = '';
+    if (etapa.key === 'arreglo') {
+      if (p.arreglo && p.estado === 'calidad') cls = 'active';
+      else if (p.arreglo && curIdx > arregloIdx) cls = 'done';
+      else if (curIdx > arregloIdx) cls = 'done';
+    } else {
+      if (i < arregloIdx) {
+        if (i < curIdx) cls = 'done';
+        if (i === curIdx) cls = 'active';
+      } else if (i > arregloIdx) {
+        const realI = i - 1;
+        if (realI < curIdx) cls = 'done';
+        if (realI === curIdx) cls = 'active';
+      }
+    }
+    return `<div class="tl-step ${cls}"><div class="tl-dot"></div><div class="tl-label">${etapa.label}</div></div>`;
+  }).join('');
+  return `<div class="timeline-bar" style="margin-top:8px;">${steps}</div>`;
+}
+
+function renderKanbanCardTV(p) {
+  const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '';
+  return `
+    <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}" style="padding-bottom:10px;">
+      <div class="kanban-card-id">#${p.id}</div>
+      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);">
+        ${esc(p.equipo || p.telefono)}
+      </div>
+      <div class="kanban-card-vendor">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        ${esc(p.vendedora || '—')}
+      </div>
+      ${fechaTxt ? `<div class="kanban-card-date">📅 ${fechaTxt}</div>` : ''}
+      ${renderTimelineTV(p)}
+    </div>
+  `;
+}
+
 function renderKanban(estado) {
   const col = document.getElementById(`col-${estado}`);
   const cnt = document.getElementById(`cnt-${estado}`);
   const colTv = document.getElementById(`col-tv-${estado}`);
   const cntTv = document.getElementById(`badge-tv-${estado}`);
-  
+
   const items = pedidos.filter(p => p.estado === estado);
   if (cnt) cnt.textContent = items.length;
   if (cntTv) cntTv.textContent = items.length;
 
-  const html = items.length ? items.map(p => renderKanbanCard(p)).join('') : `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
+  const emptyHtml = `<div class="empty-state"><div class="empty-icon" style="font-size:1.3rem;opacity:0.2;">○</div><div class="empty-text">Vacío</div></div>`;
 
-  if (col) col.innerHTML = html;
-  
-  if (colTv) {
-    let htmlTv = html.replace(/<button[^>]*>.*?<\/button>/g, '');
-    htmlTv = htmlTv.replace(/<select[^>]*>.*?<\/select>/g, '');
-    htmlTv = htmlTv.replace(/<div class="kanban-card-actions".*?<\/div>/gs, '');
-    colTv.innerHTML = htmlTv;
-  }
+  if (col) col.innerHTML = items.length ? items.map(p => renderKanbanCard(p)).join('') : emptyHtml;
+
+  if (colTv) colTv.innerHTML = items.length ? items.map(p => renderKanbanCardTV(p)).join('') : emptyHtml;
 }
 
 function renderKanbanCardDiseno(p) {
