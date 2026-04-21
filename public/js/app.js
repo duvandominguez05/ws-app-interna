@@ -729,27 +729,7 @@ function renderKanbanCard(p) {
 
   let actionsHtml = '';
 
-  if (p.estado === 'calidad') {
-    if (p.arreglo) {
-      const descActual = (p.arreglo === 'pendiente') ? '' : esc(p.arreglo);
-      actionsHtml = `
-        <div style="font-size:0.68rem;color:#fca5a5;font-weight:600;margin-bottom:4px;">⚠ ¿Qué hay que arreglar?</div>
-        <textarea id="arreglo-edit-${p.id}" placeholder="Escribe el arreglo (Enter = nueva línea)..." style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;color:var(--text);font-size:0.75rem;padding:5px 8px;outline:none;margin-bottom:6px;resize:vertical;min-height:52px;font-family:inherit;">${descActual}</textarea>
-        <div class="kanban-card-actions">
-          <button class="btn btn-success btn-xs" onclick="llegoFaltante(${p.id})">✓ Llegó</button>
-          <button class="btn btn-xs" onclick="guardarDescArreglo(${p.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;font-size:0.72rem;padding:4px 8px;border-radius:5px;cursor:pointer;">Guardar</button>
-        </div>
-      `;
-    } else {
-      actionsHtml = `
-        <div class="kanban-card-actions">
-          <button class="btn btn-xs" onclick="retroceder(${p.id})" title="Retroceder estado" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);color:var(--text-muted);padding:4px 8px;font-size:0.85rem;line-height:1;">←</button>
-          <button class="btn btn-success btn-xs" onclick="avanzarNormal(${p.id})">→ Costura</button>
-          <button class="btn btn-xs" onclick="registrarArreglo(${p.id})" title="Marcar arreglo" style="background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);padding:4px 8px;font-size:0.85rem;line-height:1;">🔧</button>
-        </div>
-      `;
-    }
-  } else if (p.estado === 'listo') {
+  if (p.estado === 'listo') {
     actionsHtml = `
       <button onclick="copiarMsgListo(${p.id})" style="width:100%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:6px;color:#4ade80;font-size:0.75rem;font-weight:600;padding:6px 10px;cursor:pointer;margin-bottom:8px;">📋 Copiar mensaje para cliente</button>
       <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">¿Cómo se envía?</div>
@@ -802,6 +782,7 @@ function getBotonLabel(estado) {
     'confirmado':       '→ Calandra',
     'enviado-calandra': '→ Llegó impresión',
     'llego-impresion':  '→ Calidad',
+    'calidad':          '→ Costura',
     'costura':          '→ Listo',
     'listo':            '→ Enviar',
   };
