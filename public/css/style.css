@@ -1806,6 +1806,10 @@ body.modo-tv .section-content { height: 100vh; overflow: hidden; padding: 0; }
   height: 100vh;
 }
 
+.tv-scroll-wrapper {
+  overflow-y: auto !important;
+  scrollbar-width: none;
+}
 .tv-scroll-wrapper::-webkit-scrollbar { display: none; }
 
 @keyframes pulse {

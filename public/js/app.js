@@ -2960,15 +2960,19 @@ function activarModoTV() {
   // Render inicial
   renderTVLista();
 
-  // Auto-scroll suave vertical
-  const wrapper = document.getElementById('tv-lista').parentElement;
+  // Auto-scroll suave vertical (muy lento, tipo pantalla aeropuerto)
+  const wrapper = document.querySelector('.tv-scroll-wrapper');
   let scrollDir = 1;
   if (tvScrollInterval) clearInterval(tvScrollInterval);
   tvScrollInterval = setInterval(() => {
-    wrapper.scrollTop += scrollDir * 0.5;
-    if (wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2) scrollDir = -1;
-    if (wrapper.scrollTop <= 0) scrollDir = 1;
-  }, 30);
+    wrapper.scrollTop += scrollDir * 0.3;
+    if (wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2) {
+      scrollDir = -1;
+    }
+    if (wrapper.scrollTop <= 0) {
+      scrollDir = 1;
+    }
+  }, 40);
 
   // Refrescar datos cada 60s
   if (tvRefreshInterval) clearInterval(tvRefreshInterval);
