@@ -300,6 +300,92 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
+  if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        
+        // 1. Guardar log crudo para debug (esencial para ver cómo llegan los stickers y etiquetas)
+        const EVOLUTION_LOG_DIR = path.join(__dirname, 'data', 'evolution-events');
+        if (!fs.existsSync(EVOLUTION_LOG_DIR)) {
+            fs.mkdirSync(EVOLUTION_LOG_DIR, { recursive: true });
+        }
+        const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // Formato YYYY-MM-DD
+        const logFile = path.join(EVOLUTION_LOG_DIR, `${hoy}.log`);
+        const logEntry = `[${new Date().toISOString()}] ${JSON.stringify(payload)}\n`;
+        fs.appendFileSync(logFile, logEntry);
+
+        // 2. Seguridad Básica: Validar Token (por query ?token=... o header apikey)
+        const urlParams = new URL(req.url, `http://${req.headers.host || 'localhost'}`).searchParams;
+        const token = urlParams.get('token') || req.headers['apikey'];
+        const SECRETO = 'ws_secret_2026'; // ¡Cámbialo si prefieres otro!
+        
+        // Si no coincide el secreto, solo logueamos pero rechazamos la acción
+        if (token !== SECRETO) {
+           console.log(`[evolution-webhook] Intento rechazado por token inválido: ${token}`);
+           return json(res, 401, { error: 'Token inválido' });
+        }
+
+        let accionRealizada = false;
+        let resultadoApi = null;
+
+        // 3. Procesar el Evento de Evolution
+        const eventType = payload.event;
+        const eventData = payload.data || payload;
+
+        // LÓGICA DE ETIQUETAS (LABELS)
+        // Buscamos cuando se añade una etiqueta
+        if (eventType === 'labels.association' || eventType === 'presence.update' || eventData?.action === 'add') {
+            
+            // Adaptamos según cómo venga la estructura (lo confirmaremos con los logs)
+            const action = eventData.action; 
+            const labelName = eventData.label?.name || eventData.labelName || '';
+            const remoteJid = eventData.chat?.id || eventData.remoteJid || eventData.number || '';
+            const pushName = eventData.chat?.contact?.pushName || eventData.pushName || 'Cliente WA';
+
+            // Detectar la etiqueta objetivo "En proceso"
+            if (action === 'add' && labelName.includes('En proceso')) {
+                 const telefono = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, ''); // Limpiar a solo números
+                 const vendedora = 'Betty'; // Asignación automática a Betty
+
+                 // Deduplicación: no crear si ya hay un pedido "confirmado" de este número hoy/este mes
+                 const pedidos = leerPedidos();
+                 const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
+                 const pdExistente = pedidos.find(p => p.telefono.replace(/\D/g, '') === telefono && (p.creadoEn || '').slice(-7) === mesActual && p.estado === 'confirmado');
+                 
+                 if (!pdExistente && telefono.length > 5) {
+                     resultadoApi = crearVentaInterna('pedido', vendedora, telefono, null, pushName);
+                     
+                     if (resultadoApi.ok) {
+                         // Forzamos el estado a 'confirmado' para asegurar que salte a producción
+                         const pedidosPost = leerPedidos();
+                         const nuevoPd = pedidosPost.find(p => p.id === resultadoApi.id);
+                         if (nuevoPd) {
+                             nuevoPd.estado = 'confirmado';
+                             nuevoPd.ultimoMovimiento = new Date().toISOString();
+                             guardarPedidos(pedidosPost, leerNextId());
+                         }
+                     }
+                     accionRealizada = true;
+                     console.log(`[evolution-webhook] Etiqueta 'En proceso' detectada. Pedido #${resultadoApi.id || 'N/A'} creado para ${telefono}`);
+                 } else if (pdExistente) {
+                     console.log(`[evolution-webhook] Etiqueta ignorada, el pedido para ${telefono} ya existe en estado confirmado.`);
+                 }
+            }
+        }
+
+        return json(res, 200, { ok: true, webhook_recibido: true, accionRealizada, resultadoApi });
+      } catch (e) {
+        console.error('[evolution webhook error]', e);
+        return json(res, 200, { ok: true, aviso: 'Parse error en webhook' });
+      }
+    });
+    return;
+  }
+
 
   // ── POST /api/calandra — n8n registra envío de PDF a calandra ─
   // Body: { equipo, alto, ancho?, archivo?, diseñador? }
