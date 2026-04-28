@@ -377,6 +377,87 @@ http.createServer((req, res) => {
             }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // LÓGICA DE REACCIONES — Sprint 1 Cero Clics
+        // 🟡 = cotización (crea pedido en bandeja, tipo cotizar)
+        // Modo seguro: por defecto SOLO loguea, no crea pedido en producción.
+        // Para activar creación real: poner env var REACCIONES_ACTIVAS=true en Railway.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'reactionMessage') {
+          try {
+            const reaccion = eventData.message?.reactionMessage || {};
+            const emoji = reaccion.text || '';
+            const senderJid = payload.sender || ''; // ej: 573506974711@s.whatsapp.net
+            const remoteJid = eventData.key?.remoteJid || ''; // chat donde se reaccionó
+            const pushName = eventData.pushName || '';
+
+            // Solo procesar si la reacción la hizo el dueño del WhatsApp Business (Betty)
+            const numeroPropio = (process.env.WS_PROPIO_NUMERO || '573506974711');
+            const senderNumero = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            const esDeNuestroWA = senderNumero === numeroPropio;
+
+            // Mapeo de emoji → acción
+            const MAPA_REACCIONES = {
+              '🟡': { accion: 'cotizar', tipoBandeja: 'cotizar', estadoFinal: 'bandeja' },
+              // Otras se sumarán en próximos sprints
+            };
+            const config = MAPA_REACCIONES[emoji];
+
+            if (config && esDeNuestroWA) {
+              // El chat donde se reaccionó: si la reacción fue a un mensaje propio (fromMe=true),
+              // el cliente está en remoteJid (no en sender). Si fue a un mensaje del cliente, igual.
+              const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+
+              console.log(`[reaccion] ${emoji} detectada — sender:${senderNumero} remoteJid:${remoteJid} cliente:${telefonoCliente} pushName:"${pushName}" accion:${config.accion}`);
+
+              const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
+              if (!REACCIONES_ACTIVAS) {
+                console.log(`[reaccion] MODO LOG ONLY — habría creado cotización para ${telefonoCliente}. Activar con env REACCIONES_ACTIVAS=true`);
+                accionRealizada = false;
+                resultadoApi = { ok: true, modo: 'log-only', emoji, telefono: telefonoCliente, pushName };
+              } else {
+                // CREACIÓN REAL — solo activa si REACCIONES_ACTIVAS=true en Railway
+                if (telefonoCliente.length > 5) {
+                  const pedidos = leerPedidos();
+                  // Dedupe nivel 3: ¿ya hay pedido del mismo cliente creado en última hora?
+                  const haceUnaHora = Date.now() - (60 * 60 * 1000);
+                  const pdReciente = pedidos.find(p => {
+                    const pTel = String(p.telefono || '').replace(/\D/g, '');
+                    if (pTel !== telefonoCliente) return false;
+                    const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+                    return ultMov > haceUnaHora;
+                  });
+
+                  if (pdReciente) {
+                    console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} del mismo cliente (<1h)`);
+                    resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
+                  } else {
+                    resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, pushName);
+                    if (resultadoApi.ok && config.estadoFinal !== 'hacer-diseno') {
+                      // Forzamos al estado deseado
+                      const pp = leerPedidos();
+                      const nuevoPd = pp.find(p => p.id === resultadoApi.id);
+                      if (nuevoPd) {
+                        nuevoPd.estado = config.estadoFinal;
+                        nuevoPd.tipoBandeja = config.tipoBandeja;
+                        nuevoPd.ultimoMovimiento = new Date().toISOString();
+                        nuevoPd.emojiTrigger = emoji;
+                        guardarPedidos(pp, leerNextId());
+                      }
+                    }
+                    accionRealizada = true;
+                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada para ${pushName} (${telefonoCliente})`);
+                  }
+                }
+              }
+            } else if (config && !esDeNuestroWA) {
+              console.log(`[reaccion] ${emoji} ignorada — no vino de nuestro WA (sender:${senderNumero}, esperado:${numeroPropio})`);
+            }
+          } catch (errReact) {
+            console.error('[reaccion error]', errReact);
+          }
+        }
+
         return json(res, 200, { ok: true, webhook_recibido: true, accionRealizada, resultadoApi });
       } catch (e) {
         console.error('[evolution webhook error]', e);
