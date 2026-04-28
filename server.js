@@ -302,7 +302,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v2', activas: process.env.REACCIONES_ACTIVAS === 'true' });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v3-DEBUG', activas: process.env.REACCIONES_ACTIVAS === 'true', WS_PROPIO_NUMERO: process.env.WS_PROPIO_NUMERO || '573506974711' });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -387,7 +387,13 @@ http.createServer((req, res) => {
         // ─────────────────────────────────────────────────────────────
         // LÓGICA DE REACCIONES — Sprint 1 Cero Clics
         // ─────────────────────────────────────────────────────────────
-        console.log(`[webhook-debug] event=${eventType} messageType=${eventData?.messageType} hasReaction=${!!eventData?.message?.reactionMessage}`);
+        const _debugInfo = `[webhook-debug-v3] event=${eventType} messageType=${eventData?.messageType} hasReaction=${!!eventData?.message?.reactionMessage}`;
+        console.log(_debugInfo);
+        // Forzamos respuesta de debug para diagnosticar (visible en JSON respuesta)
+        if (eventData?.messageType === 'reactionMessage' || eventData?.message?.reactionMessage) {
+          accionRealizada = false;
+          resultadoApi = { debug: 'reaccion_detectada', eventType, messageType: eventData?.messageType, emoji: eventData?.message?.reactionMessage?.text };
+        }
         if (eventType === 'messages.upsert' && eventData?.messageType === 'reactionMessage') {
           try {
             const reaccion = eventData.message?.reactionMessage || {};
