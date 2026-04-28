@@ -386,10 +386,8 @@ http.createServer((req, res) => {
 
         // ─────────────────────────────────────────────────────────────
         // LÓGICA DE REACCIONES — Sprint 1 Cero Clics
-        // 🟡 = cotización (crea pedido en bandeja, tipo cotizar)
-        // Modo seguro: por defecto SOLO loguea, no crea pedido en producción.
-        // Para activar creación real: poner env var REACCIONES_ACTIVAS=true en Railway.
         // ─────────────────────────────────────────────────────────────
+        console.log(`[webhook-debug] event=${eventType} messageType=${eventData?.messageType} hasReaction=${!!eventData?.message?.reactionMessage}`);
         if (eventType === 'messages.upsert' && eventData?.messageType === 'reactionMessage') {
           try {
             const reaccion = eventData.message?.reactionMessage || {};
