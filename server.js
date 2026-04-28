@@ -300,6 +300,11 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
+  if (req.method === 'GET' && req.url === '/api/health-reacciones') {
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v2', activas: process.env.REACCIONES_ACTIVAS === 'true' });
+  }
+
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
   if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
     let body = '';
@@ -307,6 +312,8 @@ http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
+        // Marca de versión para diagnóstico
+        if (!global._reaccionesLoaded) { console.log('[boot] sprint-1 reacciones cargado'); global._reaccionesLoaded = true; }
         
         // 1. Guardar log crudo para debug (esencial para ver cómo llegan los stickers y etiquetas)
         const EVOLUTION_LOG_DIR = path.join(__dirname, 'data', 'evolution-events');
