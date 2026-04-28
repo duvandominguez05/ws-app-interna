@@ -386,6 +386,57 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── GET /api/evolution-logs — lista archivos de log disponibles ──
+  if (req.method === 'GET' && req.url === '/api/evolution-logs') {
+    try {
+      const dir = path.join(__dirname, 'data', 'evolution-events');
+      if (!fs.existsSync(dir)) return json(res, 200, { archivos: [], aviso: 'Aún no hay eventos registrados' });
+      const archivos = fs.readdirSync(dir)
+        .filter(f => f.endsWith('.log'))
+        .sort()
+        .reverse()
+        .map(f => {
+          const stat = fs.statSync(path.join(dir, f));
+          return { archivo: f, tamano_kb: Math.round(stat.size / 1024 * 10) / 10, modificado: stat.mtime };
+        });
+      return json(res, 200, { archivos });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/evolution-logs/:fecha — devuelve eventos del día ──
+  // ?last=20 para últimos N eventos, ?filter=texto para filtrar por substring
+  if (req.method === 'GET' && req.url.startsWith('/api/evolution-logs/')) {
+    try {
+      const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const fecha = urlObj.pathname.split('/')[3];
+      const last = parseInt(urlObj.searchParams.get('last')) || 50;
+      const filtro = (urlObj.searchParams.get('filter') || '').toLowerCase();
+
+      const archivo = path.join(__dirname, 'data', 'evolution-events', `${fecha}.log`);
+      if (!fs.existsSync(archivo)) {
+        return json(res, 404, { error: `No hay log para ${fecha}`, sugerencia: 'GET /api/evolution-logs para ver fechas disponibles' });
+      }
+
+      const lineas = fs.readFileSync(archivo, 'utf8').split('\n').filter(l => l.trim());
+      let filtradas = filtro ? lineas.filter(l => l.toLowerCase().includes(filtro)) : lineas;
+      const total = filtradas.length;
+      filtradas = filtradas.slice(-last);
+
+      const eventos = filtradas.map(linea => {
+        const m = linea.match(/^\[([^\]]+)\]\s+(.*)$/);
+        if (!m) return { raw: linea };
+        try { return { ts: m[1], payload: JSON.parse(m[2]) }; }
+        catch { return { ts: m[1], raw: m[2] }; }
+      });
+
+      return json(res, 200, { fecha, total_en_archivo: lineas.length, total_filtrado: total, mostrando: eventos.length, eventos });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
 
   // ── POST /api/calandra — n8n registra envío de PDF a calandra ─
   // Body: { equipo, alto, ancho?, archivo?, diseñador? }
