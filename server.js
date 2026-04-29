@@ -101,6 +101,31 @@ function leerNextId() {
   } catch { return 1; }
 }
 
+// Consulta Evolution para obtener el nombre del contacto desde su JID.
+// Devuelve el nombre limpio o null si no encuentra.
+async function obtenerNombreContacto(remoteJid) {
+  try {
+    const url = (process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app');
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    const r = await fetch(`${url}/chat/findContacts/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ where: { remoteJid } }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (Array.isArray(data) && data.length > 0) {
+      const c = data[0];
+      return (c.pushName && c.pushName.trim()) || null;
+    }
+    return null;
+  } catch (e) {
+    console.error('[obtenerNombreContacto error]', e.message);
+    return null;
+  }
+}
+
 function guardarPedidos(pedidos, nextId) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(pedidos, null, 2));
@@ -302,14 +327,14 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v4-utf8fix', activas: process.env.REACCIONES_ACTIVAS === 'true', WS_PROPIO_NUMERO: process.env.WS_PROPIO_NUMERO || '573506974711' });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v5-nombre-real', activas: process.env.REACCIONES_ACTIVAS === 'true' });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
   if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
     const chunks = [];
     req.on('data', d => chunks.push(d));
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const body = Buffer.concat(chunks).toString('utf8');
         const payload = JSON.parse(body);
@@ -409,70 +434,50 @@ http.createServer((req, res) => {
             };
             const config = MAPA_REACCIONES[emoji];
 
-            // DEBUG temporal — exponer por qué no entra
-            if (!config || !esDeNuestroWA) {
-              accionRealizada = false;
-              resultadoApi = {
-                debug: 'no_entro_a_creacion',
-                razon_config: !!config ? 'ok' : 'emoji_no_mapeado',
-                razon_sender: esDeNuestroWA ? 'ok' : 'sender_no_propio',
-                emoji_recibido: emoji,
-                emoji_codepoints: Array.from(emoji).map(c => c.codePointAt(0).toString(16)),
-                sender_numero: senderNumero,
-                numero_propio: numeroPropio,
-                emojis_mapeados: Object.keys(MAPA_REACCIONES)
-              };
-            }
-
             if (config && esDeNuestroWA) {
-              // El chat donde se reaccionó: si la reacción fue a un mensaje propio (fromMe=true),
-              // el cliente está en remoteJid (no en sender). Si fue a un mensaje del cliente, igual.
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              // Resolver nombre real del contacto desde Evolution (no usar pushName porque puede ser el de Betty)
+              let nombreCliente = await obtenerNombreContacto(remoteJid);
+              if (!nombreCliente) nombreCliente = pushName || `Cliente ${telefonoCliente.slice(-4)}`;
 
-              console.log(`[reaccion] ${emoji} detectada — sender:${senderNumero} remoteJid:${remoteJid} cliente:${telefonoCliente} pushName:"${pushName}" accion:${config.accion}`);
+              console.log(`[reaccion] ${emoji} detectada — cliente:${telefonoCliente} nombre:"${nombreCliente}" accion:${config.accion}`);
 
               const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
               if (!REACCIONES_ACTIVAS) {
-                console.log(`[reaccion] MODO LOG ONLY — habría creado cotización para ${telefonoCliente}. Activar con env REACCIONES_ACTIVAS=true`);
-                accionRealizada = false;
-                resultadoApi = { ok: true, modo: 'log-only', emoji, telefono: telefonoCliente, pushName };
-              } else {
-                // CREACIÓN REAL — solo activa si REACCIONES_ACTIVAS=true en Railway
-                if (telefonoCliente.length > 5) {
-                  const pedidos = leerPedidos();
-                  // Dedupe nivel 3: ¿ya hay pedido del mismo cliente creado en última hora?
-                  const haceUnaHora = Date.now() - (60 * 60 * 1000);
-                  const pdReciente = pedidos.find(p => {
-                    const pTel = String(p.telefono || '').replace(/\D/g, '');
-                    if (pTel !== telefonoCliente) return false;
-                    const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-                    return ultMov > haceUnaHora;
-                  });
-
-                  if (pdReciente) {
-                    console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} del mismo cliente (<1h)`);
-                    resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
-                  } else {
-                    resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, pushName);
-                    if (resultadoApi.ok && config.estadoFinal !== 'hacer-diseno') {
-                      // Forzamos al estado deseado
-                      const pp = leerPedidos();
-                      const nuevoPd = pp.find(p => p.id === resultadoApi.id);
-                      if (nuevoPd) {
-                        nuevoPd.estado = config.estadoFinal;
-                        nuevoPd.tipoBandeja = config.tipoBandeja;
-                        nuevoPd.ultimoMovimiento = new Date().toISOString();
-                        nuevoPd.emojiTrigger = emoji;
-                        guardarPedidos(pp, leerNextId());
-                      }
+                console.log(`[reaccion] MODO LOG ONLY — habría creado cotización para ${telefonoCliente}`);
+                resultadoApi = { ok: true, modo: 'log-only', emoji, telefono: telefonoCliente, nombreCliente };
+              } else if (telefonoCliente.length > 5) {
+                const pedidos = leerPedidos();
+                // Dedupe: pedido del mismo cliente creado en última hora
+                const haceUnaHora = Date.now() - (60 * 60 * 1000);
+                const pdReciente = pedidos.find(p => {
+                  const pTel = String(p.telefono || '').replace(/\D/g, '');
+                  if (pTel !== telefonoCliente) return false;
+                  const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+                  return ultMov > haceUnaHora;
+                });
+                if (pdReciente) {
+                  console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} del mismo cliente (<1h)`);
+                  resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
+                } else {
+                  resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, nombreCliente);
+                  if (resultadoApi.ok) {
+                    const pp = leerPedidos();
+                    const nuevoPd = pp.find(p => p.id === resultadoApi.id);
+                    if (nuevoPd) {
+                      nuevoPd.estado = config.estadoFinal;
+                      nuevoPd.tipoBandeja = config.tipoBandeja;
+                      nuevoPd.ultimoMovimiento = new Date().toISOString();
+                      nuevoPd.emojiTrigger = emoji;
+                      guardarPedidos(pp, leerNextId());
                     }
                     accionRealizada = true;
-                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada para ${pushName} (${telefonoCliente})`);
+                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada para ${nombreCliente} (${telefonoCliente})`);
                   }
                 }
               }
             } else if (config && !esDeNuestroWA) {
-              console.log(`[reaccion] ${emoji} ignorada — no vino de nuestro WA (sender:${senderNumero}, esperado:${numeroPropio})`);
+              console.log(`[reaccion] ${emoji} ignorada — no vino de nuestro WA`);
             }
           } catch (errReact) {
             console.error('[reaccion error]', errReact);
