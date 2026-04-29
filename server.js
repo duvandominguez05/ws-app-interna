@@ -302,15 +302,16 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v3-DEBUG', activas: process.env.REACCIONES_ACTIVAS === 'true', WS_PROPIO_NUMERO: process.env.WS_PROPIO_NUMERO || '573506974711' });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v4-utf8fix', activas: process.env.REACCIONES_ACTIVAS === 'true', WS_PROPIO_NUMERO: process.env.WS_PROPIO_NUMERO || '573506974711' });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
   if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
-    let body = '';
-    req.on('data', d => body += d);
+    const chunks = [];
+    req.on('data', d => chunks.push(d));
     req.on('end', () => {
       try {
+        const body = Buffer.concat(chunks).toString('utf8');
         const payload = JSON.parse(body);
         // Marca de versión para diagnóstico
         if (!global._reaccionesLoaded) { console.log('[boot] sprint-1 reacciones cargado'); global._reaccionesLoaded = true; }
@@ -386,14 +387,8 @@ http.createServer((req, res) => {
 
         // ─────────────────────────────────────────────────────────────
         // LÓGICA DE REACCIONES — Sprint 1 Cero Clics
+        // 🟡 = cotización (crea pedido en bandeja, tipo cotizar)
         // ─────────────────────────────────────────────────────────────
-        const _debugInfo = `[webhook-debug-v3] event=${eventType} messageType=${eventData?.messageType} hasReaction=${!!eventData?.message?.reactionMessage}`;
-        console.log(_debugInfo);
-        // Forzamos respuesta de debug para diagnosticar (visible en JSON respuesta)
-        if (eventData?.messageType === 'reactionMessage' || eventData?.message?.reactionMessage) {
-          accionRealizada = false;
-          resultadoApi = { debug: 'reaccion_detectada', eventType, messageType: eventData?.messageType, emoji: eventData?.message?.reactionMessage?.text };
-        }
         if (eventType === 'messages.upsert' && eventData?.messageType === 'reactionMessage') {
           try {
             const reaccion = eventData.message?.reactionMessage || {};
