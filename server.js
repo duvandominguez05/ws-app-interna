@@ -101,9 +101,32 @@ function leerNextId() {
   } catch { return 1; }
 }
 
+// Busca contacto en Chatwoot por teléfono. Devuelve { name, id } o null.
+async function buscarContactoChatwoot(telefono) {
+  try {
+    const url = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    if (!url || !accountId || !apiKey) return null;
+    const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/search?q=${encodeURIComponent(telefono)}`, {
+      headers: { 'api_access_token': apiKey },
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.payload && data.payload.length > 0) {
+      const c = data.payload[0];
+      return { name: c.name || null, id: c.id };
+    }
+    return null;
+  } catch (e) {
+    console.error('[buscarContactoChatwoot error]', e.message);
+    return null;
+  }
+}
+
 // Consulta Evolution para obtener el nombre del contacto desde su JID.
 // Devuelve el nombre limpio o null si no encuentra.
-async function obtenerNombreContacto(remoteJid) {
+async function obtenerNombreContactoEvolution(remoteJid) {
   try {
     const url = (process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app');
     const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
@@ -121,9 +144,23 @@ async function obtenerNombreContacto(remoteJid) {
     }
     return null;
   } catch (e) {
-    console.error('[obtenerNombreContacto error]', e.message);
+    console.error('[obtenerNombreContactoEvolution error]', e.message);
     return null;
   }
+}
+
+// Resuelve el mejor nombre para un cliente: Chatwoot → Evolution → fallback.
+async function resolverNombreCliente(remoteJid, telefono, pushNameFallback) {
+  // 1. Chatwoot (más confiable: tiene los nombres oficiales del CRM)
+  const cw = await buscarContactoChatwoot(telefono);
+  if (cw && cw.name && cw.name.trim()) return cw.name.trim();
+  // 2. Evolution
+  const ev = await obtenerNombreContactoEvolution(remoteJid);
+  if (ev) return ev;
+  // 3. Si pushName del payload no es el de Betty/W&S, úsalo
+  if (pushNameFallback && !/uniformes|wys|w&s/i.test(pushNameFallback)) return pushNameFallback;
+  // 4. Fallback con teléfono
+  return `Cliente +57 ${telefono.slice(-10, -7)} ${telefono.slice(-7, -4)} ${telefono.slice(-4)}`;
 }
 
 function guardarPedidos(pedidos, nextId) {
@@ -327,7 +364,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v5-nombre-real', activas: process.env.REACCIONES_ACTIVAS === 'true' });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v6-chatwoot', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -436,9 +473,8 @@ http.createServer((req, res) => {
 
             if (config && esDeNuestroWA) {
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-              // Resolver nombre real del contacto desde Evolution (no usar pushName porque puede ser el de Betty)
-              let nombreCliente = await obtenerNombreContacto(remoteJid);
-              if (!nombreCliente) nombreCliente = pushName || `Cliente ${telefonoCliente.slice(-4)}`;
+              // Resolver nombre con prioridad: Chatwoot > Evolution > pushName (si no es el propio) > fallback
+              const nombreCliente = await resolverNombreCliente(remoteJid, telefonoCliente, pushName);
 
               console.log(`[reaccion] ${emoji} detectada — cliente:${telefonoCliente} nombre:"${nombreCliente}" accion:${config.accion}`);
 
