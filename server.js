@@ -563,7 +563,7 @@ http.createServer((req, res) => {
                     ).catch(()=>{});
                     // Etiquetar conversación en Chatwoot (no bloquea)
                     if (contactoChatwoot) {
-                      etiquetarChatwootContacto(contactoChatwoot, 'En Proceso').catch(()=>{});
+                      etiquetarChatwootContacto(contactoChatwoot, 'cotizacion').catch(()=>{});
                     }
                   }
                 }
