@@ -116,6 +116,22 @@ async function notificarTelegram(texto) {
   } catch (e) { console.error('[telegram error]', e.message); }
 }
 
+// Manda mensaje al grupo de WhatsApp "Trabajo en familia" vía Evolution.
+async function notificarWhatsappTrabajoFamilia(texto) {
+  try {
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
+    const r = await fetch(`${url}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ number: groupJid, text: texto }),
+    });
+    if (!r.ok) console.error('[wa-grupo] respuesta:', r.status);
+  } catch (e) { console.error('[wa-grupo error]', e.message); }
+}
+
 // Etiqueta una conversación de Chatwoot por contactId con la etiqueta dada.
 // Crea la etiqueta si no existe, busca la conversación abierta del contacto y le añade la etiqueta.
 async function etiquetarChatwootContacto(contactoId, etiqueta) {
@@ -409,7 +425,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v7-tg-cw', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v8-grupos', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us' });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -553,14 +569,32 @@ http.createServer((req, res) => {
                     }
                     accionRealizada = true;
                     console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (${nombreCliente})`);
-                    // Notificar Telegram (no bloquea)
-                    notificarTelegram(
-                      `🟡 *Nueva cotización* #${resultadoApi.id}\n\n` +
+
+                    const fechaCorta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' });
+                    const telBonito = telefonoCliente.startsWith('57') ? `+${telefonoCliente.slice(0,2)} ${telefonoCliente.slice(2,5)} ${telefonoCliente.slice(5,8)} ${telefonoCliente.slice(8)}` : telefonoCliente;
+
+                    // Mensaje para Telegram (Markdown)
+                    const msgTG =
+                      `🟡 *Cotización nueva — DISEÑAR* #${resultadoApi.id}\n\n` +
                       `👤 *Cliente:* ${nombreCliente}\n` +
-                      `📞 ${telefonoCliente}\n` +
-                      `🛍️ *Vendedora:* Betty\n\n` +
-                      `🔗 ws-app-interna-production.up.railway.app`
-                    ).catch(()=>{});
+                      `📞 ${telBonito}\n` +
+                      `🛍️ *Vendedora:* Betty\n` +
+                      `📅 ${fechaCorta}\n\n` +
+                      `⚠️ Hay que hacer diseño para este cliente\n` +
+                      `👉 Revisar la conversación`;
+                    notificarTelegram(msgTG).catch(()=>{});
+
+                    // Mensaje para WhatsApp grupo (texto plano sin markdown)
+                    const msgWA =
+                      `🟡 Cotización nueva — DISEÑAR  #${resultadoApi.id}\n\n` +
+                      `👤 Cliente: ${nombreCliente}\n` +
+                      `📞 ${telBonito}\n` +
+                      `🛍️ Vendedora: Betty\n` +
+                      `📅 ${fechaCorta}\n\n` +
+                      `⚠️ Hay que hacer diseño para este cliente\n` +
+                      `👉 Revisar la conversación`;
+                    notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
+
                     // Etiquetar conversación en Chatwoot (no bloquea)
                     if (contactoChatwoot) {
                       etiquetarChatwootContacto(contactoChatwoot, 'cotizacion').catch(()=>{});
