@@ -101,6 +101,50 @@ function leerNextId() {
   } catch { return 1; }
 }
 
+// Manda mensaje a Telegram. No bloquea — si falla, solo loguea.
+async function notificarTelegram(texto) {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: texto, parse_mode: 'Markdown' }),
+    });
+    if (!r.ok) console.error('[telegram] respuesta:', r.status);
+  } catch (e) { console.error('[telegram error]', e.message); }
+}
+
+// Etiqueta una conversación de Chatwoot por contactId con la etiqueta dada.
+// Crea la etiqueta si no existe, busca la conversación abierta del contacto y le añade la etiqueta.
+async function etiquetarChatwootContacto(contactoId, etiqueta) {
+  try {
+    const url = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    if (!url || !accountId || !apiKey || !contactoId) return;
+    // Buscar conversaciones del contacto
+    const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contactoId}/conversations`, {
+      headers: { 'api_access_token': apiKey },
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    const convs = data.payload || [];
+    if (!convs.length) return;
+    // Tomar la conversación más reciente
+    const conv = convs[0];
+    // Añadir etiqueta a esa conversación
+    const r2 = await fetch(`${url}/api/v1/accounts/${accountId}/conversations/${conv.id}/labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api_access_token': apiKey },
+      body: JSON.stringify({ labels: [etiqueta] }),
+    });
+    if (r2.ok) console.log(`[chatwoot] etiqueta "${etiqueta}" añadida a conversación #${conv.id} (contacto ${contactoId})`);
+    else console.error('[chatwoot] etiquetar falló:', r2.status);
+  } catch (e) { console.error('[etiquetarChatwootContacto error]', e.message); }
+}
+
 // Busca contacto en Chatwoot por teléfono. Devuelve { name, id } o null.
 async function buscarContactoChatwoot(telefono) {
   try {
@@ -149,18 +193,19 @@ async function obtenerNombreContactoEvolution(remoteJid) {
   }
 }
 
-// Resuelve el mejor nombre para un cliente: Chatwoot → Evolution → fallback.
-async function resolverNombreCliente(remoteJid, telefono, pushNameFallback) {
-  // 1. Chatwoot (más confiable: tiene los nombres oficiales del CRM)
+// Resuelve el mejor nombre y devuelve también contactId de Chatwoot si existe.
+async function resolverCliente(remoteJid, telefono, pushNameFallback) {
   const cw = await buscarContactoChatwoot(telefono);
-  if (cw && cw.name && cw.name.trim()) return cw.name.trim();
-  // 2. Evolution
+  if (cw) {
+    const name = (cw.name && cw.name.trim()) || null;
+    if (name) return { nombre: name, contactoChatwoot: cw.id };
+  }
   const ev = await obtenerNombreContactoEvolution(remoteJid);
-  if (ev) return ev;
-  // 3. Si pushName del payload no es el de Betty/W&S, úsalo
-  if (pushNameFallback && !/uniformes|wys|w&s/i.test(pushNameFallback)) return pushNameFallback;
-  // 4. Fallback con teléfono
-  return `Cliente +57 ${telefono.slice(-10, -7)} ${telefono.slice(-7, -4)} ${telefono.slice(-4)}`;
+  if (ev) return { nombre: ev, contactoChatwoot: cw?.id || null };
+  if (pushNameFallback && !/uniformes|wys|w&s/i.test(pushNameFallback)) {
+    return { nombre: pushNameFallback, contactoChatwoot: cw?.id || null };
+  }
+  return { nombre: `Cliente +57 ${telefono.slice(-10)}`, contactoChatwoot: cw?.id || null };
 }
 
 function guardarPedidos(pedidos, nextId) {
@@ -364,7 +409,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v6-chatwoot', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY });
+    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v7-tg-cw', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -473,10 +518,9 @@ http.createServer((req, res) => {
 
             if (config && esDeNuestroWA) {
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-              // Resolver nombre con prioridad: Chatwoot > Evolution > pushName (si no es el propio) > fallback
-              const nombreCliente = await resolverNombreCliente(remoteJid, telefonoCliente, pushName);
+              const { nombre: nombreCliente, contactoChatwoot } = await resolverCliente(remoteJid, telefonoCliente, pushName);
 
-              console.log(`[reaccion] ${emoji} detectada — cliente:${telefonoCliente} nombre:"${nombreCliente}" accion:${config.accion}`);
+              console.log(`[reaccion] ${emoji} — cliente:${telefonoCliente} nombre:"${nombreCliente}" cw:${contactoChatwoot||'-'}`);
 
               const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
               if (!REACCIONES_ACTIVAS) {
@@ -484,7 +528,6 @@ http.createServer((req, res) => {
                 resultadoApi = { ok: true, modo: 'log-only', emoji, telefono: telefonoCliente, nombreCliente };
               } else if (telefonoCliente.length > 5) {
                 const pedidos = leerPedidos();
-                // Dedupe: pedido del mismo cliente creado en última hora
                 const haceUnaHora = Date.now() - (60 * 60 * 1000);
                 const pdReciente = pedidos.find(p => {
                   const pTel = String(p.telefono || '').replace(/\D/g, '');
@@ -493,7 +536,7 @@ http.createServer((req, res) => {
                   return ultMov > haceUnaHora;
                 });
                 if (pdReciente) {
-                  console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} del mismo cliente (<1h)`);
+                  console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} (<1h)`);
                   resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
                 } else {
                   resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, nombreCliente);
@@ -505,10 +548,23 @@ http.createServer((req, res) => {
                       nuevoPd.tipoBandeja = config.tipoBandeja;
                       nuevoPd.ultimoMovimiento = new Date().toISOString();
                       nuevoPd.emojiTrigger = emoji;
+                      if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
                       guardarPedidos(pp, leerNextId());
                     }
                     accionRealizada = true;
-                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada para ${nombreCliente} (${telefonoCliente})`);
+                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (${nombreCliente})`);
+                    // Notificar Telegram (no bloquea)
+                    notificarTelegram(
+                      `🟡 *Nueva cotización* #${resultadoApi.id}\n\n` +
+                      `👤 *Cliente:* ${nombreCliente}\n` +
+                      `📞 ${telefonoCliente}\n` +
+                      `🛍️ *Vendedora:* Betty\n\n` +
+                      `🔗 ws-app-interna-production.up.railway.app`
+                    ).catch(()=>{});
+                    // Etiquetar conversación en Chatwoot (no bloquea)
+                    if (contactoChatwoot) {
+                      etiquetarChatwootContacto(contactoChatwoot, 'En Proceso').catch(()=>{});
+                    }
                   }
                 }
               }
