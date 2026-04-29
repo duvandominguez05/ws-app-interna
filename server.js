@@ -409,6 +409,21 @@ http.createServer((req, res) => {
             };
             const config = MAPA_REACCIONES[emoji];
 
+            // DEBUG temporal — exponer por qué no entra
+            if (!config || !esDeNuestroWA) {
+              accionRealizada = false;
+              resultadoApi = {
+                debug: 'no_entro_a_creacion',
+                razon_config: !!config ? 'ok' : 'emoji_no_mapeado',
+                razon_sender: esDeNuestroWA ? 'ok' : 'sender_no_propio',
+                emoji_recibido: emoji,
+                emoji_codepoints: Array.from(emoji).map(c => c.codePointAt(0).toString(16)),
+                sender_numero: senderNumero,
+                numero_propio: numeroPropio,
+                emojis_mapeados: Object.keys(MAPA_REACCIONES)
+              };
+            }
+
             if (config && esDeNuestroWA) {
               // El chat donde se reaccionó: si la reacción fue a un mensaje propio (fromMe=true),
               // el cliente está en remoteJid (no en sender). Si fue a un mensaje del cliente, igual.
