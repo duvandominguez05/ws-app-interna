@@ -1729,25 +1729,41 @@ async function syncTodoConServidor(silencioso = true) {
 
 // Indicador visual del estado de sync (puntito en esquina)
 function actualizarIndicadorSync() {
-  let dot = document.getElementById('sync-indicator');
-  if (!dot) {
-    dot = document.createElement('div');
-    dot.id = 'sync-indicator';
-    dot.style.cssText = 'position:fixed;bottom:8px;right:8px;width:10px;height:10px;border-radius:50%;z-index:9999;transition:background 0.3s;cursor:pointer;box-shadow:0 0 6px rgba(0,0,0,0.4);';
-    dot.title = 'Estado de sincronización';
-    dot.onclick = () => syncTodoConServidor(false);
-    document.body.appendChild(dot);
+  let chip = document.getElementById('sync-indicator');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'sync-indicator';
+    chip.style.cssText = 'position:fixed;bottom:14px;right:14px;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:rgba(15,23,42,0.92);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:0.78rem;font-weight:600;z-index:9999;cursor:pointer;backdrop-filter:blur(8px);box-shadow:0 4px 16px rgba(0,0,0,0.3);user-select:none;transition:all 0.2s;';
+    const dot = document.createElement('span');
+    dot.id = 'sync-indicator-dot';
+    dot.style.cssText = 'width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 8px currentColor;';
+    const txt = document.createElement('span');
+    txt.id = 'sync-indicator-text';
+    chip.appendChild(dot);
+    chip.appendChild(txt);
+    chip.onclick = () => { syncConServidor(false); syncTodoConServidor(false); };
+    chip.onmouseenter = () => chip.style.background = 'rgba(30,41,59,0.95)';
+    chip.onmouseleave = () => chip.style.background = 'rgba(15,23,42,0.92)';
+    document.body.appendChild(chip);
   }
+  const dot = document.getElementById('sync-indicator-dot');
+  const txt = document.getElementById('sync-indicator-text');
   if (_syncEstado === 'ok') {
     dot.style.background = '#22c55e';
+    dot.style.color = '#22c55e';
     const seg = Math.floor((Date.now() - _syncUltimoTs) / 1000);
-    dot.title = `Sincronizado hace ${seg}s — clic para forzar`;
+    txt.textContent = seg < 10 ? 'Sincronizado' : `hace ${seg}s`;
+    chip.title = 'Conectado al servidor — clic para forzar sync';
   } else if (_syncEstado === 'cargando') {
     dot.style.background = '#facc15';
-    dot.title = 'Sincronizando...';
+    dot.style.color = '#facc15';
+    txt.textContent = 'Sincronizando…';
+    chip.title = 'Pidiendo cambios al servidor';
   } else {
     dot.style.background = '#ef4444';
-    dot.title = 'Sin conexión — clic para reintentar';
+    dot.style.color = '#ef4444';
+    txt.textContent = 'Sin conexión';
+    chip.title = 'No se pudo conectar — clic para reintentar';
   }
 }
 
