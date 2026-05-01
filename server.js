@@ -1061,6 +1061,82 @@ http.createServer((req, res) => {
     return json(res, 200, { ok: true, status: 'bot-local' });
   }
 
+  // ── Notificaciones compartidas (campana) ───────────────────────
+  // Todos los dispositivos ven las mismas notificaciones
+  const NOTIFS_FILE = path.join(__dirname, 'data', 'notificaciones.json');
+  const leerNotifs = () => { try { return JSON.parse(fs.readFileSync(NOTIFS_FILE, 'utf8')); } catch { return []; } };
+  const guardarNotifs = arr => { fs.mkdirSync(path.dirname(NOTIFS_FILE), { recursive: true }); fs.writeFileSync(NOTIFS_FILE, JSON.stringify(arr, null, 2)); };
+
+  if (req.method === 'GET' && req.url === '/api/notificaciones') {
+    return json(res, 200, { notificaciones: leerNotifs() });
+  }
+  if (req.method === 'POST' && req.url === '/api/notificaciones') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const arr = JSON.parse(body);
+        const lista = Array.isArray(arr) ? arr : (arr.notificaciones || []);
+        guardarNotifs(lista.slice(-200)); // máximo 200 para no inflar
+        return json(res, 200, { ok: true, total: lista.length });
+      } catch { return json(res, 400, { error: 'JSON inválido' }); }
+    });
+    return;
+  }
+
+  // ── Configuración compartida (ancho calandra, mes, etc.) ───────
+  const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
+  const leerConfig = () => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; } };
+  const guardarConfig = obj => { fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true }); fs.writeFileSync(CONFIG_FILE, JSON.stringify(obj, null, 2)); };
+
+  if (req.method === 'GET' && req.url === '/api/config') {
+    return json(res, 200, leerConfig());
+  }
+  if (req.method === 'POST' && req.url === '/api/config') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const cambios = JSON.parse(body);
+        const actual = leerConfig();
+        guardarConfig({ ...actual, ...cambios });
+        return json(res, 200, { ok: true });
+      } catch { return json(res, 400, { error: 'JSON inválido' }); }
+    });
+    return;
+  }
+
+  // ── /api/sync-todo — devuelve todo el estado en una sola llamada ──
+  // Optimización para móviles: 1 request en vez de 7
+  if (req.method === 'GET' && req.url === '/api/sync-todo') {
+    try {
+      const pedidosData = leerPedidos();
+      const nextId = leerNextId();
+      const ARR_FILE = path.join(__dirname, 'data', 'arreglos.json');
+      const SAT_FILE = path.join(__dirname, 'data', 'satelites.json');
+      const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+      const DOCS_FILE = path.join(__dirname, 'data', 'docsNums.json');
+      const arreglos = fs.existsSync(ARR_FILE) ? JSON.parse(fs.readFileSync(ARR_FILE, 'utf8')) : [];
+      const satelites = fs.existsSync(SAT_FILE) ? JSON.parse(fs.readFileSync(SAT_FILE, 'utf8')) : [];
+      const calandra = fs.existsSync(CAL_FILE) ? JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')) : [];
+      const docs = fs.existsSync(DOCS_FILE) ? JSON.parse(fs.readFileSync(DOCS_FILE, 'utf8')) : { historial: [], nextCot: 210, nextFac: 501 };
+      return json(res, 200, {
+        ok: true,
+        ts: Date.now(),
+        pedidos: pedidosData,
+        nextId,
+        arreglos,
+        satelites,
+        calandra,
+        docs,
+        notificaciones: leerNotifs(),
+        config: leerConfig(),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── Archivos estáticos ──────────────────────────────────────
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
   

@@ -44,9 +44,11 @@ const ESTADO_BADGE = {
 /* ════════════════════════════════════════════════════════════════
    ESTADO
 ════════════════════════════════════════════════════════════════ */
+// Servidor es fuente única de verdad. localStorage = cache de respaldo offline.
 let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
-const eliminadosLocales = new Set(JSON.parse(localStorage.getItem('ws_eliminados') || '[]'));
+// eliminadosLocales DEPRECADO — DELETE va directo al servidor y todos los dispositivos lo ven
+const eliminadosLocales = new Set();
 let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
@@ -54,6 +56,9 @@ let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || 
 const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
+// Estado de sincronización
+let _syncEstado = 'cargando'; // 'cargando' | 'ok' | 'error'
+let _syncUltimoTs = 0;
 
 /* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
@@ -475,8 +480,7 @@ function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
-  eliminadosLocales.add(id);
-  localStorage.setItem('ws_eliminados', JSON.stringify([...eliminadosLocales]));
+  // El servidor es fuente única — DELETE se replica a todos los dispositivos
   fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
   guardar();
   render();
@@ -935,8 +939,7 @@ function eliminarPedido(id) {
   }
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
   pedidos = pedidos.filter(x => x.id !== id);
-  eliminadosLocales.add(id);
-  localStorage.setItem('ws_eliminados', JSON.stringify([...eliminadosLocales]));
+  // El servidor es fuente única — DELETE se replica a todos los dispositivos
   fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
   guardar();
   render();
@@ -1637,15 +1640,122 @@ function syncConServidor(silencioso = false) {
     .catch(() => {});
 }
 
-// Sync al cargar
+// Sync al cargar — el servidor manda
 syncConServidor(false);
 
-// Polling automático cada 15 segundos
-setInterval(() => syncConServidor(true), 15000);
+// Polling automático cada 7 segundos (era 15)
+setInterval(() => syncConServidor(true), 7000);
 
 // Sync calandra Drive al cargar y cada 2 minutos
 setTimeout(sincronizarCalandraServidor, 500);
 setInterval(sincronizarCalandraServidor, 120000);
+
+/* ════════════════════════════════════════════════════════════════
+   SYNC UNIFICADO — todos los datos del servidor cada 7 seg
+   El servidor es fuente única de verdad. Todos los dispositivos
+   ven la misma información.
+════════════════════════════════════════════════════════════════ */
+let _ultimoSyncTs = 0;
+async function syncTodoConServidor(silencioso = true) {
+  try {
+    _syncEstado = 'cargando';
+    actualizarIndicadorSync();
+    const r = await fetch('/api/sync-todo');
+    if (!r.ok) throw new Error('servidor');
+    const data = await r.json();
+
+    // Notificaciones compartidas — reemplazar siempre con las del servidor
+    if (Array.isArray(data.notificaciones)) {
+      const nuevoArr = data.notificaciones;
+      const cambioNotifs = JSON.stringify(nuevoArr) !== JSON.stringify(notificaciones || []);
+      if (cambioNotifs) {
+        notificaciones = nuevoArr;
+        localStorage.setItem('ws_notifs', JSON.stringify(notificaciones));
+        if (typeof renderNotifs === 'function') renderNotifs();
+      }
+    }
+
+    // Arreglos manuales — reemplazar con los del servidor si cambió
+    if (Array.isArray(data.arreglos)) {
+      const nuevo = JSON.stringify(data.arreglos);
+      const actual = JSON.stringify(arreglosManuales || []);
+      if (nuevo !== actual) {
+        arreglosManuales = data.arreglos;
+        localStorage.setItem('ws_arreglos_manuales', JSON.stringify(arreglosManuales));
+        if (typeof renderArreglos === 'function') renderArreglos();
+      }
+    }
+
+    // Satélites
+    if (Array.isArray(data.satelites)) {
+      const nuevo = JSON.stringify(data.satelites);
+      const actual = JSON.stringify(satMovimientos || []);
+      if (nuevo !== actual) {
+        satMovimientos = data.satelites;
+        localStorage.setItem('ws_satelites', JSON.stringify(satMovimientos));
+        if (typeof renderSat === 'function') renderSat();
+      }
+    }
+
+    // Documentos (cotizaciones/facturas consecutivos)
+    if (data.docs) {
+      if (typeof data.docs.nextCot === 'number' && data.docs.nextCot > nextCot) {
+        nextCot = data.docs.nextCot;
+        localStorage.setItem('ws_nextCot', String(nextCot));
+      }
+      if (typeof data.docs.nextFac === 'number' && data.docs.nextFac > nextFac) {
+        nextFac = data.docs.nextFac;
+        localStorage.setItem('ws_nextFac', String(nextFac));
+      }
+      if (Array.isArray(data.docs.historial)) {
+        const nuevo = JSON.stringify(data.docs.historial);
+        const actual = JSON.stringify(docHistorial || []);
+        if (nuevo !== actual) {
+          docHistorial = data.docs.historial;
+          localStorage.setItem('ws_docs', JSON.stringify(docHistorial));
+        }
+      }
+    }
+
+    _syncEstado = 'ok';
+    _syncUltimoTs = Date.now();
+    actualizarIndicadorSync();
+  } catch (e) {
+    _syncEstado = 'error';
+    actualizarIndicadorSync();
+    if (!silencioso) console.error('[sync-todo]', e.message);
+  }
+}
+
+// Indicador visual del estado de sync (puntito en esquina)
+function actualizarIndicadorSync() {
+  let dot = document.getElementById('sync-indicator');
+  if (!dot) {
+    dot = document.createElement('div');
+    dot.id = 'sync-indicator';
+    dot.style.cssText = 'position:fixed;bottom:8px;right:8px;width:10px;height:10px;border-radius:50%;z-index:9999;transition:background 0.3s;cursor:pointer;box-shadow:0 0 6px rgba(0,0,0,0.4);';
+    dot.title = 'Estado de sincronización';
+    dot.onclick = () => syncTodoConServidor(false);
+    document.body.appendChild(dot);
+  }
+  if (_syncEstado === 'ok') {
+    dot.style.background = '#22c55e';
+    const seg = Math.floor((Date.now() - _syncUltimoTs) / 1000);
+    dot.title = `Sincronizado hace ${seg}s — clic para forzar`;
+  } else if (_syncEstado === 'cargando') {
+    dot.style.background = '#facc15';
+    dot.title = 'Sincronizando...';
+  } else {
+    dot.style.background = '#ef4444';
+    dot.title = 'Sin conexión — clic para reintentar';
+  }
+}
+
+// Arrancar sync unificado
+setTimeout(() => syncTodoConServidor(true), 1500);
+setInterval(() => syncTodoConServidor(true), 7000);
+// Refrescar texto del tooltip cada segundo (para que diga "hace Xs")
+setInterval(actualizarIndicadorSync, 1000);
 
 /* ════════════════════════════════════════════════════════════════
    CALANDRA — CONTROL DE METRAJE
@@ -2100,6 +2210,12 @@ function guardarNotifs() {
   // Máximo 60 notificaciones guardadas
   if (notificaciones.length > 60) notificaciones = notificaciones.slice(0, 60);
   localStorage.setItem('ws_notifs', JSON.stringify(notificaciones));
+  // Sincronizar con servidor para que todos los dispositivos las vean
+  fetch('/api/notificaciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notificaciones })
+  }).catch(() => {});
 }
 
 function crearNotif(icono, mensaje, tipo = 'info', pedidoId = null) {
