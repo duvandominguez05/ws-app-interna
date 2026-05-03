@@ -425,7 +425,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1b-sticker-venta', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-1bc-sticker-y-paleta', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -528,7 +528,7 @@ http.createServer((req, res) => {
             // Mapeo de emoji → acción
             const MAPA_REACCIONES = {
               '🟡': { accion: 'cotizar', tipoBandeja: 'cotizar', estadoFinal: 'bandeja' },
-              // Otras se sumarán en próximos sprints
+              '🎨': { accion: 'diseno-confirmado', tipoBandeja: 'pedido', estadoFinal: 'confirmado', requierePedidoEnHacerDiseno: true },
             };
             const config = MAPA_REACCIONES[emoji];
 
@@ -539,65 +539,108 @@ http.createServer((req, res) => {
               console.log(`[reaccion] ${emoji} — cliente:${telefonoCliente} nombre:"${nombreCliente}" cw:${contactoChatwoot||'-'}`);
 
               const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
+              const fechaCorta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' });
+              const telBonito = telefonoCliente.startsWith('57') ? `+${telefonoCliente.slice(0,2)} ${telefonoCliente.slice(2,5)} ${telefonoCliente.slice(5,8)} ${telefonoCliente.slice(8)}` : telefonoCliente;
+
               if (!REACCIONES_ACTIVAS) {
-                console.log(`[reaccion] MODO LOG ONLY — habría creado cotización para ${telefonoCliente}`);
+                console.log(`[reaccion] MODO LOG ONLY — ${config.accion} para ${telefonoCliente}`);
                 resultadoApi = { ok: true, modo: 'log-only', emoji, telefono: telefonoCliente, nombreCliente };
               } else if (telefonoCliente.length > 5) {
                 const pedidos = leerPedidos();
-                const haceUnaHora = Date.now() - (60 * 60 * 1000);
-                const pdReciente = pedidos.find(p => {
-                  const pTel = String(p.telefono || '').replace(/\D/g, '');
-                  if (pTel !== telefonoCliente) return false;
-                  const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-                  return ultMov > haceUnaHora;
-                });
-                if (pdReciente) {
-                  console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} (<1h)`);
-                  resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
-                } else {
-                  resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, nombreCliente);
-                  if (resultadoApi.ok) {
-                    const pp = leerPedidos();
-                    const nuevoPd = pp.find(p => p.id === resultadoApi.id);
-                    if (nuevoPd) {
-                      nuevoPd.estado = config.estadoFinal;
-                      nuevoPd.tipoBandeja = config.tipoBandeja;
-                      nuevoPd.ultimoMovimiento = new Date().toISOString();
-                      nuevoPd.emojiTrigger = emoji;
-                      if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
-                      guardarPedidos(pp, leerNextId());
-                    }
+
+                // === 🎨 DISEÑO CONFIRMADO: avanzar pedido existente en hacer-diseno → confirmado ===
+                if (config.requierePedidoEnHacerDiseno) {
+                  const pedidoEnDiseno = pedidos.find(p => {
+                    const pTel = String(p.telefono || '').replace(/\D/g, '');
+                    return pTel === telefonoCliente && p.estado === 'hacer-diseno';
+                  });
+                  if (!pedidoEnDiseno) {
+                    console.log(`[reaccion] 🎨 ignorada — no hay pedido en hacer-diseno para ${telefonoCliente}`);
+                    resultadoApi = { ok: true, sinPedido: true, motivo: 'no hay pedido en hacer-diseno' };
+                  } else {
+                    pedidoEnDiseno.estado = 'confirmado';
+                    pedidoEnDiseno.ultimoMovimiento = new Date().toISOString();
+                    pedidoEnDiseno.disenoEnviado = true;
+                    pedidoEnDiseno.fechaDisenoEnviado = new Date().toISOString();
+                    if (contactoChatwoot && !pedidoEnDiseno.contactoChatwoot) pedidoEnDiseno.contactoChatwoot = contactoChatwoot;
+                    guardarPedidos(pedidos, leerNextId());
                     accionRealizada = true;
-                    console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (${nombreCliente})`);
+                    console.log(`[reaccion] 🎨 → pedido #${pedidoEnDiseno.id} avanzó hacer-diseno → confirmado (${nombreCliente})`);
+                    resultadoApi = { ok: true, accion: 'avanzado', id: pedidoEnDiseno.id, estadoAnterior: 'hacer-diseno', estadoNuevo: 'confirmado' };
 
-                    const fechaCorta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' });
-                    const telBonito = telefonoCliente.startsWith('57') ? `+${telefonoCliente.slice(0,2)} ${telefonoCliente.slice(2,5)} ${telefonoCliente.slice(5,8)} ${telefonoCliente.slice(8)}` : telefonoCliente;
-
-                    // Mensaje para Telegram (Markdown)
+                    // Notificar
                     const msgTG =
-                      `🟡 *Cotización nueva — DISEÑAR* #${resultadoApi.id}\n\n` +
+                      `🎨 *Diseño enviado al cliente* #${pedidoEnDiseno.id}\n\n` +
                       `👤 *Cliente:* ${nombreCliente}\n` +
                       `📞 ${telBonito}\n` +
-                      `🛍️ *Vendedora:* Betty\n` +
                       `📅 ${fechaCorta}\n\n` +
-                      `⚠️ Hay que hacer diseño para este cliente\n` +
-                      `👉 Revisar la conversación`;
+                      `✅ Pedido pasa a *Confirmado*`;
                     notificarTelegram(msgTG).catch(()=>{});
 
-                    // Mensaje para WhatsApp grupo (texto plano sin markdown)
                     const msgWA =
-                      `🟡 Cotización nueva — DISEÑAR  #${resultadoApi.id}\n\n` +
+                      `🎨 Diseño enviado al cliente  #${pedidoEnDiseno.id}\n\n` +
                       `👤 Cliente: ${nombreCliente}\n` +
                       `📞 ${telBonito}\n` +
-                      `🛍️ Vendedora: Betty\n` +
                       `📅 ${fechaCorta}\n\n` +
-                      `⚠️ Hay que hacer diseño para este cliente\n` +
-                      `👉 Revisar la conversación`;
+                      `✅ Pedido pasa a Confirmado`;
                     notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
 
-                    // Etiquetar conversación en Chatwoot (no bloquea)
                     if (contactoChatwoot) {
-                      etiquetarChatwootContacto(contactoChatwoot, 'cotizacion').catch(()=>{});
+                      etiquetarChatwootContacto(contactoChatwoot, 'confirmado').catch(()=>{});
+                    }
+                  }
+                }
+                // === 🟡 COTIZACIÓN: crear pedido nuevo en bandeja ===
+                else {
+                  const haceUnaHora = Date.now() - (60 * 60 * 1000);
+                  const pdReciente = pedidos.find(p => {
+                    const pTel = String(p.telefono || '').replace(/\D/g, '');
+                    if (pTel !== telefonoCliente) return false;
+                    const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+                    return ultMov > haceUnaHora;
+                  });
+                  if (pdReciente) {
+                    console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} (<1h)`);
+                    resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
+                  } else {
+                    resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, nombreCliente);
+                    if (resultadoApi.ok) {
+                      const pp = leerPedidos();
+                      const nuevoPd = pp.find(p => p.id === resultadoApi.id);
+                      if (nuevoPd) {
+                        nuevoPd.estado = config.estadoFinal;
+                        nuevoPd.tipoBandeja = config.tipoBandeja;
+                        nuevoPd.ultimoMovimiento = new Date().toISOString();
+                        nuevoPd.emojiTrigger = emoji;
+                        if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
+                        guardarPedidos(pp, leerNextId());
+                      }
+                      accionRealizada = true;
+                      console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (${nombreCliente})`);
+
+                      const msgTG =
+                        `🟡 *Cotización nueva — DISEÑAR* #${resultadoApi.id}\n\n` +
+                        `👤 *Cliente:* ${nombreCliente}\n` +
+                        `📞 ${telBonito}\n` +
+                        `🛍️ *Vendedora:* Betty\n` +
+                        `📅 ${fechaCorta}\n\n` +
+                        `⚠️ Hay que hacer diseño para este cliente\n` +
+                        `👉 Revisar la conversación`;
+                      notificarTelegram(msgTG).catch(()=>{});
+
+                      const msgWA =
+                        `🟡 Cotización nueva — DISEÑAR  #${resultadoApi.id}\n\n` +
+                        `👤 Cliente: ${nombreCliente}\n` +
+                        `📞 ${telBonito}\n` +
+                        `🛍️ Vendedora: Betty\n` +
+                        `📅 ${fechaCorta}\n\n` +
+                        `⚠️ Hay que hacer diseño para este cliente\n` +
+                        `👉 Revisar la conversación`;
+                      notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
+
+                      if (contactoChatwoot) {
+                        etiquetarChatwootContacto(contactoChatwoot, 'cotizacion').catch(()=>{});
+                      }
                     }
                   }
                 }
@@ -653,14 +696,14 @@ http.createServer((req, res) => {
                 });
 
                 if (cotizacion) {
-                  // AVANZAR cotización existente a confirmado
+                  // AVANZAR cotización existente: pasa a Pedidos Confirmados con estado "hacer-diseno"
                   cotizacion.tipoBandeja = 'pedido';
-                  cotizacion.estado = 'confirmado';
+                  cotizacion.estado = 'hacer-diseno';
                   cotizacion.ultimoMovimiento = new Date().toISOString();
                   cotizacion.stickerVenta = stickerHash;
                   cotizacion.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
                   guardarPedidos(pedidos, leerNextId());
-                  console.log(`[sticker-venta] cotización #${cotizacion.id} → confirmado (${nombreCliente})`);
+                  console.log(`[sticker-venta] cotización #${cotizacion.id} → pedido confirmado (hacer-diseno) (${nombreCliente})`);
                   resultadoApi = { ok: true, accion: 'avanzado', id: cotizacion.id };
                   accionRealizada = true;
                 } else {
@@ -683,7 +726,7 @@ http.createServer((req, res) => {
                       const pp = leerPedidos();
                       const nuevoPd = pp.find(p => p.id === resultadoApi.id);
                       if (nuevoPd) {
-                        nuevoPd.estado = 'confirmado';
+                        nuevoPd.estado = 'hacer-diseno';
                         nuevoPd.tipoBandeja = 'pedido';
                         nuevoPd.ultimoMovimiento = new Date().toISOString();
                         nuevoPd.stickerVenta = stickerHash;
@@ -692,7 +735,7 @@ http.createServer((req, res) => {
                         guardarPedidos(pp, leerNextId());
                       }
                       accionRealizada = true;
-                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en confirmado (${nombreCliente})`);
+                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en hacer-diseno (${nombreCliente})`);
                     }
                   }
                 }
@@ -705,12 +748,12 @@ http.createServer((req, res) => {
 
                   const msgTG =
                     `💰 *VENTA CONFIRMADA* #${resultadoApi.id}\n\n` +
-                    `${tipoMsg === 'Cotización CONFIRMADA' ? '✅ El cliente ya pagó — pasa a producción' : '✅ Cliente pagó directo'}\n\n` +
+                    `${tipoMsg === 'Cotización CONFIRMADA' ? '✅ El cliente ya pagó' : '✅ Cliente pagó directo'}\n\n` +
                     `👤 *Cliente:* ${nombreCliente}\n` +
                     `📞 ${telBonito}\n` +
                     `🛍️ *Vendedora:* Betty\n` +
                     `📅 ${fechaCorta}\n\n` +
-                    `🚀 Pedido en estado *Confirmado*`;
+                    `🎨 Pedido en *Hacer diseño* — diseñador a trabajar`;
                   notificarTelegram(msgTG).catch(()=>{});
 
                   const msgWA =
@@ -720,7 +763,7 @@ http.createServer((req, res) => {
                     `📞 ${telBonito}\n` +
                     `🛍️ Vendedora: Betty\n` +
                     `📅 ${fechaCorta}\n\n` +
-                    `🚀 Pedido en Confirmado — comenzar producción`;
+                    `🎨 Pedido en Hacer diseño — diseñador a trabajar`;
                   notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
 
                   // Cambiar etiqueta Chatwoot: cotizacion → venta-confirmada
