@@ -425,7 +425,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1-reacciones-v8-grupos', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us' });
+    return json(res, 200, { ok: true, version: 'sprint-1b-sticker-venta', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -607,6 +607,135 @@ http.createServer((req, res) => {
             }
           } catch (errReact) {
             console.error('[reaccion error]', errReact);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // LÓGICA DE STICKERS — Sprint 1B
+        // Sticker VENTA CONFIRMADA → avanza cotización a 'confirmado',
+        // o crea pedido nuevo si no había cotización previa.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'stickerMessage') {
+          try {
+            const sticker = eventData.message?.stickerMessage || {};
+            const stickerHash = sticker.fileSha256 ? Buffer.from(Object.values(sticker.fileSha256)).toString('hex') : '';
+            const senderJid = payload.sender || '';
+            const remoteJid = eventData.key?.remoteJid || '';
+            const fromMe = eventData.key?.fromMe;
+            const pushName = eventData.pushName || '';
+
+            // Mapa de stickers conocidos → acción
+            const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim()).filter(Boolean);
+
+            const numeroPropio = (process.env.WS_PROPIO_NUMERO || '573506974711');
+            const senderNumero = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            const esDeNuestroWA = senderNumero === numeroPropio;
+
+            const esStickerVenta = STICKERS_VENTA.includes(stickerHash);
+
+            if (esStickerVenta && esDeNuestroWA && fromMe === true) {
+              // Sticker mandado DESDE el WA de ventas hacia un cliente
+              const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              const { nombre: nombreCliente, contactoChatwoot } = await resolverCliente(remoteJid, telefonoCliente, pushName);
+
+              console.log(`[sticker-venta] hash detectado — cliente:${telefonoCliente} nombre:"${nombreCliente}"`);
+
+              const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
+              if (!REACCIONES_ACTIVAS) {
+                console.log('[sticker-venta] MODO LOG ONLY — REACCIONES_ACTIVAS=false');
+                resultadoApi = { ok: true, modo: 'log-only', accion: 'venta-confirmada', telefono: telefonoCliente, nombreCliente };
+              } else if (telefonoCliente.length > 5) {
+                const pedidos = leerPedidos();
+                // Buscar cotización existente del cliente (estado=bandeja, tipoBandeja=cotizar)
+                const cotizacion = pedidos.find(p => {
+                  const pTel = String(p.telefono || '').replace(/\D/g, '');
+                  return pTel === telefonoCliente && p.estado === 'bandeja' && (p.tipoBandeja || 'cotizar') === 'cotizar';
+                });
+
+                if (cotizacion) {
+                  // AVANZAR cotización existente a confirmado
+                  cotizacion.tipoBandeja = 'pedido';
+                  cotizacion.estado = 'confirmado';
+                  cotizacion.ultimoMovimiento = new Date().toISOString();
+                  cotizacion.stickerVenta = stickerHash;
+                  cotizacion.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+                  guardarPedidos(pedidos, leerNextId());
+                  console.log(`[sticker-venta] cotización #${cotizacion.id} → confirmado (${nombreCliente})`);
+                  resultadoApi = { ok: true, accion: 'avanzado', id: cotizacion.id };
+                  accionRealizada = true;
+                } else {
+                  // No hay cotización previa — crear pedido directo en confirmado
+                  // Dedupe: evitar duplicar si ya hay pedido confirmado del mismo cliente en última hora
+                  const haceUnaHora = Date.now() - (60 * 60 * 1000);
+                  const pdReciente = pedidos.find(p => {
+                    const pTel = String(p.telefono || '').replace(/\D/g, '');
+                    if (pTel !== telefonoCliente) return false;
+                    if (p.estado !== 'confirmado') return false;
+                    const ultMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+                    return ultMov > haceUnaHora;
+                  });
+                  if (pdReciente) {
+                    console.log(`[sticker-venta] ignorado — pedido #${pdReciente.id} reciente del mismo cliente`);
+                    resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
+                  } else {
+                    resultadoApi = crearVentaInterna('pedido', 'Betty', telefonoCliente, null, nombreCliente);
+                    if (resultadoApi.ok) {
+                      const pp = leerPedidos();
+                      const nuevoPd = pp.find(p => p.id === resultadoApi.id);
+                      if (nuevoPd) {
+                        nuevoPd.estado = 'confirmado';
+                        nuevoPd.tipoBandeja = 'pedido';
+                        nuevoPd.ultimoMovimiento = new Date().toISOString();
+                        nuevoPd.stickerVenta = stickerHash;
+                        nuevoPd.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+                        if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
+                        guardarPedidos(pp, leerNextId());
+                      }
+                      accionRealizada = true;
+                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en confirmado (${nombreCliente})`);
+                    }
+                  }
+                }
+
+                // Notificaciones (solo si hubo acción real, no si fue duplicado)
+                if (accionRealizada && resultadoApi?.id) {
+                  const fechaCorta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' });
+                  const telBonito = telefonoCliente.startsWith('57') ? `+${telefonoCliente.slice(0,2)} ${telefonoCliente.slice(2,5)} ${telefonoCliente.slice(5,8)} ${telefonoCliente.slice(8)}` : telefonoCliente;
+                  const tipoMsg = (resultadoApi.accion === 'avanzado') ? 'Cotización CONFIRMADA' : 'Venta nueva (sin cotización previa)';
+
+                  const msgTG =
+                    `💰 *VENTA CONFIRMADA* #${resultadoApi.id}\n\n` +
+                    `${tipoMsg === 'Cotización CONFIRMADA' ? '✅ El cliente ya pagó — pasa a producción' : '✅ Cliente pagó directo'}\n\n` +
+                    `👤 *Cliente:* ${nombreCliente}\n` +
+                    `📞 ${telBonito}\n` +
+                    `🛍️ *Vendedora:* Betty\n` +
+                    `📅 ${fechaCorta}\n\n` +
+                    `🚀 Pedido en estado *Confirmado*`;
+                  notificarTelegram(msgTG).catch(()=>{});
+
+                  const msgWA =
+                    `💰 VENTA CONFIRMADA  #${resultadoApi.id}\n\n` +
+                    `✅ ${tipoMsg === 'Cotización CONFIRMADA' ? 'El cliente ya pagó' : 'Cliente pagó directo'}\n\n` +
+                    `👤 Cliente: ${nombreCliente}\n` +
+                    `📞 ${telBonito}\n` +
+                    `🛍️ Vendedora: Betty\n` +
+                    `📅 ${fechaCorta}\n\n` +
+                    `🚀 Pedido en Confirmado — comenzar producción`;
+                  notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
+
+                  // Cambiar etiqueta Chatwoot: cotizacion → venta-confirmada
+                  if (contactoChatwoot) {
+                    etiquetarChatwootContacto(contactoChatwoot, 'venta-confirmada').catch(()=>{});
+                  }
+                }
+              }
+            } else if (esStickerVenta && !esDeNuestroWA) {
+              console.log('[sticker-venta] ignorado — no vino del WA propio');
+            } else if (stickerHash) {
+              console.log(`[sticker] otro sticker recibido (hash:${stickerHash.slice(0,16)}...) — sin acción mapeada`);
+            }
+          } catch (errSticker) {
+            console.error('[sticker error]', errSticker);
           }
         }
 
