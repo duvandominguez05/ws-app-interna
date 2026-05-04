@@ -235,6 +235,39 @@ const ESTADOS_VALIDOS = [
   'llego-impresion','corte','calidad','costura','listo','enviado-final'
 ];
 
+// ── Matching de nombres de archivo a equipos ───────────────────
+// "Camilo 1.pdf" → "camilo"  |  "Galaktiturkos 1.50m.pdf" → "galaktiturkos"
+function nombreLimpio(s) {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .replace(/\.pdf$/i, '')
+    .replace(/[\s_-]+\d+(\.\d+)?\s*m?$/i, '') // sufijo "1", "2", "1.50m" al final
+    .replace(/[\s_-]+\d+(\.\d+)?\s*m?[\s_-]+/gi, ' ') // mismo en medio
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function nombresCoinciden(equipoPedido, archivo) {
+  const a = nombreLimpio(equipoPedido);
+  const b = nombreLimpio(archivo);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+// Avanza un pedido de 'confirmado' → 'enviado-calandra' SOLO cuando
+// tenga ambas señales: PDF en Drive Y correo WeTransfer.
+function evaluarPasoCalandra(pedido) {
+  if (!pedido) return false;
+  if (pedido.estado !== 'confirmado') return false;
+  if (!pedido.pdfDriveListo) return false;
+  if (!pedido.wtListo) return false;
+  pedido.estado = 'enviado-calandra';
+  pedido.ultimoMovimiento = new Date().toISOString();
+  console.log(`[auto-avance] #${pedido.id} confirmado → enviado-calandra (PDF+WT listos)`);
+  return true;
+}
+
 http.createServer((req, res) => {
 
   // ── CORS preflight ──────────────────────────────────────────
@@ -425,7 +458,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1bc-sticker-y-paleta', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-1e-drive-wt-y-fix-borrar', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -912,28 +945,30 @@ http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
         fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
 
-        // 🔥 HIPER-AUTOMATIZACIÓN: Si N8N reporta calandra, buscar pedido y avanzarlo a "llego-impresion"
+        // PDF en Drive detectado: marca el pedido como "PDF listo" y, si ya hay WT, avanza a enviado-calandra.
+        // Acepta múltiples archivos del mismo equipo (Camilo 1.pdf, Camilo 2.pdf, ...).
         let pedidoAutmovido = null;
-        if (equipo) {
-           const eqTarget = String(equipo).toLowerCase().trim();
+        const refMatch = equipo || archivo;
+        if (refMatch) {
            const pedidos = leerPedidos();
-           // Buscar pedido activo que coincida vagamente con el nombre del equipo y esté en diseño o confirmado
            const pd = pedidos.find(p => {
-               if (p.estado === 'llego-impresion' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
-               const eqP = (p.equipo || '').toLowerCase().trim();
-               // eqTarget puede tener "Galaktiturkos 1.50m", validamos si se incluye
-               return eqP && (eqTarget.includes(eqP) || eqP.includes(eqTarget));
+               // Solo pedidos que aún no avanzaron
+               if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+               return nombresCoinciden(p.equipo, refMatch);
            });
 
            if (pd) {
-               console.log(`[auto-avance] Pedido #${pd.id} movido a 'llego-impresion' gracias a Calandra Drive.`);
-               pd.estado = 'llego-impresion';
-               pd.ultimoMovimiento = new Date().toISOString();
-               // También guardar el diseñador si viene
+               if (!pd.pdfDriveListo) {
+                   pd.pdfDriveListo = true;
+                   pd.fechaPdfDrive = new Date().toISOString();
+                   pd.ultimoMovimiento = new Date().toISOString();
+                   console.log(`[drive-pdf] #${pd.id} marcado pdfDriveListo (archivo=${archivo})`);
+               }
                if (disenador && !pd.disenador) pd.disenador = disenador;
+               // Si WT ya llegó antes, avanzar
+               if (evaluarPasoCalandra(pd)) pedidoAutmovido = pd.id;
                const nId = leerNextId();
                guardarPedidos(pedidos, nId);
-               pedidoAutmovido = pd.id;
            }
         }
 
@@ -1058,28 +1093,26 @@ http.createServer((req, res) => {
         fs.mkdirSync(path.dirname(WT_FILE), { recursive: true });
         fs.writeFileSync(WT_FILE, JSON.stringify(registros, null, 2));
 
-        // 🔥 HIPER-AUTOMATIZACIÓN: Si N8N reporta WeTransfer Descargado, buscar pedido y avanzar a "enviado-final"
+        // Correo WeTransfer detectado: marca el pedido como "WT listo" y, si ya hay PDF, avanza a enviado-calandra.
         let pedidoAutmovido = null;
-        if ((tipo === 'enviado' || tipo === 'descargado') && archivo) {
-           const archivoTarget = String(archivo).toLowerCase().trim();
-           // A veces el archivo viene como "Galaktiturkos.pdf", tratamos de extraer la base
-           const baseName = archivoTarget.replace('.pdf', '').trim();
-           
+        const refMatchWT = equipo || archivo;
+        if ((tipo === 'enviado' || tipo === 'descargado') && refMatchWT) {
            const pedidos = leerPedidos();
            const pd = pedidos.find(p => {
-               if (p.estado === 'enviado-calandra' || p.estado === 'llego-impresion' || p.estado === 'calidad' || p.estado === 'costura' || p.estado === 'listo' || p.estado === 'enviado-final') return false;
-               const eqP = (p.equipo || '').toLowerCase().trim();
-               // Extra check to see if the filename includes the team name
-               return eqP && (baseName.includes(eqP) || eqP.includes(baseName));
+               if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+               return nombresCoinciden(p.equipo, refMatchWT);
            });
 
            if (pd) {
-               console.log(`[auto-avance] Pedido #${pd.id} movido a 'enviado-calandra' gracias a WT ${tipo}.`);
-               pd.estado = 'enviado-calandra';
-               pd.ultimoMovimiento = new Date().toISOString();
+               if (!pd.wtListo) {
+                   pd.wtListo = true;
+                   pd.fechaWt = new Date().toISOString();
+                   pd.ultimoMovimiento = new Date().toISOString();
+                   console.log(`[wetransfer] #${pd.id} marcado wtListo (archivo=${archivo})`);
+               }
+               if (evaluarPasoCalandra(pd)) pedidoAutmovido = pd.id;
                const nId = leerNextId();
                guardarPedidos(pedidos, nId);
-               pedidoAutmovido = pd.id;
            }
         }
 

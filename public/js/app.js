@@ -47,8 +47,34 @@ const ESTADO_BADGE = {
 // Servidor es fuente única de verdad. localStorage = cache de respaldo offline.
 let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
-// eliminadosLocales DEPRECADO — DELETE va directo al servidor y todos los dispositivos lo ven
-const eliminadosLocales = new Set();
+// eliminadosLocales: ids borrados recientemente. Se persiste con TTL para
+// evitar que el merge del servidor reviva un pedido recién eliminado.
+const ELIMINADOS_TTL_MS = 10 * 60 * 1000; // 10 min
+function _leerEliminados() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('ws_eliminados') || '{}');
+    const ahora = Date.now();
+    const limpio = {};
+    Object.entries(raw).forEach(([id, ts]) => {
+      if (ahora - ts < ELIMINADOS_TTL_MS) limpio[id] = ts;
+    });
+    return limpio;
+  } catch { return {}; }
+}
+let _eliminadosMap = _leerEliminados();
+const eliminadosLocales = {
+  has(id) { return Object.prototype.hasOwnProperty.call(_eliminadosMap, String(id)); },
+  add(id) {
+    _eliminadosMap[String(id)] = Date.now();
+    localStorage.setItem('ws_eliminados', JSON.stringify(_eliminadosMap));
+  },
+  delete(id) {
+    delete _eliminadosMap[String(id)];
+    localStorage.setItem('ws_eliminados', JSON.stringify(_eliminadosMap));
+  },
+  values() { return Object.keys(_eliminadosMap).map(n => parseInt(n, 10)); },
+  [Symbol.iterator]() { return this.values()[Symbol.iterator](); }
+};
 let modalCompletarId = null;
 let tipoNuevo = 'cotizar';
 let calandraRegistros = JSON.parse(localStorage.getItem('ws_calandra') || '[]');
@@ -476,14 +502,15 @@ function irAlPedido(id) {
   showSection(seccion, navEl);
 }
 
-function eliminarPedidoBandeja(id, event) {
+async function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
+  // Marcar como eliminado ANTES del DELETE para que el merge del POST no lo reviva
+  eliminadosLocales.add(id);
   pedidos = pedidos.filter(x => x.id !== id);
-  // El servidor es fuente única — DELETE se replica a todos los dispositivos
-  fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
-  guardar();
   render();
+  try { await fetch(`/api/pedidos/${id}`, { method: 'DELETE' }); } catch {}
+  guardar();
   toast(`Pedido #${id} eliminado`, 'info');
 }
 
@@ -930,7 +957,7 @@ function llegoFaltante(id) {
   toast(`#${id} → Costura (faltante llegó)`, 'success');
 }
 
-function eliminarPedido(id) {
+async function eliminarPedido(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
   if (p.estado !== 'enviado-final') {
@@ -938,11 +965,11 @@ function eliminarPedido(id) {
     return;
   }
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
+  eliminadosLocales.add(id);
   pedidos = pedidos.filter(x => x.id !== id);
-  // El servidor es fuente única — DELETE se replica a todos los dispositivos
-  fetch(`/api/pedidos/${id}`, { method: 'DELETE' }).catch(() => {});
-  guardar();
   render();
+  try { await fetch(`/api/pedidos/${id}`, { method: 'DELETE' }); } catch {}
+  guardar();
   toast(`Pedido #${id} eliminado`, 'info');
 }
 
@@ -1597,25 +1624,24 @@ function syncConServidor(silencioso = false) {
 
       const todosIds = new Set([...mapaServer.keys(), ...mapaLocal.keys()]);
       todosIds.forEach(id => {
+        // Si fue eliminado recientemente en este dispositivo, ignorar lo que diga el server
+        if (eliminadosLocales.has(id)) return;
         const s = mapaServer.get(id);
         const l = mapaLocal.get(id);
         if (s && l) {
           const tS = s.ultimoMovimiento ? new Date(s.ultimoMovimiento).getTime() : 0;
           const tL = l.ultimoMovimiento ? new Date(l.ultimoMovimiento).getTime() : 0;
-          
+
           if (tS > tL) {
-            // El servidor tiene una versión más nueva, la tomamos completa
             merged.push({ ...s });
           } else {
-            // La local es más nueva o igual, conservamos la local pero preservamos campos clave de webhook
-            merged.push({ ...l, 
-              notaWebhook: s.notaWebhook || l.notaWebhook, 
+            merged.push({ ...l,
+              notaWebhook: s.notaWebhook || l.notaWebhook,
               ultimaActWebhook: s.ultimaActWebhook || l.ultimaActWebhook
             });
           }
         } else if (s && !l) {
-          // Solo agregar si no fue eliminado explícitamente en este dispositivo
-          if (!eliminadosLocales.has(id)) merged.push(s);
+          merged.push(s);
         } else if (l) {
           merged.push(l);
         }
