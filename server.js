@@ -458,7 +458,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1e-drive-wt-y-fix-borrar', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-1f-fix-fromme-reaccion', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -553,10 +553,13 @@ http.createServer((req, res) => {
             const remoteJid = eventData.key?.remoteJid || ''; // chat donde se reaccionó
             const pushName = eventData.pushName || '';
 
-            // Solo procesar si la reacción la hizo el dueño del WhatsApp Business (Betty)
+            // Solo procesar si la reacción la hizo el dueño del WhatsApp Business (Betty/Ney/Wendy/Paola).
+            // Evolution a veces no rellena payload.sender en chats 1-a-1, así que también aceptamos key.fromMe=true
+            // que es la señal autoritativa de Baileys de "este mensaje/reacción salió desde mi propio WA".
             const numeroPropio = (process.env.WS_PROPIO_NUMERO || '573506974711');
             const senderNumero = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-            const esDeNuestroWA = senderNumero === numeroPropio;
+            const fromMe = eventData.key?.fromMe === true;
+            const esDeNuestroWA = fromMe || senderNumero === numeroPropio;
 
             // Mapeo de emoji → acción
             const MAPA_REACCIONES = {
@@ -679,7 +682,7 @@ http.createServer((req, res) => {
                 }
               }
             } else if (config && !esDeNuestroWA) {
-              console.log(`[reaccion] ${emoji} ignorada — no vino de nuestro WA`);
+              console.log(`[reaccion] ${emoji} ignorada — no vino de nuestro WA (sender=${senderJid} fromMe=${fromMe})`);
             }
           } catch (errReact) {
             console.error('[reaccion error]', errReact);
@@ -705,11 +708,13 @@ http.createServer((req, res) => {
 
             const numeroPropio = (process.env.WS_PROPIO_NUMERO || '573506974711');
             const senderNumero = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
-            const esDeNuestroWA = senderNumero === numeroPropio;
+            // fromMe es la señal autoritativa de Baileys: el sticker salió desde nuestro WA.
+            // payload.sender puede venir vacío en chats 1-a-1, así que no podemos depender solo de eso.
+            const esDeNuestroWA = fromMe === true || senderNumero === numeroPropio;
 
             const esStickerVenta = STICKERS_VENTA.includes(stickerHash);
 
-            if (esStickerVenta && esDeNuestroWA && fromMe === true) {
+            if (esStickerVenta && esDeNuestroWA) {
               // Sticker mandado DESDE el WA de ventas hacia un cliente
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
               const { nombre: nombreCliente, contactoChatwoot } = await resolverCliente(remoteJid, telefonoCliente, pushName);
