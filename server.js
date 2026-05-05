@@ -255,6 +255,22 @@ function nombresCoinciden(equipoPedido, archivo) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+// Mapeo de instancia Evolution → vendedora.
+// La instancia que envía el evento determina quién hizo la venta.
+// Las vendedoras-diseñadoras (Ney/Wendy/Paola) son su propia diseñadora;
+// solo Betty selecciona diseñador con dropdown en la app.
+const INSTANCIA_A_VENDEDORA = {
+  'ws-ventas': 'Betty',
+  'ws-ney':    'Ney',
+  'ws-wendy':  'Wendy',
+  'ws-paola':  'Paola',
+};
+const VENDEDORAS_DISENADORAS = new Set(['Ney', 'Wendy', 'Paola']);
+
+function vendedoraDeInstancia(instance) {
+  return INSTANCIA_A_VENDEDORA[instance] || 'Betty';
+}
+
 // Avanza un pedido de 'confirmado' → 'enviado-calandra' SOLO cuando
 // tenga ambas señales: PDF en Drive Y correo WeTransfer.
 function evaluarPasoCalandra(pedido) {
@@ -458,7 +474,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-1f-fix-fromme-reaccion', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-2-multi-vendedora', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -552,6 +568,8 @@ http.createServer((req, res) => {
             const senderJid = payload.sender || ''; // ej: 573506974711@s.whatsapp.net
             const remoteJid = eventData.key?.remoteJid || ''; // chat donde se reaccionó
             const pushName = eventData.pushName || '';
+            // Vendedora derivada de la instancia Evolution (ws-ventas → Betty, ws-ney → Ney, etc.)
+            const vendedora = vendedoraDeInstancia(payload.instance);
 
             // Solo procesar si la reacción la hizo el dueño del WhatsApp Business (Betty/Ney/Wendy/Paola).
             // Evolution a veces no rellena payload.sender en chats 1-a-1, así que también aceptamos key.fromMe=true
@@ -639,7 +657,7 @@ http.createServer((req, res) => {
                     console.log(`[reaccion] ${emoji} ignorada — pedido reciente #${pdReciente.id} (<1h)`);
                     resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
                   } else {
-                    resultadoApi = crearVentaInterna(config.tipoBandeja, 'Betty', telefonoCliente, null, nombreCliente);
+                    resultadoApi = crearVentaInterna(config.tipoBandeja, vendedora, telefonoCliente, null, nombreCliente);
                     if (resultadoApi.ok) {
                       const pp = leerPedidos();
                       const nuevoPd = pp.find(p => p.id === resultadoApi.id);
@@ -652,13 +670,13 @@ http.createServer((req, res) => {
                         guardarPedidos(pp, leerNextId());
                       }
                       accionRealizada = true;
-                      console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (${nombreCliente})`);
+                      console.log(`[reaccion] ${emoji} → cotización #${resultadoApi.id} creada (vendedora=${vendedora}, ${nombreCliente})`);
 
                       const msgTG =
                         `🟡 *Cotización nueva — DISEÑAR* #${resultadoApi.id}\n\n` +
                         `👤 *Cliente:* ${nombreCliente}\n` +
                         `📞 ${telBonito}\n` +
-                        `🛍️ *Vendedora:* Betty\n` +
+                        `🛍️ *Vendedora:* ${vendedora}\n` +
                         `📅 ${fechaCorta}\n\n` +
                         `⚠️ Hay que hacer diseño para este cliente\n` +
                         `👉 Revisar la conversación`;
@@ -668,7 +686,7 @@ http.createServer((req, res) => {
                         `🟡 Cotización nueva — DISEÑAR  #${resultadoApi.id}\n\n` +
                         `👤 Cliente: ${nombreCliente}\n` +
                         `📞 ${telBonito}\n` +
-                        `🛍️ Vendedora: Betty\n` +
+                        `🛍️ Vendedora: ${vendedora}\n` +
                         `📅 ${fechaCorta}\n\n` +
                         `⚠️ Hay que hacer diseño para este cliente\n` +
                         `👉 Revisar la conversación`;
@@ -702,6 +720,8 @@ http.createServer((req, res) => {
             const remoteJid = eventData.key?.remoteJid || '';
             const fromMe = eventData.key?.fromMe;
             const pushName = eventData.pushName || '';
+            // Vendedora derivada de la instancia que envió el evento
+            const vendedora = vendedoraDeInstancia(payload.instance);
 
             // Mapa de stickers conocidos → acción
             const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim()).filter(Boolean);
@@ -740,8 +760,12 @@ http.createServer((req, res) => {
                   cotizacion.ultimoMovimiento = new Date().toISOString();
                   cotizacion.stickerVenta = stickerHash;
                   cotizacion.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+                  // Auto-asignar diseñador si la vendedora también diseña (Ney/Wendy/Paola)
+                  if (VENDEDORAS_DISENADORAS.has(vendedora) && !cotizacion.disenadorAsignado) {
+                    cotizacion.disenadorAsignado = vendedora;
+                  }
                   guardarPedidos(pedidos, leerNextId());
-                  console.log(`[sticker-venta] cotización #${cotizacion.id} → pedido confirmado (hacer-diseno) (${nombreCliente})`);
+                  console.log(`[sticker-venta] cotización #${cotizacion.id} → hacer-diseno (vendedora=${vendedora}, dis=${cotizacion.disenadorAsignado||'-'}) (${nombreCliente})`);
                   resultadoApi = { ok: true, accion: 'avanzado', id: cotizacion.id };
                   accionRealizada = true;
                 } else {
@@ -759,7 +783,7 @@ http.createServer((req, res) => {
                     console.log(`[sticker-venta] ignorado — pedido #${pdReciente.id} reciente del mismo cliente`);
                     resultadoApi = { ok: true, duplicado: true, idExistente: pdReciente.id };
                   } else {
-                    resultadoApi = crearVentaInterna('pedido', 'Betty', telefonoCliente, null, nombreCliente);
+                    resultadoApi = crearVentaInterna('pedido', vendedora, telefonoCliente, null, nombreCliente);
                     if (resultadoApi.ok) {
                       const pp = leerPedidos();
                       const nuevoPd = pp.find(p => p.id === resultadoApi.id);
@@ -770,10 +794,14 @@ http.createServer((req, res) => {
                         nuevoPd.stickerVenta = stickerHash;
                         nuevoPd.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
                         if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
+                        // Auto-asignar diseñador si la vendedora también diseña
+                        if (VENDEDORAS_DISENADORAS.has(vendedora)) {
+                          nuevoPd.disenadorAsignado = vendedora;
+                        }
                         guardarPedidos(pp, leerNextId());
                       }
                       accionRealizada = true;
-                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en hacer-diseno (${nombreCliente})`);
+                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en hacer-diseno (vendedora=${vendedora}, ${nombreCliente})`);
                     }
                   }
                 }
@@ -784,22 +812,28 @@ http.createServer((req, res) => {
                   const telBonito = telefonoCliente.startsWith('57') ? `+${telefonoCliente.slice(0,2)} ${telefonoCliente.slice(2,5)} ${telefonoCliente.slice(5,8)} ${telefonoCliente.slice(8)}` : telefonoCliente;
                   const tipoMsg = (resultadoApi.accion === 'avanzado') ? 'Cotización CONFIRMADA' : 'Venta nueva (sin cotización previa)';
 
+                  // Si la vendedora se auto-asignó como diseñadora, lo mostramos en el mensaje
+                  const lineaDis = VENDEDORAS_DISENADORAS.has(vendedora)
+                    ? `\n🎨 *Diseñadora:* ${vendedora}` : '';
+
                   const msgTG =
                     `💰 *VENTA CONFIRMADA* #${resultadoApi.id}\n\n` +
                     `${tipoMsg === 'Cotización CONFIRMADA' ? '✅ El cliente ya pagó' : '✅ Cliente pagó directo'}\n\n` +
                     `👤 *Cliente:* ${nombreCliente}\n` +
                     `📞 ${telBonito}\n` +
-                    `🛍️ *Vendedora:* Betty\n` +
+                    `🛍️ *Vendedora:* ${vendedora}${lineaDis}\n` +
                     `📅 ${fechaCorta}\n\n` +
                     `🎨 Pedido en *Hacer diseño* — diseñador a trabajar`;
                   notificarTelegram(msgTG).catch(()=>{});
 
+                  const lineaDisWA = VENDEDORAS_DISENADORAS.has(vendedora)
+                    ? `\n🎨 Diseñadora: ${vendedora}` : '';
                   const msgWA =
                     `💰 VENTA CONFIRMADA  #${resultadoApi.id}\n\n` +
                     `✅ ${tipoMsg === 'Cotización CONFIRMADA' ? 'El cliente ya pagó' : 'Cliente pagó directo'}\n\n` +
                     `👤 Cliente: ${nombreCliente}\n` +
                     `📞 ${telBonito}\n` +
-                    `🛍️ Vendedora: Betty\n` +
+                    `🛍️ Vendedora: ${vendedora}${lineaDisWA}\n` +
                     `📅 ${fechaCorta}\n\n` +
                     `🎨 Pedido en Hacer diseño — diseñador a trabajar`;
                   notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
