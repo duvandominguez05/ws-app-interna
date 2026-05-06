@@ -1219,33 +1219,61 @@ http.createServer((req, res) => {
     // Solo últimos 14 días
     const haceCatorce = Date.now() - 14*24*60*60*1000;
 
+    // Pre-calcular pedidos activos con sus claves limpias (alias, equipo limpio, cliente limpio)
+    // para evitar O(N×M) — antes era ~5s con miles de registros.
+    const ESTADOS_CERRADOS = new Set(['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']);
+    const pedidosActivosClaves = pedidosCur
+      .filter(p => !ESTADOS_CERRADOS.has(p.estado))
+      .map(p => {
+        const claves = new Set();
+        if (Array.isArray(p.archivosAlias)) p.archivosAlias.forEach(a => { if (a) claves.add(a); });
+        const eq = nombreLimpio(p.equipo);
+        if (eq) claves.add(eq);
+        const cl = nombreLimpio(p.cliente);
+        if (cl) claves.add(cl);
+        return claves;
+      });
+
+    function tieneMatch(archivo, equipoHint) {
+      const ref = nombreLimpio(equipoHint || archivo);
+      if (!ref) return false;
+      for (const claves of pedidosActivosClaves) {
+        for (const k of claves) {
+          if (k === ref || k.includes(ref) || ref.includes(k)) return true;
+        }
+      }
+      return false;
+    }
+
     const items = [];
 
-    // Drive: huérfano = no matchea con NINGÚN pedido activo
-    calandra.forEach(r => {
-      if (ignDrive.has(String(r.id))) return;
+    // Drive (filtramos por fecha primero, después matching)
+    const driveRecientes = calandra.filter(r => {
+      if (ignDrive.has(String(r.id))) return false;
       const ts = r.modifiedTime || r.createdTime || (r.fecha ? new Date(r.fecha).toISOString() : null);
       const ms = ts ? new Date(ts).getTime() : Date.now();
-      if (ms < haceCatorce) return;
-      const match = buscarPedidoPorArchivo(pedidosCur, r.archivo, r.equipo);
-      if (!match) {
+      return ms >= haceCatorce;
+    });
+    driveRecientes.forEach(r => {
+      if (!tieneMatch(r.archivo, r.equipo)) {
         items.push({
           tipo: 'drive',
           id: r.id,
           archivo: r.archivo || '',
           equipo: r.equipo || '',
-          ts,
+          ts: r.modifiedTime || r.createdTime || r.fecha || null,
         });
       }
     });
 
-    // WT: huérfano = no matchea con NINGÚN pedido activo
-    wt.forEach(r => {
-      if (ignWt.has(String(r.id))) return;
+    // WT
+    const wtRecientes = wt.filter(r => {
+      if (ignWt.has(String(r.id))) return false;
       const ms = r.ts ? new Date(r.ts).getTime() : Date.now();
-      if (ms < haceCatorce) return;
-      const match = buscarPedidoPorArchivo(pedidosCur, r.archivo, r.equipo);
-      if (!match) {
+      return ms >= haceCatorce;
+    });
+    wtRecientes.forEach(r => {
+      if (!tieneMatch(r.archivo, r.equipo)) {
         items.push({
           tipo: 'wt',
           id: r.id,
@@ -1257,7 +1285,8 @@ http.createServer((req, res) => {
     });
 
     items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-    return json(res, 200, { items, total: items.length });
+    // Limitar a 100 para no saturar el front
+    return json(res, 200, { items: items.slice(0, 100), total: items.length });
   }
 
   // ── POST /api/pdfs-huerfanos/vincular ──
