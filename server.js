@@ -1227,11 +1227,28 @@ http.createServer((req, res) => {
       const haceSiete = ahoraMs - 7 * 24 * 60 * 60 * 1000;
 
       // Pre-filtrar por fecha + ignorados ANTES de cargar pedidos (más liviano).
+      // Helper: parse fecha tolerante (acepta ISO o "d/m/aaaa" o null).
+      function parseFecha(r) {
+        if (r.modifiedTime) { const t = new Date(r.modifiedTime).getTime(); if (!isNaN(t)) return t; }
+        if (r.createdTime)  { const t = new Date(r.createdTime).getTime();  if (!isNaN(t)) return t; }
+        if (r.fecha) {
+          // Intenta "d/m/aaaa" colombiano
+          const m = String(r.fecha).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (m) {
+            const [_, d, mo, y] = m;
+            const t = new Date(parseInt(y), parseInt(mo)-1, parseInt(d)).getTime();
+            if (!isNaN(t)) return t;
+          }
+          // Intenta ISO
+          const t = new Date(r.fecha).getTime();
+          if (!isNaN(t)) return t;
+        }
+        return null;
+      }
       const driveRecientes = calandra.filter(r => {
         if (ignDrive.has(String(r.id))) return false;
-        const ts = r.modifiedTime || r.createdTime || (r.fecha ? new Date(r.fecha).toISOString() : null);
-        if (!ts) return false;
-        return new Date(ts).getTime() >= haceSiete;
+        const t = parseFecha(r);
+        return t !== null && t >= haceSiete;
       });
       const wtRecientes = wt.filter(r => {
         if (ignWt.has(String(r.id))) return false;
@@ -1278,12 +1295,13 @@ http.createServer((req, res) => {
       for (const r of driveRecientes) {
         if (items.length >= 50) break;
         if (!tieneMatch(r.archivo, r.equipo)) {
+          const t = parseFecha(r);
           items.push({
             tipo: 'drive',
             id: r.id,
             archivo: r.archivo || '',
             equipo: r.equipo || '',
-            ts: r.modifiedTime || r.createdTime || r.fecha || null,
+            ts: t ? new Date(t).toISOString() : null,
           });
         }
       }
