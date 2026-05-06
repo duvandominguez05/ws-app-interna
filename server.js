@@ -259,16 +259,23 @@ function nombresCoinciden(equipoPedido, archivo) {
 // La instancia que envía el evento determina quién hizo la venta.
 // Las vendedoras-diseñadoras (Ney/Wendy/Paola) son su propia diseñadora;
 // solo Betty selecciona diseñador con dropdown en la app.
+// Nota: aceptamos variantes con espacio o guión porque algunas instancias
+// quedaron creadas con espacio en Evolution (ej: "ws wendy" en vez de "ws-wendy").
 const INSTANCIA_A_VENDEDORA = {
   'ws-ventas': 'Betty',
   'ws-ney':    'Ney',
   'ws-wendy':  'Wendy',
+  'ws wendy':  'Wendy',
   'ws-paola':  'Paola',
+  'ws paola':  'Paola',
 };
 const VENDEDORAS_DISENADORAS = new Set(['Ney', 'Wendy', 'Paola']);
 
 function vendedoraDeInstancia(instance) {
-  return INSTANCIA_A_VENDEDORA[instance] || 'Betty';
+  if (!instance) return 'Betty';
+  // Normalizar: minúsculas + reemplazar espacios/guiones bajos por guión
+  const norm = String(instance).toLowerCase().replace(/[\s_]+/g, '-');
+  return INSTANCIA_A_VENDEDORA[instance] || INSTANCIA_A_VENDEDORA[norm] || 'Betty';
 }
 
 // Avanza un pedido de 'confirmado' → 'enviado-calandra' SOLO cuando
