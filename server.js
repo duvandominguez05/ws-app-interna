@@ -255,6 +255,33 @@ function nombresCoinciden(equipoPedido, archivo) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+// Busca un pedido cuyo equipo, cliente o alias coincida con el archivo.
+// pedido.archivosAlias es un array de nombres limpios aprendidos por vinculaciones manuales.
+function buscarPedidoPorArchivo(pedidos, archivo, equipoHint) {
+  const ref = equipoHint || archivo;
+  const refLimpio = nombreLimpio(ref);
+  if (!refLimpio) return null;
+  // 1) Coincidencia con alias guardado (más fuerte: aprendido manualmente)
+  let pd = pedidos.find(p => {
+    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    const aliases = Array.isArray(p.archivosAlias) ? p.archivosAlias : [];
+    return aliases.some(a => a === refLimpio || a.includes(refLimpio) || refLimpio.includes(a));
+  });
+  if (pd) return pd;
+  // 2) Coincidencia con equipo
+  pd = pedidos.find(p => {
+    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    return nombresCoinciden(p.equipo, ref);
+  });
+  if (pd) return pd;
+  // 3) Coincidencia con cliente (a veces el archivo se llama como el cliente, no como el equipo)
+  pd = pedidos.find(p => {
+    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    return p.cliente && nombresCoinciden(p.cliente, ref);
+  });
+  return pd || null;
+}
+
 // Mapeo de instancia Evolution → vendedora.
 // La instancia que envía el evento determina quién hizo la venta.
 // Las vendedoras-diseñadoras (Ney/Wendy/Paola) son su propia diseñadora;
@@ -481,7 +508,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-2-multi-vendedora', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-3-torre-control-pdfs-huerfanos', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -994,14 +1021,9 @@ http.createServer((req, res) => {
         // PDF en Drive detectado: marca el pedido como "PDF listo" y, si ya hay WT, avanza a enviado-calandra.
         // Acepta múltiples archivos del mismo equipo (Camilo 1.pdf, Camilo 2.pdf, ...).
         let pedidoAutmovido = null;
-        const refMatch = equipo || archivo;
-        if (refMatch) {
+        if (equipo || archivo) {
            const pedidos = leerPedidos();
-           const pd = pedidos.find(p => {
-               // Solo pedidos que aún no avanzaron
-               if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
-               return nombresCoinciden(p.equipo, refMatch);
-           });
+           const pd = buscarPedidoPorArchivo(pedidos, archivo, equipo);
 
            if (pd) {
                if (!pd.pdfDriveListo) {
@@ -1141,13 +1163,9 @@ http.createServer((req, res) => {
 
         // Correo WeTransfer detectado: marca el pedido como "WT listo" y, si ya hay PDF, avanza a enviado-calandra.
         let pedidoAutmovido = null;
-        const refMatchWT = equipo || archivo;
-        if ((tipo === 'enviado' || tipo === 'descargado') && refMatchWT) {
+        if ((tipo === 'enviado' || tipo === 'descargado') && (equipo || archivo)) {
            const pedidos = leerPedidos();
-           const pd = pedidos.find(p => {
-               if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
-               return nombresCoinciden(p.equipo, refMatchWT);
-           });
+           const pd = buscarPedidoPorArchivo(pedidos, archivo, equipo);
 
            if (pd) {
                if (!pd.wtListo) {
@@ -1181,6 +1199,138 @@ http.createServer((req, res) => {
         registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
     } catch {}
     return json(res, 200, { registros });
+  }
+
+  // ── GET /api/pdfs-huerfanos — archivos Drive/WT que NO matchean con pedidos ──
+  if (req.method === 'GET' && req.url === '/api/pdfs-huerfanos') {
+    const CAL_FILE  = path.join(__dirname, 'data', 'calandra.json');
+    const WT_FILE   = path.join(__dirname, 'data', 'wetransfer.json');
+    const IGN_FILE  = path.join(__dirname, 'data', 'pdfs-ignorados.json');
+
+    let calandra = [], wt = [], ignorados = { drive: [], wt: [] };
+    try { if (fs.existsSync(CAL_FILE)) calandra = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')); } catch {}
+    try { if (fs.existsSync(WT_FILE)) wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8')); } catch {}
+    try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
+
+    const pedidosCur = leerPedidos();
+    const ignDrive = new Set((ignorados.drive || []).map(String));
+    const ignWt    = new Set((ignorados.wt    || []).map(String));
+
+    // Solo últimos 14 días
+    const haceCatorce = Date.now() - 14*24*60*60*1000;
+
+    const items = [];
+
+    // Drive: huérfano = no matchea con NINGÚN pedido activo
+    calandra.forEach(r => {
+      if (ignDrive.has(String(r.id))) return;
+      const ts = r.modifiedTime || r.createdTime || (r.fecha ? new Date(r.fecha).toISOString() : null);
+      const ms = ts ? new Date(ts).getTime() : Date.now();
+      if (ms < haceCatorce) return;
+      const match = buscarPedidoPorArchivo(pedidosCur, r.archivo, r.equipo);
+      if (!match) {
+        items.push({
+          tipo: 'drive',
+          id: r.id,
+          archivo: r.archivo || '',
+          equipo: r.equipo || '',
+          ts,
+        });
+      }
+    });
+
+    // WT: huérfano = no matchea con NINGÚN pedido activo
+    wt.forEach(r => {
+      if (ignWt.has(String(r.id))) return;
+      const ms = r.ts ? new Date(r.ts).getTime() : Date.now();
+      if (ms < haceCatorce) return;
+      const match = buscarPedidoPorArchivo(pedidosCur, r.archivo, r.equipo);
+      if (!match) {
+        items.push({
+          tipo: 'wt',
+          id: r.id,
+          archivo: r.archivo || '',
+          equipo: r.equipo || '',
+          ts: r.ts,
+        });
+      }
+    });
+
+    items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+    return json(res, 200, { items, total: items.length });
+  }
+
+  // ── POST /api/pdfs-huerfanos/vincular ──
+  // Body: { tipo: 'drive'|'wt', idItem, archivo, pedidoId }
+  // Marca el flag correcto en el pedido + guarda alias para futuros matches automáticos.
+  if (req.method === 'POST' && req.url === '/api/pdfs-huerfanos/vincular') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { tipo, archivo, pedidoId } = JSON.parse(body);
+        if (!tipo || !pedidoId) return json(res, 400, { error: 'tipo y pedidoId requeridos' });
+        const pedidos = leerPedidos();
+        const pd = pedidos.find(p => p.id === parseInt(pedidoId));
+        if (!pd) return json(res, 404, { error: 'pedido no encontrado' });
+
+        // Guardar alias del archivo limpio (para que próximos archivos parecidos hagan match auto)
+        const alias = nombreLimpio(archivo);
+        if (alias) {
+          if (!Array.isArray(pd.archivosAlias)) pd.archivosAlias = [];
+          if (!pd.archivosAlias.includes(alias)) pd.archivosAlias.push(alias);
+        }
+
+        // Marcar flag según tipo
+        if (tipo === 'drive') {
+          if (!pd.pdfDriveListo) {
+            pd.pdfDriveListo = true;
+            pd.fechaPdfDrive = new Date().toISOString();
+          }
+        } else if (tipo === 'wt') {
+          if (!pd.wtListo) {
+            pd.wtListo = true;
+            pd.fechaWt = new Date().toISOString();
+          }
+        }
+        pd.ultimoMovimiento = new Date().toISOString();
+
+        // Si ahora ambos están listos, avanzar
+        const avanzo = evaluarPasoCalandra(pd);
+        guardarPedidos(pedidos, leerNextId());
+        console.log(`[huerfano] vinculado ${tipo} archivo="${archivo}" → pedido #${pd.id} (alias="${alias}", avanzo=${avanzo})`);
+        return json(res, 200, { ok: true, pedidoId: pd.id, alias, avanzo });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido: ' + e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/pdfs-huerfanos/ignorar ──
+  if (req.method === 'POST' && req.url === '/api/pdfs-huerfanos/ignorar') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { tipo, idItem } = JSON.parse(body);
+        if (!tipo || !idItem) return json(res, 400, { error: 'tipo e idItem requeridos' });
+        const IGN_FILE = path.join(__dirname, 'data', 'pdfs-ignorados.json');
+        let ignorados = { drive: [], wt: [] };
+        try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
+        if (tipo === 'drive') {
+          if (!ignorados.drive.includes(String(idItem))) ignorados.drive.push(String(idItem));
+        } else if (tipo === 'wt') {
+          if (!ignorados.wt.includes(String(idItem))) ignorados.wt.push(String(idItem));
+        }
+        fs.mkdirSync(path.dirname(IGN_FILE), { recursive: true });
+        fs.writeFileSync(IGN_FILE, JSON.stringify(ignorados, null, 2));
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido' });
+      }
+    });
+    return;
   }
 
   // ── GET /api/docs/nums — devuelve nextCot, nextFac e historial ──

@@ -125,6 +125,8 @@ function guardar() {
 ════════════════════════════════════════════════════════════════ */
 const HEADER_INFO = {
   'vista-general': { icon: '📊', title: 'Vista general' },
+  'torre':         { icon: '🗼', title: 'Torre de Control' },
+  'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
   'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
@@ -3293,3 +3295,238 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   // Por defecto ya muestra Vista General (active en HTML)
 });
+
+/* ════════════════════════════════════════════════════════════════
+   TORRE DE CONTROL — vista única con KPIs, ventas por vendedora y alertas
+════════════════════════════════════════════════════════════════ */
+
+const VENDEDORAS_COLORS = {
+  'Betty':    '#fb923c',
+  'Ney':      '#34d399',
+  'Wendy':    '#60a5fa',
+  'Paola':    '#f472b6',
+  'Graciela': '#c4b5fd'
+};
+
+function _kpiCard(label, value, color, sub) {
+  return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;min-width:130px;flex:1;">' +
+    '<div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">' + esc(label) + '</div>' +
+    '<div style="font-family:Outfit,sans-serif;font-size:2.2rem;font-weight:800;color:' + color + ';line-height:1;">' + value + '</div>' +
+    (sub ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">' + sub + '</div>' : '') +
+    '</div>';
+}
+
+function _semaforoCard(p, motivo, nivel) {
+  const colorBg = nivel === 'rojo' ? 'rgba(239,68,68,0.10)' : 'rgba(245,158,11,0.10)';
+  const colorBorder = nivel === 'rojo' ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)';
+  const colorText = nivel === 'rojo' ? '#fca5a5' : '#fbbf24';
+  return '<div onclick="irAlPedido(' + p.id + ')" style="background:' + colorBg + ';border:1px solid ' + colorBorder + ';border-radius:8px;padding:10px 14px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;">' +
+    '<div><div style="font-weight:600;font-size:0.88rem;">#' + p.id + ' ' + esc(p.equipo || p.telefono || 'Sin equipo') + '</div>' +
+    '<div style="font-size:0.72rem;color:var(--text-muted);">' + esc(p.vendedora || '—') + ' · ' + (ESTADO_LABELS[p.estado] || p.estado) + '</div></div>' +
+    '<div style="font-size:0.74rem;color:' + colorText + ';font-weight:600;text-align:right;flex-shrink:0;">' + motivo + '</div>' +
+    '</div>';
+}
+
+function _calcularAlertas() {
+  const alertas = [];
+  const ahora = Date.now();
+  (pedidos || []).forEach(p => {
+    if (p.estado === 'enviado-final') return;
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    const horas = (ahora - t) / (1000 * 60 * 60);
+    if (p.estado === 'hacer-diseno' && horas > 24) {
+      alertas.push({ p, motivo: Math.floor(horas) + 'h sin avanzar', nivel: horas > 48 ? 'rojo' : 'amarillo' });
+    } else if (p.estado === 'confirmado' && horas > 48) {
+      alertas.push({ p, motivo: Math.floor(horas) + 'h esperando PDF/WT', nivel: 'rojo' });
+    } else if (p.estado === 'enviado-calandra' && horas > 72) {
+      alertas.push({ p, motivo: Math.floor(horas) + 'h en calandra', nivel: 'rojo' });
+    } else if ((p.estado === 'hacer-diseno' || p.estado === 'confirmado') && !p.disenadorAsignado && horas > 12) {
+      alertas.push({ p, motivo: Math.floor(horas) + 'h sin diseñador', nivel: 'amarillo' });
+    }
+  });
+  alertas.sort((a, b) => (a.nivel === 'rojo' ? -1 : 1) - (b.nivel === 'rojo' ? -1 : 1));
+  return alertas;
+}
+
+function renderTorreControl() {
+  const cont = document.getElementById('torre-content');
+  if (!cont) return;
+
+  const todos = pedidos || [];
+  const activos = todos.filter(p => p.estado !== 'enviado-final');
+
+  const cnt = {
+    bandeja: activos.filter(p => p.estado === 'bandeja').length,
+    hacerDiseno: activos.filter(p => p.estado === 'hacer-diseno').length,
+    confirmado: activos.filter(p => p.estado === 'confirmado').length,
+    calandra: activos.filter(p => p.estado === 'enviado-calandra').length,
+    impresion: activos.filter(p => p.estado === 'llego-impresion').length,
+    calidad: activos.filter(p => p.estado === 'calidad').length,
+    costura: activos.filter(p => p.estado === 'costura').length,
+    listo: activos.filter(p => p.estado === 'listo').length,
+  };
+
+  const haceSemana = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const ventasSemana = {};
+  todos.forEach(p => {
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    if (t < haceSemana) return;
+    if (!['hacer-diseno', 'confirmado', 'enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo', 'enviado-final'].includes(p.estado)) return;
+    const v = p.vendedora || 'Sin asignar';
+    ventasSemana[v] = (ventasSemana[v] || 0) + 1;
+  });
+
+  const alertas = _calcularAlertas();
+
+  let html = '';
+  // KPIs
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">';
+  html += _kpiCard('Cotizaciones', cnt.bandeja, '#fde047', 'Sin pagar');
+  html += _kpiCard('Hacer Diseño', cnt.hacerDiseno, '#fb923c', 'Esperando arte');
+  html += _kpiCard('Confirmado', cnt.confirmado, '#a78bfa', 'Esperando PDF+WT');
+  html += _kpiCard('Calandra', cnt.calandra, '#67e8f9', 'En impresión');
+  html += _kpiCard('Producción', cnt.impresion + cnt.calidad + cnt.costura, '#34d399', 'Cortando/cosiendo');
+  html += _kpiCard('Listos', cnt.listo, '#22c55e', 'Para entregar');
+  html += '</div>';
+
+  // Ventas por vendedora
+  html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;margin-bottom:24px;">';
+  html += '<div style="font-family:Outfit,sans-serif;font-size:1rem;font-weight:700;margin-bottom:14px;">📈 Ventas esta semana (últimos 7 días)</div>';
+  const totalSem = Object.values(ventasSemana).reduce((s, x) => s + x, 0);
+  if (totalSem === 0) {
+    html += '<div style="color:var(--text-muted);font-size:0.85rem;">Sin ventas registradas en los últimos 7 días.</div>';
+  } else {
+    Object.entries(ventasSemana).sort((a, b) => b[1] - a[1]).forEach(([v, n]) => {
+      const color = VENDEDORAS_COLORS[v] || '#94a3b8';
+      const pct = Math.round(n / totalSem * 100);
+      html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
+        '<div style="min-width:90px;font-weight:600;color:' + color + ';">' + esc(v) + '</div>' +
+        '<div style="flex:1;height:14px;background:rgba(255,255,255,0.04);border-radius:7px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + color + ';opacity:0.8;"></div></div>' +
+        '<div style="font-family:Outfit,sans-serif;font-weight:700;color:' + color + ';min-width:60px;text-align:right;">' + n + ' <span style="font-size:0.7rem;opacity:0.6;">(' + pct + '%)</span></div>' +
+        '</div>';
+    });
+  }
+  html += '</div>';
+
+  // Alertas
+  html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+  html += '<div style="font-family:Outfit,sans-serif;font-size:1rem;font-weight:700;">🚨 Pedidos atascados</div>';
+  html += '<div style="font-size:0.78rem;color:var(--text-muted);">' + alertas.length + ' ' + (alertas.length === 1 ? 'alerta' : 'alertas') + '</div>';
+  html += '</div>';
+  if (alertas.length === 0) {
+    html += '<div style="color:#22c55e;font-size:0.88rem;">✅ Todo fluyendo bien — sin pedidos atascados.</div>';
+  } else {
+    alertas.forEach(a => { html += _semaforoCard(a.p, a.motivo, a.nivel); });
+  }
+  html += '</div>';
+
+  cont.innerHTML = html;
+
+  const badge = document.getElementById('badge-torre');
+  if (badge) badge.textContent = alertas.length;
+}
+
+// Refrescar badge de Torre cuando cambian los pedidos
+function _actualizarBadgeTorre() {
+  try {
+    const alertas = _calcularAlertas();
+    const badge = document.getElementById('badge-torre');
+    if (badge) badge.textContent = alertas.length;
+  } catch {}
+}
+
+/* ════════════════════════════════════════════════════════════════
+   PDFs SIN ASIGNAR — bandeja para vincular manualmente PDFs huérfanos
+════════════════════════════════════════════════════════════════ */
+
+async function renderPdfsHuerfanos() {
+  const cont = document.getElementById('huerfanos-content');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--text-muted);">Cargando...</div>';
+  try {
+    const r = await fetch('/api/pdfs-huerfanos');
+    if (!r.ok) throw new Error('servidor');
+    const data = await r.json();
+    const items = data.items || [];
+
+    const badge = document.getElementById('badge-huerfanos');
+    if (badge) badge.textContent = items.length;
+
+    if (!items.length) {
+      cont.innerHTML = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:18px;color:#86efac;">✅ No hay PDFs huérfanos. Todos los archivos llegados se asociaron correctamente con un pedido.</div>';
+      return;
+    }
+
+    const candidatos = pedidos.filter(p => ['hacer-diseno', 'confirmado', 'enviado-calandra'].includes(p.estado));
+    const opts = candidatos
+      .sort((a, b) => (b.ultimoMovimiento || '').localeCompare(a.ultimoMovimiento || ''))
+      .map(p => '<option value="' + p.id + '">#' + p.id + ' ' + esc(p.equipo || p.telefono || 'Sin equipo') + ' — ' + esc(p.vendedora || '') + ' (' + (ESTADO_LABELS[p.estado] || p.estado) + ')</option>')
+      .join('');
+
+    let html = '';
+    items.forEach(it => {
+      const fechaStr = it.ts ? new Date(it.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '';
+      const refKey = (it.id || it.archivo || '').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px;margin-bottom:10px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:10px;">' +
+        '<div><div style="font-weight:600;font-size:0.92rem;">' + (it.tipo === 'wt' ? '📨' : '📄') + ' ' + esc(it.archivo || 'Sin nombre') + '</div>' +
+        '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">' + (it.tipo === 'wt' ? 'WeTransfer' : 'Drive') + ' · ' + esc(fechaStr) + (it.equipo ? ' · equipo: "' + esc(it.equipo) + '"' : '') + '</div></div>' +
+        '<button onclick="ignorarHuerfano(\'' + it.tipo + '\',\'' + esc(it.id || it.archivo || '') + '\')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:4px 10px;font-size:0.72rem;cursor:pointer;">✕ Ignorar</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<select id="sel-' + it.tipo + '-' + refKey + '" class="form-input" style="flex:1;font-size:0.82rem;padding:6px 10px;">' +
+        '<option value="">— Vincular con pedido —</option>' + opts +
+        '</select>' +
+        '<button onclick="vincularHuerfano(\'' + it.tipo + '\',\'' + esc(it.id || it.archivo || '') + '\',\'' + esc(it.archivo || '') + '\',\'' + refKey + '\')" class="btn btn-success btn-sm">Vincular</button>' +
+        '</div></div>';
+    });
+    cont.innerHTML = html;
+  } catch (e) {
+    cont.innerHTML = '<div style="color:#fca5a5;">Error cargando huérfanos: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function vincularHuerfano(tipo, idItem, archivo, refKey) {
+  const sel = document.getElementById('sel-' + tipo + '-' + refKey);
+  if (!sel || !sel.value) { toast('Selecciona un pedido', 'error'); return; }
+  const pedidoId = parseInt(sel.value);
+  try {
+    const r = await fetch('/api/pdfs-huerfanos/vincular', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, idItem, archivo, pedidoId })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    toast('✅ Vinculado a #' + pedidoId, 'success');
+    renderPdfsHuerfanos();
+    setTimeout(() => { if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true); }, 500);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function ignorarHuerfano(tipo, idItem) {
+  if (!confirm('¿Ignorar este archivo? No volverá a aparecer en la lista.')) return;
+  try {
+    await fetch('/api/pdfs-huerfanos/ignorar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, idItem })
+    });
+    renderPdfsHuerfanos();
+  } catch {}
+}
+
+// Auto-refresh torre + huérfanos cada 30s si la sección está activa
+setInterval(() => {
+  const torreActive = document.getElementById('torre') && document.getElementById('torre').classList.contains('active');
+  if (torreActive) renderTorreControl();
+  const huerfActive = document.getElementById('pdfs-huerfanos') && document.getElementById('pdfs-huerfanos').classList.contains('active');
+  if (huerfActive) renderPdfsHuerfanos();
+  _actualizarBadgeTorre();
+}, 30000);
+
+_actualizarBadgeTorre();
