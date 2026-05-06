@@ -277,6 +277,7 @@
         <div style="display:flex; gap: 8px;">
            <button class="btn btn-orange btn-sm" onclick="abrirFormDoc('cotizacion'); showSection('cotizaciones', null);">🧾 Generar Cotización (PDF)</button>
            <button class="btn btn-success btn-sm" onclick="abrirFormDoc('factura'); showSection('cotizaciones', null);">📄 Generar Factura (PDF)</button>
+           <button class="btn btn-sm" onclick="limpiarBandejaVieja()" title="Borrar cotizaciones de más de 30 días" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;">🧹 Limpiar viejas (30d)</button>
         </div>
       </div>
       <div class="bandeja-cols">

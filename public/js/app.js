@@ -49,7 +49,9 @@ let pedidos = JSON.parse(localStorage.getItem('ws_pedidos3') || '[]');
 let nextId  = parseInt(localStorage.getItem('ws_nextId3') || '1');
 // eliminadosLocales: ids borrados recientemente. Se persiste con TTL para
 // evitar que el merge del servidor reviva un pedido recién eliminado.
-const ELIMINADOS_TTL_MS = 10 * 60 * 1000; // 10 min
+// 7 días para que aunque otro dispositivo (PC, celu) tarde en sincronizar
+// y vuelva a re-subir su cache vieja, no resucite el pedido borrado.
+const ELIMINADOS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
 function _leerEliminados() {
   try {
     const raw = JSON.parse(localStorage.getItem('ws_eliminados') || '{}');
@@ -502,6 +504,40 @@ function irAlPedido(id) {
   showSection(seccion, navEl);
 }
 
+// Limpieza masiva: borra cotizaciones (estado=bandeja) más viejas que N días.
+// Útil para el caso de pedidos zombies que vienen de antes del fix de eliminadosLocales.
+async function limpiarBandejaVieja(diasUmbral = 30) {
+  const ahora = Date.now();
+  const limite = ahora - (diasUmbral * 24 * 60 * 60 * 1000);
+  const candidatos = pedidos.filter(p => {
+    if (p.estado !== 'bandeja') return false;
+    if ((p.tipoBandeja || 'cotizar') !== 'cotizar') return false;
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t < limite;
+  });
+  if (!candidatos.length) {
+    toast(`No hay cotizaciones de más de ${diasUmbral} días para limpiar`, 'info');
+    return;
+  }
+  const lista = candidatos.slice(0, 5).map(p => `#${p.id} ${p.equipo || p.telefono || ''}`).join(', ');
+  const extras = candidatos.length > 5 ? ` y ${candidatos.length - 5} más` : '';
+  if (!confirm(`¿Borrar ${candidatos.length} cotización${candidatos.length>1?'es':''} viejas?\n\n${lista}${extras}\n\nSe eliminan en todos los dispositivos.`)) return;
+
+  const ids = candidatos.map(p => p.id);
+  ids.forEach(id => eliminadosLocales.add(id));
+  pedidos = pedidos.filter(p => !ids.includes(p.id));
+  render();
+  let okCount = 0;
+  for (const id of ids) {
+    try {
+      const r = await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
+      if (r.ok || r.status === 404) okCount++;
+    } catch {}
+  }
+  guardar();
+  toast(`🧹 ${okCount}/${ids.length} cotizaciones viejas eliminadas`, 'success');
+}
+
 async function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
   if (!confirm(`¿Eliminar pedido #${id}?`)) return;
@@ -509,9 +545,20 @@ async function eliminarPedidoBandeja(id, event) {
   eliminadosLocales.add(id);
   pedidos = pedidos.filter(x => x.id !== id);
   render();
-  try { await fetch(`/api/pedidos/${id}`, { method: 'DELETE' }); } catch {}
+  // Intentar DELETE con un retry si falla (red caída por un instante, etc.)
+  let serverOk = false;
+  for (let intento = 1; intento <= 2; intento++) {
+    try {
+      const r = await fetch(`/api/pedidos/${id}`, { method: 'DELETE' });
+      if (r.ok || r.status === 404) { serverOk = true; break; }
+    } catch {}
+  }
   guardar();
-  toast(`Pedido #${id} eliminado`, 'info');
+  if (serverOk) {
+    toast(`Pedido #${id} eliminado en todos los dispositivos`, 'success');
+  } else {
+    toast(`#${id} eliminado localmente — se sincronizará apenas vuelva la conexión`, 'info');
+  }
 }
 
 function renderBandejaPedidos(arr) {
