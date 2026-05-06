@@ -1201,92 +1201,114 @@ http.createServer((req, res) => {
     return json(res, 200, { registros });
   }
 
-  // ── GET /api/pdfs-huerfanos — archivos Drive/WT que NO matchean con pedidos ──
+  // ── GET /api/pdfs-huerfanos — archivos Drive/WT recientes sin pedido asociado ──
+  // Optimizado para no crashear con cientos de registros: cache 60s + ventana 7d + tope 50.
   if (req.method === 'GET' && req.url === '/api/pdfs-huerfanos') {
-    const CAL_FILE  = path.join(__dirname, 'data', 'calandra.json');
-    const WT_FILE   = path.join(__dirname, 'data', 'wetransfer.json');
-    const IGN_FILE  = path.join(__dirname, 'data', 'pdfs-ignorados.json');
+    // Cache simple: si tenemos respuesta de hace <60s, devolverla.
+    const ahoraMs = Date.now();
+    if (global._huerfanosCache && (ahoraMs - global._huerfanosCacheTs) < 60000) {
+      return json(res, 200, global._huerfanosCache);
+    }
 
-    let calandra = [], wt = [], ignorados = { drive: [], wt: [] };
-    try { if (fs.existsSync(CAL_FILE)) calandra = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')); } catch {}
-    try { if (fs.existsSync(WT_FILE)) wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8')); } catch {}
-    try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
+    try {
+      const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
+      const WT_FILE  = path.join(__dirname, 'data', 'wetransfer.json');
+      const IGN_FILE = path.join(__dirname, 'data', 'pdfs-ignorados.json');
 
-    const pedidosCur = leerPedidos();
-    const ignDrive = new Set((ignorados.drive || []).map(String));
-    const ignWt    = new Set((ignorados.wt    || []).map(String));
+      let calandra = [], wt = [], ignorados = { drive: [], wt: [] };
+      try { if (fs.existsSync(CAL_FILE)) calandra = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')); } catch {}
+      try { if (fs.existsSync(WT_FILE)) wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8')); } catch {}
+      try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
 
-    // Solo últimos 14 días
-    const haceCatorce = Date.now() - 14*24*60*60*1000;
+      const ignDrive = new Set((ignorados.drive || []).map(String));
+      const ignWt    = new Set((ignorados.wt    || []).map(String));
 
-    // Pre-calcular pedidos activos con sus claves limpias (alias, equipo limpio, cliente limpio)
-    // para evitar O(N×M) — antes era ~5s con miles de registros.
-    const ESTADOS_CERRADOS = new Set(['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']);
-    const pedidosActivosClaves = pedidosCur
-      .filter(p => !ESTADOS_CERRADOS.has(p.estado))
-      .map(p => {
-        const claves = new Set();
+      // Ventana 7 días
+      const haceSiete = ahoraMs - 7 * 24 * 60 * 60 * 1000;
+
+      // Pre-filtrar por fecha + ignorados ANTES de cargar pedidos (más liviano).
+      const driveRecientes = calandra.filter(r => {
+        if (ignDrive.has(String(r.id))) return false;
+        const ts = r.modifiedTime || r.createdTime || (r.fecha ? new Date(r.fecha).toISOString() : null);
+        if (!ts) return false;
+        return new Date(ts).getTime() >= haceSiete;
+      });
+      const wtRecientes = wt.filter(r => {
+        if (ignWt.has(String(r.id))) return false;
+        if (!r.ts) return false;
+        return new Date(r.ts).getTime() >= haceSiete;
+      });
+
+      // Si no hay nada reciente, respuesta rápida (sin tocar pedidos)
+      if (driveRecientes.length === 0 && wtRecientes.length === 0) {
+        const empty = { items: [], total: 0 };
+        global._huerfanosCache = empty;
+        global._huerfanosCacheTs = ahoraMs;
+        return json(res, 200, empty);
+      }
+
+      // Cargar pedidos solo si hay candidatos
+      const pedidosCur = leerPedidos();
+      const ESTADOS_CERRADOS = new Set(['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']);
+      const pedidosActivos = pedidosCur.filter(p => !ESTADOS_CERRADOS.has(p.estado));
+
+      // Build de claves planas (Set de strings) para lookup O(1) aprox
+      const claves = new Set();
+      pedidosActivos.forEach(p => {
         if (Array.isArray(p.archivosAlias)) p.archivosAlias.forEach(a => { if (a) claves.add(a); });
         const eq = nombreLimpio(p.equipo);
         if (eq) claves.add(eq);
         const cl = nombreLimpio(p.cliente);
         if (cl) claves.add(cl);
-        return claves;
       });
 
-    function tieneMatch(archivo, equipoHint) {
-      const ref = nombreLimpio(equipoHint || archivo);
-      if (!ref) return false;
-      for (const claves of pedidosActivosClaves) {
+      function tieneMatch(archivo, equipoHint) {
+        const ref = nombreLimpio(equipoHint || archivo);
+        if (!ref) return false;
+        if (claves.has(ref)) return true;
+        // Búsqueda parcial solo si es necesario
         for (const k of claves) {
-          if (k === ref || k.includes(ref) || ref.includes(k)) return true;
+          if (k.length < 3) continue; // evitar matches falsos por strings cortos
+          if (k.includes(ref) || ref.includes(k)) return true;
+        }
+        return false;
+      }
+
+      const items = [];
+      for (const r of driveRecientes) {
+        if (items.length >= 50) break;
+        if (!tieneMatch(r.archivo, r.equipo)) {
+          items.push({
+            tipo: 'drive',
+            id: r.id,
+            archivo: r.archivo || '',
+            equipo: r.equipo || '',
+            ts: r.modifiedTime || r.createdTime || r.fecha || null,
+          });
         }
       }
-      return false;
+      for (const r of wtRecientes) {
+        if (items.length >= 50) break;
+        if (!tieneMatch(r.archivo, r.equipo)) {
+          items.push({
+            tipo: 'wt',
+            id: r.id,
+            archivo: r.archivo || '',
+            equipo: r.equipo || '',
+            ts: r.ts,
+          });
+        }
+      }
+
+      items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+      const resp = { items, total: items.length };
+      global._huerfanosCache = resp;
+      global._huerfanosCacheTs = ahoraMs;
+      return json(res, 200, resp);
+    } catch (e) {
+      console.error('[huerfanos]', e.message);
+      return json(res, 500, { error: 'fallo procesando huérfanos', items: [], total: 0 });
     }
-
-    const items = [];
-
-    // Drive (filtramos por fecha primero, después matching)
-    const driveRecientes = calandra.filter(r => {
-      if (ignDrive.has(String(r.id))) return false;
-      const ts = r.modifiedTime || r.createdTime || (r.fecha ? new Date(r.fecha).toISOString() : null);
-      const ms = ts ? new Date(ts).getTime() : Date.now();
-      return ms >= haceCatorce;
-    });
-    driveRecientes.forEach(r => {
-      if (!tieneMatch(r.archivo, r.equipo)) {
-        items.push({
-          tipo: 'drive',
-          id: r.id,
-          archivo: r.archivo || '',
-          equipo: r.equipo || '',
-          ts: r.modifiedTime || r.createdTime || r.fecha || null,
-        });
-      }
-    });
-
-    // WT
-    const wtRecientes = wt.filter(r => {
-      if (ignWt.has(String(r.id))) return false;
-      const ms = r.ts ? new Date(r.ts).getTime() : Date.now();
-      return ms >= haceCatorce;
-    });
-    wtRecientes.forEach(r => {
-      if (!tieneMatch(r.archivo, r.equipo)) {
-        items.push({
-          tipo: 'wt',
-          id: r.id,
-          archivo: r.archivo || '',
-          equipo: r.equipo || '',
-          ts: r.ts,
-        });
-      }
-    });
-
-    items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-    // Limitar a 100 para no saturar el front
-    return json(res, 200, { items: items.slice(0, 100), total: items.length });
   }
 
   // ── POST /api/pdfs-huerfanos/vincular ──
@@ -1327,6 +1349,7 @@ http.createServer((req, res) => {
         // Si ahora ambos están listos, avanzar
         const avanzo = evaluarPasoCalandra(pd);
         guardarPedidos(pedidos, leerNextId());
+        global._huerfanosCache = null; // invalidar cache
         console.log(`[huerfano] vinculado ${tipo} archivo="${archivo}" → pedido #${pd.id} (alias="${alias}", avanzo=${avanzo})`);
         return json(res, 200, { ok: true, pedidoId: pd.id, alias, avanzo });
       } catch (e) {
@@ -1354,6 +1377,7 @@ http.createServer((req, res) => {
         }
         fs.mkdirSync(path.dirname(IGN_FILE), { recursive: true });
         fs.writeFileSync(IGN_FILE, JSON.stringify(ignorados, null, 2));
+        global._huerfanosCache = null; // invalidar cache
         return json(res, 200, { ok: true });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });

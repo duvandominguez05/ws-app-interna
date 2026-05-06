@@ -3520,13 +3520,12 @@ async function ignorarHuerfano(tipo, idItem) {
   } catch {}
 }
 
-// Auto-refresh torre + huérfanos cada 30s si la sección está activa
+// Auto-refresh: torre cada 60s (es lokal, no pesa). Huérfanos NO auto-refresh
+// porque ese endpoint es pesado y crashearía Railway. Usuario lo refresca manual.
 setInterval(() => {
   const torreActive = document.getElementById('torre') && document.getElementById('torre').classList.contains('active');
   if (torreActive) renderTorreControl();
-  const huerfActive = document.getElementById('pdfs-huerfanos') && document.getElementById('pdfs-huerfanos').classList.contains('active');
-  if (huerfActive) renderPdfsHuerfanos();
   _actualizarBadgeTorre();
-}, 30000);
+}, 60000);
 
 _actualizarBadgeTorre();
