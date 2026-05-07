@@ -189,7 +189,7 @@ Respuesta:`;
           { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Img } }
         ]
       }],
-      generationConfig: { temperature: 0, maxOutputTokens: 200 }
+      generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } }
     };
     const r = await fetch(url, {
       method: 'POST',
