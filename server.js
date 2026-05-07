@@ -631,28 +631,32 @@ http.createServer((req, res) => {
   // ── GET /api/test-detector-comprobante?instance=ws%20wendy&jid=573124858901@s.whatsapp.net&id=XXX ──
   // Ejecuta el flujo completo manualmente para diagnosticar
   if (req.method === 'GET' && req.url.startsWith('/api/test-detector-comprobante')) {
-    try {
-      const u = new URL(req.url, 'http://localhost');
-      const instance = u.searchParams.get('instance');
-      const remoteJid = u.searchParams.get('jid');
-      const id = u.searchParams.get('id');
-      if (!instance || !remoteJid || !id) return json(res, 400, { error: 'faltan params: instance, jid, id' });
+    const u = new URL(req.url, 'http://localhost');
+    const instance = u.searchParams.get('instance');
+    const remoteJid = u.searchParams.get('jid');
+    const id = u.searchParams.get('id');
+    if (!instance || !remoteJid || !id) return json(res, 400, { error: 'faltan params: instance, jid, id' });
+    (async () => {
       const log = [];
-      log.push(`instance=${instance}, jid=${remoteJid}, id=${id}`);
-      log.push(`EVOLUTION_API_KEY presente: ${!!process.env.EVOLUTION_API_KEY}, preview: ${(process.env.EVOLUTION_API_KEY||'').slice(0,6)}`);
-      log.push(`GEMINI_API_KEY presente: ${!!process.env.GEMINI_API_KEY}`);
-      const img = await descargarImagenEvolution(instance, { remoteJid, fromMe: false, id });
-      if (!img || !img.base64) {
-        log.push('descargarImagenEvolution devolvió null');
-        return json(res, 200, { ok: false, log });
+      try {
+        log.push(`instance=${instance}, jid=${remoteJid}, id=${id}`);
+        log.push(`EVOLUTION_API_KEY presente: ${!!process.env.EVOLUTION_API_KEY}, preview: ${(process.env.EVOLUTION_API_KEY||'').slice(0,6)}`);
+        log.push(`GEMINI_API_KEY presente: ${!!process.env.GEMINI_API_KEY}`);
+        const img = await descargarImagenEvolution(instance, { remoteJid, fromMe: false, id });
+        if (!img || !img.base64) {
+          log.push('descargarImagenEvolution devolvió null');
+          return json(res, 200, { ok: false, log });
+        }
+        log.push(`imagen descargada: ${img.base64.length} chars base64, mime=${img.mimeType}`);
+        const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
+        log.push(`analisis: ${JSON.stringify(analisis)}`);
+        return json(res, 200, { ok: true, log, analisis });
+      } catch (e) {
+        log.push(`ERROR: ${e.message}`);
+        return json(res, 500, { error: e.message, log });
       }
-      log.push(`imagen descargada: ${img.base64.length} chars base64, mime=${img.mimeType}`);
-      const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
-      log.push(`analisis: ${JSON.stringify(analisis)}`);
-      return json(res, 200, { ok: true, log, analisis });
-    } catch (e) {
-      return json(res, 500, { error: e.message, stack: e.stack });
-    }
+    })();
+    return;
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
