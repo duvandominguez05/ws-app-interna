@@ -379,6 +379,21 @@ function nombresCoinciden(equipoPedido, archivo) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+// Devuelve un score 0-1 de qué tan parecidos son dos nombres (overlap de palabras).
+// Útil como fallback cuando nombresCoinciden() falla pero hay similitud parcial.
+function scoreSimilitud(equipoPedido, archivo) {
+  const a = nombreLimpio(equipoPedido);
+  const b = nombreLimpio(archivo);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.95;
+  const palabrasA = new Set(a.split(' ').filter(w => w.length >= 3));
+  const palabrasB = b.split(' ').filter(w => w.length >= 3);
+  if (!palabrasA.size || !palabrasB.length) return 0;
+  const matches = palabrasB.filter(w => palabrasA.has(w)).length;
+  return matches / Math.max(palabrasA.size, palabrasB.length);
+}
+
 // Busca un pedido cuyo equipo, cliente o alias coincida con el archivo.
 // pedido.archivosAlias es un array de nombres limpios aprendidos por vinculaciones manuales.
 function buscarPedidoPorArchivo(pedidos, archivo, equipoHint) {
@@ -1625,6 +1640,17 @@ http.createServer((req, res) => {
         return false;
       }
 
+      // Devuelve top 3 pedidos con mejor scoreSimilitud (>=0.4) como sugerencias
+      function sugerenciasPara(archivo, equipo) {
+        const ref = equipo || archivo;
+        return pedidosActivos
+          .map(p => ({ p, score: Math.max(scoreSimilitud(p.equipo, ref), scoreSimilitud(p.cliente, ref)) }))
+          .filter(x => x.score >= 0.4)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(x => ({ id: x.p.id, equipo: x.p.equipo || '', vendedora: x.p.vendedora || '', estado: x.p.estado, score: Math.round(x.score * 100) }));
+      }
+
       const items = [];
       for (const r of driveRecientes) {
         if (items.length >= 50) break;
@@ -1636,6 +1662,7 @@ http.createServer((req, res) => {
             archivo: r.archivo || '',
             equipo: r.equipo || '',
             ts: t ? new Date(t).toISOString() : null,
+            sugerencias: sugerenciasPara(r.archivo, r.equipo),
           });
         }
       }
@@ -1648,6 +1675,7 @@ http.createServer((req, res) => {
             archivo: r.archivo || '',
             equipo: r.equipo || '',
             ts: r.ts,
+            sugerencias: sugerenciasPara(r.archivo, r.equipo),
           });
         }
       }
@@ -1704,6 +1732,55 @@ http.createServer((req, res) => {
         global._huerfanosCache = null; // invalidar cache
         console.log(`[huerfano] vinculado ${tipo} archivo="${archivo}" → pedido #${pd.id} (alias="${alias}", avanzo=${avanzo})`);
         return json(res, 200, { ok: true, pedidoId: pd.id, alias, avanzo });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON inválido: ' + e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/pdfs-huerfanos/crear-pedido ──
+  // Body: { tipo: 'drive'|'wt', idItem, archivo, equipo, vendedora, telefono }
+  // Crea un pedido nuevo directamente en estado 'enviado-calandra' (porque ya hay PDF)
+  // y vincula el archivo huérfano. Útil para diseños que se hicieron sin pasar por la app.
+  if (req.method === 'POST' && req.url === '/api/pdfs-huerfanos/crear-pedido') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { tipo, idItem, archivo, equipo, vendedora, telefono } = JSON.parse(body);
+        if (!tipo || !equipo) return json(res, 400, { error: 'tipo y equipo requeridos' });
+        const pedidos = leerPedidos();
+        const nextId = leerNextId();
+        const ahora = new Date().toISOString();
+        const alias = nombreLimpio(archivo);
+        const ven = vendedora || 'Sin asignar';
+        const esVendDis = VENDEDORAS_DISENADORAS.has(ven);
+        const nuevo = {
+          id: nextId,
+          equipo: String(equipo).trim(),
+          telefono: String(telefono || '').replace(/\D/g, '') || '',
+          vendedora: ven,
+          disenadorAsignado: esVendDis ? ven : null,
+          tipoBandeja: 'venta',
+          estado: 'enviado-calandra',
+          creadoEn: ahora,
+          ultimoMovimiento: ahora,
+          items: [],
+          fechaEntrega: null,
+          notas: 'Pedido creado desde PDF huérfano (' + (tipo === 'wt' ? 'WeTransfer' : 'Drive') + ')',
+          arreglo: false,
+          archivosAlias: alias ? [alias] : [],
+          pdfDriveListo: tipo === 'drive',
+          fechaPdfDrive: tipo === 'drive' ? ahora : null,
+          wtListo: tipo === 'wt',
+          fechaWt: tipo === 'wt' ? ahora : null,
+        };
+        pedidos.push(nuevo);
+        guardarPedidos(pedidos, nextId + 1);
+        global._huerfanosCache = null;
+        console.log(`[huerfano] CREADO pedido #${nuevo.id} desde archivo="${archivo}" (vendedora=${ven})`);
+        return json(res, 200, { ok: true, pedidoId: nuevo.id, equipo: nuevo.equipo });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido: ' + e.message });
       }

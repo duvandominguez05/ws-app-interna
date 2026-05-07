@@ -3469,22 +3469,81 @@ async function renderPdfsHuerfanos() {
     items.forEach(it => {
       const fechaStr = it.ts ? new Date(it.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '';
       const refKey = (it.id || it.archivo || '').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const idEsc = esc(it.id || it.archivo || '');
+      const archEsc = esc(it.archivo || '');
+      // Sugerencias top 3 (vienen del backend, ya rankeadas por similitud)
+      const sugs = Array.isArray(it.sugerencias) ? it.sugerencias : [];
+      let sugHtml = '';
+      if (sugs.length) {
+        sugHtml = '<div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' +
+          '<span style="font-size:0.72rem;color:var(--text-muted);">Sugerencias:</span>' +
+          sugs.map(s => '<button onclick="vincularHuerfanoDirecto(\'' + it.tipo + '\',\'' + idEsc + '\',\'' + archEsc + '\',' + s.id + ')" ' +
+            'style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);color:#86efac;border-radius:6px;padding:4px 10px;font-size:0.74rem;cursor:pointer;" ' +
+            'title="' + s.score + '% similitud">#' + s.id + ' ' + esc(s.equipo) + ' (' + s.score + '%)</button>').join('') +
+          '</div>';
+      }
+      // Equipo sugerido para "crear pedido nuevo": usar el equipo del archivo limpio
+      const equipoSug = (it.equipo || it.archivo || '').replace(/\.pdf$/i, '').replace(/[_]+\d+(\.\d+)?\s*m?$/i, '').replace(/_/g, ' ').trim();
       html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px;margin-bottom:10px;">' +
         '<div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:10px;">' +
-        '<div><div style="font-weight:600;font-size:0.92rem;">' + (it.tipo === 'wt' ? '📨' : '📄') + ' ' + esc(it.archivo || 'Sin nombre') + '</div>' +
+        '<div><div style="font-weight:600;font-size:0.92rem;">' + (it.tipo === 'wt' ? '📨' : '📄') + ' ' + archEsc + '</div>' +
         '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">' + (it.tipo === 'wt' ? 'WeTransfer' : 'Drive') + ' · ' + esc(fechaStr) + (it.equipo ? ' · equipo: "' + esc(it.equipo) + '"' : '') + '</div></div>' +
-        '<button onclick="ignorarHuerfano(\'' + it.tipo + '\',\'' + esc(it.id || it.archivo || '') + '\')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:4px 10px;font-size:0.72rem;cursor:pointer;">✕ Ignorar</button>' +
+        '<button onclick="ignorarHuerfano(\'' + it.tipo + '\',\'' + idEsc + '\')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:6px;padding:4px 10px;font-size:0.72rem;cursor:pointer;">✕ Ignorar</button>' +
         '</div>' +
-        '<div style="display:flex;gap:8px;align-items:center;">' +
-        '<select id="sel-' + it.tipo + '-' + refKey + '" class="form-input" style="flex:1;font-size:0.82rem;padding:6px 10px;">' +
-        '<option value="">— Vincular con pedido —</option>' + opts +
+        sugHtml +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+        '<select id="sel-' + it.tipo + '-' + refKey + '" class="form-input" style="flex:1;min-width:200px;font-size:0.82rem;padding:6px 10px;">' +
+        '<option value="">— Ver todos los pedidos —</option>' + opts +
         '</select>' +
-        '<button onclick="vincularHuerfano(\'' + it.tipo + '\',\'' + esc(it.id || it.archivo || '') + '\',\'' + esc(it.archivo || '') + '\',\'' + refKey + '\')" class="btn btn-success btn-sm">Vincular</button>' +
+        '<button onclick="vincularHuerfano(\'' + it.tipo + '\',\'' + idEsc + '\',\'' + archEsc + '\',\'' + refKey + '\')" class="btn btn-sm" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;">Vincular</button>' +
+        '<button onclick="crearPedidoDesdeHuerfano(\'' + it.tipo + '\',\'' + idEsc + '\',\'' + archEsc + '\',\'' + esc(equipoSug) + '\')" class="btn btn-sm" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;" title="No hay pedido para este PDF — crear uno nuevo">+ Crear pedido nuevo</button>' +
         '</div></div>';
     });
     cont.innerHTML = html;
   } catch (e) {
     cont.innerHTML = '<div style="color:#fca5a5;">Error cargando huérfanos: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function vincularHuerfanoDirecto(tipo, idItem, archivo, pedidoId) {
+  if (!confirm('¿Vincular este PDF al pedido #' + pedidoId + '?')) return;
+  try {
+    const r = await fetch('/api/pdfs-huerfanos/vincular', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, idItem, archivo, pedidoId })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    toast('✅ Vinculado a #' + pedidoId, 'success');
+    renderPdfsHuerfanos();
+    setTimeout(() => { if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true); }, 500);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function crearPedidoDesdeHuerfano(tipo, idItem, archivo, equipoSug) {
+  const equipo = prompt('Nombre del equipo para el pedido nuevo:', equipoSug);
+  if (!equipo || !equipo.trim()) return;
+  const VENDS = ['Betty', 'Ney', 'Wendy', 'Paola'];
+  const vendStr = prompt('Vendedora (Betty, Ney, Wendy o Paola):', 'Betty');
+  if (!vendStr) return;
+  const vendedora = VENDS.find(v => v.toLowerCase() === vendStr.trim().toLowerCase()) || vendStr.trim();
+  const telefono = prompt('Teléfono del cliente (10 dígitos, opcional):', '') || '';
+  try {
+    const r = await fetch('/api/pdfs-huerfanos/crear-pedido', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, idItem, archivo, equipo: equipo.trim(), vendedora, telefono: telefono.trim() })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    toast('✅ Pedido #' + data.pedidoId + ' creado y vinculado', 'success');
+    renderPdfsHuerfanos();
+    setTimeout(() => { if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true); }, 500);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
   }
 }
 
