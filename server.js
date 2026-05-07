@@ -132,6 +132,123 @@ async function notificarWhatsappTrabajoFamilia(texto) {
   } catch (e) { console.error('[wa-grupo error]', e.message); }
 }
 
+// Manda mensaje al WA personal de una vendedora vía la instancia de ventas.
+// vendedora: 'Betty' | 'Ney' | 'Wendy' | 'Paola' (case-insensitive)
+async function notificarWAVendedora(vendedora, texto) {
+  try {
+    const numerosWA = {
+      // Cada vendedora recibe el resumen en su propio WA personal.
+      // Si el número no está mapeado, no se manda nada.
+      'betty': process.env.WA_BETTY || '573506974711',
+      'ney':   process.env.WA_NEY   || '573016639430',
+      'wendy': process.env.WA_WENDY || '573118287892',
+      'paola': process.env.WA_PAOLA || '573026027865',
+    };
+    const numero = numerosWA[String(vendedora).toLowerCase()];
+    if (!numero) { console.log(`[wa-vendedora] sin número para ${vendedora}`); return; }
+
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    // Usamos la instancia de ventas (Betty) como remitente del recordatorio interno.
+    const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    const r = await fetch(`${url}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ number: numero, text: texto }),
+    });
+    if (!r.ok) console.error(`[wa-vendedora ${vendedora}] respuesta:`, r.status);
+  } catch (e) { console.error('[wa-vendedora error]', e.message); }
+}
+
+// ── DETECTOR DE COMPROBANTES DE PAGO con Gemini Flash ──
+// Cuando el cliente manda una imagen, la pasamos a Gemini para que decida si es comprobante.
+// Si lo es, guardamos un registro para el resumen de las 8 PM.
+async function analizarImagenConGemini(base64Img, mimeType) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) { console.log('[gemini] sin API key, saltando'); return null; }
+
+    const prompt = `Analizá esta imagen de WhatsApp en Colombia. Responde SOLO con JSON válido (sin markdown, sin texto extra).
+
+Si es captura/foto de un COMPROBANTE de pago de Bancolombia, Nequi, Daviplata, BBVA, Davivienda, Banco de Bogotá, Caja Social, AV Villas, PSE, transferencia bancaria, recibo de consignación, etc:
+{"esComprobante": true, "banco": "Nombre del banco/app", "monto": numero_sin_puntos_ni_pesos, "fecha": "YYYY-MM-DD o null si no se ve", "confianza": "alta|media|baja"}
+
+Si NO es comprobante (es foto de uniforme, logo, persona, paisaje, captura de chat, screenshot de redes, etc):
+{"esComprobante": false}
+
+Respuesta:`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const body = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Img } }
+        ]
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 200 }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini] HTTP', r.status, errText.slice(0, 200));
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Limpiar respuesta: a veces viene con ```json ... ```
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      return JSON.parse(limpio);
+    } catch (e) {
+      console.error('[gemini] respuesta no parseable:', limpio.slice(0, 200));
+      return null;
+    }
+  } catch (e) {
+    console.error('[gemini error]', e.message);
+    return null;
+  }
+}
+
+// Descarga la imagen base64 desde Evolution API.
+async function descargarImagenEvolution(instance, messageKey) {
+  try {
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const r = await fetch(`${url}/chat/getBase64FromMediaMessage/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ message: { key: messageKey } }),
+    });
+    if (!r.ok) {
+      console.error('[descargar-img] HTTP', r.status);
+      return null;
+    }
+    const data = await r.json();
+    return { base64: data.base64, mimeType: data.mimetype || 'image/jpeg' };
+  } catch (e) {
+    console.error('[descargar-img error]', e.message);
+    return null;
+  }
+}
+
+// Guarda un comprobante detectado en data/comprobantes-detectados.json
+function guardarComprobanteDetectado(registro) {
+  const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
+  let lista = [];
+  try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+  lista.push(registro);
+  // Mantener solo últimos 30 días
+  const hace30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  lista = lista.filter(r => new Date(r.ts).getTime() >= hace30);
+  fs.mkdirSync(path.dirname(FILE), { recursive: true });
+  fs.writeFileSync(FILE, JSON.stringify(lista, null, 2));
+}
+
 // Etiqueta una conversación de Chatwoot por contactId con la etiqueta dada.
 // Crea la etiqueta si no existe, busca la conversación abierta del contacto y le añade la etiqueta.
 async function etiquetarChatwootContacto(contactoId, etiqueta) {
@@ -508,7 +625,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-3-torre-control-pdfs-huerfanos', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
+    return json(res, 200, { ok: true, version: 'sprint-4-detector-comprobantes-gemini', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length });
   }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
@@ -888,6 +1005,62 @@ http.createServer((req, res) => {
           }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // DETECTOR DE COMPROBANTES — imagen entrante del cliente → Gemini Flash
+        // Solo procesa imagenes que el CLIENTE manda (fromMe=false), nunca las nuestras.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'imageMessage') {
+          try {
+            const fromMe = eventData.key?.fromMe === true;
+            const remoteJid = eventData.key?.remoteJid || '';
+            const esGrupo = remoteJid.endsWith('@g.us');
+            // Solo imagenes entrantes del cliente en chat 1-a-1
+            if (!fromMe && !esGrupo && remoteJid && process.env.GEMINI_API_KEY) {
+              const vendedora = vendedoraDeInstancia(payload.instance);
+              const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              const pushName = eventData.pushName || '';
+
+              // Procesar en background (no bloquear webhook)
+              (async () => {
+                try {
+                  const img = await descargarImagenEvolution(payload.instance, eventData.key);
+                  if (!img || !img.base64) {
+                    console.log(`[comprobante] no se pudo descargar imagen de ${telefonoCliente}`);
+                    return;
+                  }
+                  const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
+                  if (!analisis) return;
+
+                  if (analisis.esComprobante) {
+                    const { nombre: nombreCliente } = await resolverCliente(remoteJid, telefonoCliente, pushName);
+                    const registro = {
+                      ts: new Date().toISOString(),
+                      vendedora,
+                      cliente: nombreCliente,
+                      telefono: telefonoCliente,
+                      banco: analisis.banco || 'desconocido',
+                      monto: analisis.monto || null,
+                      fecha: analisis.fecha || null,
+                      confianza: analisis.confianza || 'media',
+                      messageId: eventData.key?.id || null,
+                      remoteJid,
+                      stickerEnviado: false, // se actualiza si despues llega el sticker
+                    };
+                    guardarComprobanteDetectado(registro);
+                    console.log(`[comprobante] DETECTADO ${vendedora} ← ${nombreCliente} ${analisis.banco} $${analisis.monto||'?'} (confianza=${analisis.confianza})`);
+                  } else {
+                    console.log(`[comprobante] NO es comprobante (${vendedora} ← ${telefonoCliente})`);
+                  }
+                } catch (e) {
+                  console.error('[comprobante async error]', e.message);
+                }
+              })();
+            }
+          } catch (errImg) {
+            console.error('[imagen error]', errImg);
+          }
+        }
+
         return json(res, 200, { ok: true, webhook_recibido: true, accionRealizada, resultadoApi });
       } catch (e) {
         console.error('[evolution webhook error]', e);
@@ -1187,6 +1360,28 @@ http.createServer((req, res) => {
         return json(res, 400, { error: 'JSON inválido' });
       }
     });
+    return;
+  }
+
+  // ── GET /api/comprobantes-detectados — lista de comprobantes detectados por Gemini ──
+  if (req.method === 'GET' && req.url.startsWith('/api/comprobantes-detectados')) {
+    try {
+      const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
+      let lista = [];
+      try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+      // Más reciente primero
+      lista.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+      return json(res, 200, { items: lista, total: lista.length });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/comprobantes-detectados/forzar-resumen — dispara el resumen ahora (debug) ──
+  if (req.method === 'POST' && req.url === '/api/comprobantes-detectados/forzar-resumen') {
+    enviarResumenComprobantes()
+      .then(() => json(res, 200, { ok: true, msg: 'Resumen disparado, revisar logs' }))
+      .catch(e => json(res, 500, { error: e.message }));
     return;
   }
 
@@ -1693,3 +1888,99 @@ function limpiezaAutomatica() {
 
 // Repetir cada 24 horas mientras el servidor esté corriendo
 setInterval(limpiezaAutomatica, 24 * 60 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────
+// CRON RESUMEN DE COMPROBANTES — 8 PM hora Bogotá
+// Lee comprobantes detectados en las últimas 18h, agrupa por vendedora,
+// manda WA a cada una con su lista. Vos recibís copia consolidada por TG.
+// ─────────────────────────────────────────────────────────────
+function _formatearMontoCOP(n) {
+  if (typeof n !== 'number' || isNaN(n)) return '?';
+  return '$' + n.toLocaleString('es-CO');
+}
+
+function _huelaPMBogota() {
+  // Calcula si AHORA es la hora 20 (8 PM) en zona Bogotá (UTC-5).
+  const ahoraUtc = new Date();
+  const horaBogota = (ahoraUtc.getUTCHours() - 5 + 24) % 24;
+  return horaBogota;
+}
+
+async function enviarResumenComprobantes() {
+  try {
+    const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
+    if (!fs.existsSync(FILE)) return;
+    const lista = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+
+    // Filtrar últimas 18h (cubre el día de trabajo de las vendedoras)
+    const limite = Date.now() - 18 * 60 * 60 * 1000;
+    const recientes = lista.filter(r => new Date(r.ts).getTime() >= limite);
+    if (!recientes.length) {
+      console.log('[resumen-8pm] sin comprobantes en las últimas 18h');
+      return;
+    }
+
+    // Cargar pedidos para detectar cuáles ya se marcaron con sticker
+    const pedidosCur = leerPedidos();
+    function yaMarcadoConSticker(telefono) {
+      const tel = String(telefono).replace(/\D/g, '');
+      // Hay pedido reciente del cliente ya en estado avanzado (no bandeja)?
+      return pedidosCur.some(p => {
+        const pTel = String(p.telefono || '').replace(/\D/g, '');
+        if (pTel !== tel) return false;
+        if (p.estado === 'bandeja') return false; // todavía cotización
+        const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+        return t >= limite; // pedido movido en las últimas 18h = ya se marcó
+      });
+    }
+
+    // Filtrar los que aún no se marcaron
+    const sinMarcar = recientes.filter(r => !yaMarcadoConSticker(r.telefono));
+    if (!sinMarcar.length) {
+      console.log(`[resumen-8pm] ${recientes.length} detectados, todos ya marcados — silencio`);
+      return;
+    }
+
+    // Agrupar por vendedora
+    const porVendedora = {};
+    sinMarcar.forEach(r => {
+      const v = r.vendedora || 'Betty';
+      if (!porVendedora[v]) porVendedora[v] = [];
+      porVendedora[v].push(r);
+    });
+
+    // Mandar WA a cada vendedora con sus pendientes
+    for (const [vendedora, items] of Object.entries(porVendedora)) {
+      const lineas = items.map((r, i) => {
+        const hora = new Date(r.ts).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
+        const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
+        return `${i+1}. *${r.cliente}* (${hora}) — ${r.banco} ${monto}`;
+      }).join('\n');
+      const texto = `🔔 *Recordatorio de cierre de día*\n\nDetecté ${items.length} comprobante${items.length>1?'s':''} de pago en tu WhatsApp que aún NO marcaste con el sticker 💰:\n\n${lineas}\n\n👉 Si fueron ventas reales, mandá el sticker para que entren a la app.\nSi alguna no era venta, ignorá ese.`;
+      try { await notificarWAVendedora(vendedora, texto); } catch (e) { console.error('[resumen-8pm wa]', e.message); }
+      console.log(`[resumen-8pm] enviado a ${vendedora}: ${items.length} comprobante(s)`);
+    }
+
+    // Resumen consolidado a Duvan por Telegram
+    const totalPorV = Object.entries(porVendedora).map(([v, l]) => `• *${v}*: ${l.length}`).join('\n');
+    const totalDetectados = recientes.length;
+    const totalSinMarcar = sinMarcar.length;
+    const tgText = `📊 *Resumen 8 PM — Comprobantes detectados*\n\nHoy se detectaron *${totalDetectados}* comprobantes en los WA de las vendedoras.\n*${totalSinMarcar}* están sin marcar:\n\n${totalPorV}\n\nLas vendedoras ya recibieron su recordatorio.`;
+    try { await notificarTelegram(tgText); } catch {}
+  } catch (e) {
+    console.error('[resumen-8pm error]', e.message);
+  }
+}
+
+// Chequear cada 30 min si es la hora 20 (8 PM Bogotá) y si todavía no se mandó hoy
+let _ultimoResumenDia = null;
+setInterval(() => {
+  const horaBog = _huelaPMBogota();
+  // Disparar entre 20:00 y 20:59 Bogotá, una sola vez por día
+  if (horaBog !== 20) return;
+  const hoyKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  if (_ultimoResumenDia === hoyKey) return;
+  _ultimoResumenDia = hoyKey;
+  console.log('[resumen-8pm] disparando…');
+  enviarResumenComprobantes();
+}, 30 * 60 * 1000); // cada 30 min
