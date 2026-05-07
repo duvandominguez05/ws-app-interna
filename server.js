@@ -1455,6 +1455,30 @@ http.createServer((req, res) => {
       }
 
       lista.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+
+      // Clasificar cada comprobante cruzando teléfono contra pedidos activos
+      // Normaliza ambos lados a 10 dígitos (quita prefijo 57 si existe)
+      const pedidosCur = leerPedidos();
+      const ESTADOS_ABONO = ['hacer-diseno', 'confirmado', 'listo', 'enviado-calandra', 'llego-impresion'];
+      const norm10 = (t) => {
+        const d = String(t || '').replace(/\D/g, '');
+        return d.startsWith('57') && d.length === 12 ? d.slice(2) : d;
+      };
+      lista = lista.map(r => {
+        const telDet = norm10(r.telefono);
+        if (!telDet || telDet.length < 8) return { ...r, clasificacion: 'venta-nueva', pedidoMatch: null };
+        const matches = pedidosCur.filter(p => norm10(p.telefono) === telDet);
+        const enProceso = matches.find(p => ESTADOS_ABONO.includes(p.estado));
+        if (enProceso) {
+          return { ...r, clasificacion: 'abono', pedidoMatch: { id: enProceso.id, equipo: enProceso.equipo, estado: enProceso.estado } };
+        }
+        const cerrado = matches.find(p => p.estado === 'enviado-final');
+        if (cerrado) {
+          return { ...r, clasificacion: 'cliente-recurrente', pedidoMatch: { id: cerrado.id, equipo: cerrado.equipo, estado: 'enviado-final' } };
+        }
+        return { ...r, clasificacion: 'venta-nueva', pedidoMatch: null };
+      });
+
       return json(res, 200, { items: lista, total: lista.length });
     } catch (e) {
       return json(res, 500, { error: e.message });
