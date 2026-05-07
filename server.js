@@ -1364,17 +1364,92 @@ http.createServer((req, res) => {
   }
 
   // ── GET /api/comprobantes-detectados — lista de comprobantes detectados por Gemini ──
+  // Query params:
+  //   ?desde=hace18h | hace24h | hace7d | YYYY-MM-DD  (default: todos)
+  //   ?soloNoProcesados=true   (default: false; n8n usa esto para evitar duplicar avisos)
+  //   ?soloSinSticker=true     (default: false; filtra los que aún no tienen pedido movido)
   if (req.method === 'GET' && req.url.startsWith('/api/comprobantes-detectados')) {
     try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const desde = u.searchParams.get('desde');
+      const soloNoProc = u.searchParams.get('soloNoProcesados') === 'true';
+      const soloSinSticker = u.searchParams.get('soloSinSticker') === 'true';
+
       const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
       let lista = [];
       try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
-      // Más reciente primero
+
+      // Filtro por fecha
+      if (desde) {
+        let limite = null;
+        if (desde.startsWith('hace')) {
+          const m = desde.match(/^hace(\d+)([hd])$/);
+          if (m) {
+            const n = parseInt(m[1]);
+            const ms = m[2] === 'h' ? n*60*60*1000 : n*24*60*60*1000;
+            limite = Date.now() - ms;
+          }
+        } else {
+          const t = new Date(desde).getTime();
+          if (!isNaN(t)) limite = t;
+        }
+        if (limite) lista = lista.filter(r => new Date(r.ts).getTime() >= limite);
+      }
+
+      if (soloNoProc) lista = lista.filter(r => !r.procesado);
+
+      if (soloSinSticker) {
+        const pedidosCur = leerPedidos();
+        const limite18h = Date.now() - 18*60*60*1000;
+        lista = lista.filter(r => {
+          const tel = String(r.telefono).replace(/\D/g, '');
+          const yaMarcado = pedidosCur.some(p => {
+            const pTel = String(p.telefono || '').replace(/\D/g, '');
+            if (pTel !== tel) return false;
+            if (p.estado === 'bandeja') return false;
+            const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+            return t >= limite18h;
+          });
+          return !yaMarcado;
+        });
+      }
+
       lista.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
       return json(res, 200, { items: lista, total: lista.length });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ── POST /api/comprobantes-detectados/marcar-procesados ──
+  // Body: { messageIds: ['id1','id2',...] }
+  // n8n llama esto después de mandar el resumen para no avisar 2 veces los mismos.
+  if (req.method === 'POST' && req.url === '/api/comprobantes-detectados/marcar-procesados') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { messageIds } = JSON.parse(body);
+        if (!Array.isArray(messageIds)) return json(res, 400, { error: 'messageIds debe ser array' });
+        const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
+        let lista = [];
+        try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+        const idsSet = new Set(messageIds);
+        let count = 0;
+        lista.forEach(r => {
+          if (idsSet.has(r.messageId)) {
+            r.procesado = true;
+            r.fechaProcesado = new Date().toISOString();
+            count++;
+          }
+        });
+        fs.writeFileSync(FILE, JSON.stringify(lista, null, 2));
+        return json(res, 200, { ok: true, marcados: count });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    });
+    return;
   }
 
   // ── POST /api/comprobantes-detectados/forzar-resumen — dispara el resumen ahora (debug) ──
@@ -1972,15 +2047,7 @@ async function enviarResumenComprobantes() {
   }
 }
 
-// Chequear cada 30 min si es la hora 20 (8 PM Bogotá) y si todavía no se mandó hoy
-let _ultimoResumenDia = null;
-setInterval(() => {
-  const horaBog = _huelaPMBogota();
-  // Disparar entre 20:00 y 20:59 Bogotá, una sola vez por día
-  if (horaBog !== 20) return;
-  const hoyKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-  if (_ultimoResumenDia === hoyKey) return;
-  _ultimoResumenDia = hoyKey;
-  console.log('[resumen-8pm] disparando…');
-  enviarResumenComprobantes();
-}, 30 * 60 * 1000); // cada 30 min
+// CRON 8PM DESACTIVADO — el resumen se hace ahora desde n8n consultando
+// /api/comprobantes-detectados. La función enviarResumenComprobantes()
+// queda disponible solo para POST /api/comprobantes-detectados/forzar-resumen
+// (modo debug manual).
