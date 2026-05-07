@@ -164,9 +164,11 @@ async function notificarWAVendedora(vendedora, texto) {
 // Cuando el cliente manda una imagen, la pasamos a Gemini para que decida si es comprobante.
 // Si lo es, guardamos un registro para el resumen de las 8 PM.
 async function analizarImagenConGemini(base64Img, mimeType) {
+  global._geminiUltimoError = null;
+  global._geminiUltimaRespuesta = null;
   try {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) { console.log('[gemini] sin API key, saltando'); return null; }
+    if (!apiKey) { console.log('[gemini] sin API key, saltando'); global._geminiUltimoError = 'no api key'; return null; }
 
     const prompt = `Analizá esta imagen de WhatsApp en Colombia. Responde SOLO con JSON válido (sin markdown, sin texto extra).
 
@@ -196,20 +198,24 @@ Respuesta:`;
     if (!r.ok) {
       const errText = await r.text();
       console.error('[gemini] HTTP', r.status, errText.slice(0, 200));
+      global._geminiUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
       return null;
     }
     const data = await r.json();
     const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    global._geminiUltimaRespuesta = texto.slice(0, 500);
     // Limpiar respuesta: a veces viene con ```json ... ```
     const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
     try {
       return JSON.parse(limpio);
     } catch (e) {
       console.error('[gemini] respuesta no parseable:', limpio.slice(0, 200));
+      global._geminiUltimoError = `parse error: ${limpio.slice(0, 300)}`;
       return null;
     }
   } catch (e) {
     console.error('[gemini error]', e.message);
+    global._geminiUltimoError = `exception: ${e.message}`;
     return null;
   }
 }
@@ -650,6 +656,8 @@ http.createServer((req, res) => {
         log.push(`imagen descargada: ${img.base64.length} chars base64, mime=${img.mimeType}`);
         const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
         log.push(`analisis: ${JSON.stringify(analisis)}`);
+        log.push(`gemini ultimo error: ${global._geminiUltimoError || 'ninguno'}`);
+        log.push(`gemini ultima respuesta: ${global._geminiUltimaRespuesta || 'ninguna'}`);
         return json(res, 200, { ok: true, log, analisis });
       } catch (e) {
         log.push(`ERROR: ${e.message}`);
