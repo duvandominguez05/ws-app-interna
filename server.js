@@ -628,6 +628,33 @@ http.createServer((req, res) => {
     return json(res, 200, { ok: true, version: 'sprint-4-detector-comprobantes-gemini', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length, evolution_api_key: !!process.env.EVOLUTION_API_KEY, evolution_api_key_preview: process.env.EVOLUTION_API_KEY ? process.env.EVOLUTION_API_KEY.slice(0, 6) + '...' : null, gemini_api_key: !!process.env.GEMINI_API_KEY });
   }
 
+  // ── GET /api/test-detector-comprobante?instance=ws%20wendy&jid=573124858901@s.whatsapp.net&id=XXX ──
+  // Ejecuta el flujo completo manualmente para diagnosticar
+  if (req.method === 'GET' && req.url.startsWith('/api/test-detector-comprobante')) {
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const instance = u.searchParams.get('instance');
+      const remoteJid = u.searchParams.get('jid');
+      const id = u.searchParams.get('id');
+      if (!instance || !remoteJid || !id) return json(res, 400, { error: 'faltan params: instance, jid, id' });
+      const log = [];
+      log.push(`instance=${instance}, jid=${remoteJid}, id=${id}`);
+      log.push(`EVOLUTION_API_KEY presente: ${!!process.env.EVOLUTION_API_KEY}, preview: ${(process.env.EVOLUTION_API_KEY||'').slice(0,6)}`);
+      log.push(`GEMINI_API_KEY presente: ${!!process.env.GEMINI_API_KEY}`);
+      const img = await descargarImagenEvolution(instance, { remoteJid, fromMe: false, id });
+      if (!img || !img.base64) {
+        log.push('descargarImagenEvolution devolvió null');
+        return json(res, 200, { ok: false, log });
+      }
+      log.push(`imagen descargada: ${img.base64.length} chars base64, mime=${img.mimeType}`);
+      const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
+      log.push(`analisis: ${JSON.stringify(analisis)}`);
+      return json(res, 200, { ok: true, log, analisis });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
   if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
     const chunks = [];
