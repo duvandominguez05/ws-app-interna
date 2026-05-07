@@ -1053,7 +1053,7 @@
       cursor: not-allowed;
     }
 
-    .form-select option {
+    .form-select option, .form-input option, select option {
       background: #12141c;
       color: var(--text);
     }
