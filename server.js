@@ -180,7 +180,8 @@ Si NO es comprobante (es foto de uniforme, logo, persona, paisaje, captura de ch
 
 Respuesta:`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
     const body = {
       contents: [{
         parts: [
