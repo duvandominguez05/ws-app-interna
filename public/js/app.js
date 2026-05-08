@@ -127,6 +127,7 @@ const HEADER_INFO = {
   'vista-general': { icon: '📊', title: 'Vista general' },
   'torre':         { icon: '🗼', title: 'Torre de Control' },
   'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
+  'tablero-foto':  { icon: '📸', title: 'Lector del tablero' },
   'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
@@ -3435,6 +3436,76 @@ function _actualizarBadgeTorre() {
     const badge = document.getElementById('badge-torre');
     if (badge) badge.textContent = alertas.length;
   } catch {}
+}
+
+/* ════════════════════════════════════════════════════════════════
+   📸 LECTOR DEL TABLERO — foto del tablero físico → Gemini → pedidos
+════════════════════════════════════════════════════════════════ */
+
+function renderTableroFoto() {
+  const cont = document.getElementById('tablero-foto-content');
+  if (!cont) return;
+  cont.innerHTML =
+    '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;">' +
+      '<div style="display:flex;flex-direction:column;gap:14px;align-items:center;">' +
+        '<input type="file" id="tablero-input" accept="image/*" capture="environment" style="display:none;" onchange="onTableroFotoSeleccionada(event)">' +
+        '<button onclick="document.getElementById(\'tablero-input\').click()" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:14px 24px;font-size:1rem;font-weight:600;border:none;border-radius:10px;cursor:pointer;">📷 Tomar foto del tablero</button>' +
+        '<div style="font-size:0.78rem;color:var(--text-muted);">o seleccionar archivo</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="tablero-foto-preview" style="margin-top:18px;"></div>' +
+    '<div id="tablero-foto-resultado" style="margin-top:18px;"></div>';
+}
+
+async function onTableroFotoSeleccionada(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById('tablero-foto-preview');
+  const resultado = document.getElementById('tablero-foto-resultado');
+  preview.innerHTML = '<div style="color:var(--text-muted);">Leyendo foto...</div>';
+  resultado.innerHTML = '';
+  try {
+    const reader = new FileReader();
+    const dataUrl = await new Promise((resolve, reject) => {
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const base64 = dataUrl.split(',')[1];
+    const mimeType = (dataUrl.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
+    preview.innerHTML = '<img src="' + dataUrl + '" style="max-width:100%;max-height:300px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);">';
+    resultado.innerHTML = '<div style="color:var(--text-muted);">⏳ Procesando con Gemini... (puede tardar 10-20s)</div>';
+    const r = await fetch('/api/tablero/foto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64, mimeType })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo procesamiento');
+    let html = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:16px;">';
+    html += '<div style="font-weight:700;font-size:1rem;margin-bottom:10px;">✅ Tablero leído (' + data.total + ' entradas)</div>';
+    html += '<div style="font-size:0.88rem;line-height:1.7;">';
+    html += '✅ Ya estaban en la app: <strong>' + data.resultado.yaCorrectos.length + '</strong><br>';
+    html += '🔄 Movidos a su columna: <strong>' + data.resultado.movidos.length + '</strong><br>';
+    html += '🆕 Pedidos nuevos creados: <strong>' + data.resultado.creados.length + '</strong>';
+    html += '</div>';
+    if (data.resultado.movidos.length) {
+      html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.85rem;color:#a78bfa;">Ver movidos</summary><div style="margin-top:8px;font-size:0.8rem;line-height:1.6;">';
+      data.resultado.movidos.forEach(m => { html += '• #' + m.id + ' ' + esc(m.equipo) + ': ' + m.de + ' → ' + m.a + '<br>'; });
+      html += '</div></details>';
+    }
+    if (data.resultado.creados.length) {
+      html += '<details style="margin-top:8px;" open><summary style="cursor:pointer;font-size:0.85rem;color:#fbbf24;">Ver nuevos (revisar vendedora)</summary><div style="margin-top:8px;font-size:0.8rem;line-height:1.6;">';
+      data.resultado.creados.forEach(c => { html += '• #' + c.id + ' ' + esc(c.equipo) + ' (' + c.columna + ')<br>'; });
+      html += '</div></details>';
+    }
+    html += '<div style="margin-top:12px;font-size:0.78rem;color:var(--text-muted);">📲 Resumen enviado por Telegram</div>';
+    html += '</div>';
+    resultado.innerHTML = html;
+    if (typeof syncTodoConServidor === 'function') setTimeout(() => syncTodoConServidor(true), 1000);
+  } catch (e) {
+    resultado.innerHTML = '<div style="color:#fca5a5;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;">❌ Error: ' + esc(e.message) + '</div>';
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════

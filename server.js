@@ -116,6 +116,22 @@ async function notificarTelegram(texto) {
   } catch (e) { console.error('[telegram error]', e.message); }
 }
 
+// Manda mensaje personal por Telegram a Duvan (lector del tablero, recordatorios).
+// Usa TELEGRAM_CHAT_ID_DUVAN si existe; fallback al grupo Producción.
+async function notificarTelegramDuvan(texto) {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID_DUVAN || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: texto, parse_mode: 'Markdown' }),
+    });
+    if (!r.ok) console.error('[telegram-duvan] respuesta:', r.status);
+  } catch (e) { console.error('[telegram-duvan error]', e.message); }
+}
+
 // Manda mensaje al grupo de WhatsApp "Trabajo en familia" vía Evolution.
 async function notificarWhatsappTrabajoFamilia(texto) {
   try {
@@ -219,6 +235,153 @@ Respuesta:`;
     global._geminiUltimoError = `exception: ${e.message}`;
     return null;
   }
+}
+
+// Lee una foto del tablero físico de producción de W&S.
+// El tablero tiene 4 columnas: APROBADOS, VENTAS, ENVIADOS, HACER DISEÑOS.
+// Devuelve JSON estructurado con las entradas de cada columna.
+async function analizarTableroConGemini(base64Img, mimeType) {
+  global._tableroUltimoError = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) { global._tableroUltimoError = 'no api key'; return null; }
+
+    const prompt = `Esta es una foto de un tablero blanco con escritura a mano de la empresa W&S Enterprise (uniformes deportivos, Colombia).
+El tablero tiene 4 columnas con los títulos:
+- APROBADOS (arriba izquierda)
+- VENTAS (arriba derecha)
+- ENVIADOS (abajo izquierda)
+- HACER DISEÑOS (abajo derecha)
+
+Cada columna tiene una lista de pedidos. Cada pedido puede ser:
+- Solo un nombre de equipo o cliente (ej: "Friens", "Casa Sport", "Niupy")
+- Un teléfono + nombre/equipo (ej: "3132210432 - Cristo", "311 8884276 - Niupi FC")
+- Combinación de cliente y descripción (ej: "Dago Chaquetas", "Fabian - Chaqueta")
+
+Devolveme SOLO un JSON con esta estructura, sin markdown, sin texto extra:
+{
+  "aprobados": [{"texto": "...", "telefono": "..." o null, "equipo": "..."}],
+  "ventas": [...],
+  "enviados": [...],
+  "hacerDisenos": [...]
+}
+
+- En "telefono" pon SOLO los 10 dígitos sin espacios ni guiones (ej: "3132210432"). null si no hay teléfono.
+- En "equipo" pon el nombre del equipo/cliente limpio (sin el teléfono).
+- En "texto" pon la línea completa tal cual aparece en el tablero.
+- Si una entrada es ambigua o ilegible, igual inclúyela con tu mejor lectura.
+
+Respuesta:`;
+
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const body = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Img } }
+        ]
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      global._tableroUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      return JSON.parse(limpio);
+    } catch (e) {
+      global._tableroUltimoError = `parse error: ${limpio.slice(0, 300)}`;
+      return null;
+    }
+  } catch (e) {
+    global._tableroUltimoError = `exception: ${e.message}`;
+    return null;
+  }
+}
+
+// Aplica la estructura leída del tablero a los pedidos:
+// - Si el equipo ya existe en la app, mueve estado a la columna correcta
+// - Si NO existe, crea pedido nuevo con vendedora "Sin asignar" para revisión
+// Devuelve { creados: [...], movidos: [...], yaCorrectos: [...] }
+function aplicarTableroAPedidos(estructura) {
+  const COLUMNA_A_ESTADO = {
+    aprobados: 'confirmado',
+    ventas: 'hacer-diseno',
+    enviados: 'enviado-final',
+    hacerDisenos: 'bandeja',
+  };
+  const pedidos = leerPedidos();
+  const ahora = new Date().toISOString();
+  const creados = [], movidos = [], yaCorrectos = [];
+  let nextId = leerNextId();
+
+  function nombresParecen(a, b) {
+    const na = nombreLimpio(a), nb = nombreLimpio(b);
+    if (!na || !nb) return false;
+    return na === nb || na.includes(nb) || nb.includes(na);
+  }
+
+  for (const [columna, estadoApp] of Object.entries(COLUMNA_A_ESTADO)) {
+    const items = Array.isArray(estructura[columna]) ? estructura[columna] : [];
+    for (const it of items) {
+      const equipo = String(it.equipo || it.texto || '').trim();
+      if (!equipo) continue;
+      const tel = String(it.telefono || '').replace(/\D/g, '');
+      // Buscar pedido existente: prioridad teléfono, luego nombre
+      let pd = null;
+      if (tel && tel.length >= 8) {
+        pd = pedidos.find(p => String(p.telefono || '').replace(/\D/g, '') === tel);
+      }
+      if (!pd) pd = pedidos.find(p => nombresParecen(p.equipo, equipo));
+      if (pd) {
+        if (pd.estado !== estadoApp) {
+          const estadoAnterior = pd.estado;
+          pd.estado = estadoApp;
+          pd.ultimoMovimiento = ahora;
+          movidos.push({ id: pd.id, equipo: pd.equipo, de: estadoAnterior, a: estadoApp });
+        } else {
+          yaCorrectos.push({ id: pd.id, equipo: pd.equipo });
+        }
+      } else {
+        // Crear nuevo
+        const nuevo = {
+          id: nextId,
+          equipo,
+          telefono: tel || '',
+          vendedora: 'Sin asignar',
+          disenadorAsignado: null,
+          tipoBandeja: 'venta',
+          estado: estadoApp,
+          creadoEn: ahora,
+          ultimoMovimiento: ahora,
+          items: [],
+          fechaEntrega: null,
+          notas: 'Creado desde foto del tablero (' + ahora.slice(0, 10) + ')',
+          arreglo: false,
+          archivosAlias: [],
+          pdfDriveListo: false,
+          wtListo: false,
+          origenTablero: true,
+        };
+        pedidos.push(nuevo);
+        creados.push({ id: nuevo.id, equipo, columna });
+        nextId++;
+      }
+    }
+  }
+  guardarPedidos(pedidos, nextId);
+  global._huerfanosCache = null;
+  return { creados, movidos, yaCorrectos };
 }
 
 // Descarga la imagen base64 desde Evolution API.
@@ -680,6 +843,48 @@ http.createServer((req, res) => {
         return json(res, 500, { error: e.message, log });
       }
     })();
+    return;
+  }
+
+  // ── POST /api/tablero/foto — recibe foto del tablero físico, la procesa con Gemini ──
+  // Body JSON: { base64: "...", mimeType: "image/jpeg" }
+  // Aplica los cambios a pedidos y manda resumen por Telegram a Duvan.
+  if (req.method === 'POST' && req.url === '/api/tablero/foto') {
+    const chunks = [];
+    req.on('data', d => chunks.push(d));
+    req.on('end', async () => {
+      try {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const { base64, mimeType } = JSON.parse(body);
+        if (!base64) return json(res, 400, { error: 'falta base64' });
+        const estructura = await analizarTableroConGemini(base64, mimeType || 'image/jpeg');
+        if (!estructura) {
+          return json(res, 500, { error: 'gemini fallo', detalle: global._tableroUltimoError });
+        }
+        const resultado = aplicarTableroAPedidos(estructura);
+        // Construir mensaje para Telegram
+        const total = (estructura.aprobados||[]).length + (estructura.ventas||[]).length + (estructura.enviados||[]).length + (estructura.hacerDisenos||[]).length;
+        let msg = `📋 *Tablero leído* (${total} entradas)\n\n`;
+        msg += `✅ Ya estaban en la app: ${resultado.yaCorrectos.length}\n`;
+        msg += `🔄 Movidos a su columna: ${resultado.movidos.length}\n`;
+        msg += `🆕 Pedidos nuevos creados: ${resultado.creados.length}\n`;
+        if (resultado.movidos.length) {
+          msg += `\n*Movidos:*\n`;
+          resultado.movidos.slice(0, 10).forEach(m => { msg += `• #${m.id} ${m.equipo}: ${m.de} → ${m.a}\n`; });
+          if (resultado.movidos.length > 10) msg += `...y ${resultado.movidos.length - 10} más\n`;
+        }
+        if (resultado.creados.length) {
+          msg += `\n*Nuevos (revisar vendedora):*\n`;
+          resultado.creados.slice(0, 10).forEach(c => { msg += `• #${c.id} ${c.equipo} (${c.columna})\n`; });
+          if (resultado.creados.length > 10) msg += `...y ${resultado.creados.length - 10} más\n`;
+        }
+        notificarTelegramDuvan(msg).catch(() => {});
+        return json(res, 200, { ok: true, estructura, resultado, total });
+      } catch (e) {
+        console.error('[tablero] error', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
     return;
   }
 
