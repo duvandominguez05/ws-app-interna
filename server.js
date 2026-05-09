@@ -846,6 +846,37 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── GET /api/telegram-updates — diagnóstico: lista chat_ids recientes del bot ──
+  if (req.method === 'GET' && req.url === '/api/telegram-updates') {
+    (async () => {
+      try {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) return json(res, 400, { error: 'no token' });
+        const r = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+        const data = await r.json();
+        const chats = {};
+        for (const u of (data.result || [])) {
+          const m = u.message || u.edited_message || u.channel_post;
+          if (!m || !m.chat) continue;
+          chats[m.chat.id] = {
+            chat_id: m.chat.id,
+            type: m.chat.type,
+            title: m.chat.title || null,
+            firstName: m.chat.first_name || null,
+            lastName: m.chat.last_name || null,
+            username: m.chat.username || null,
+            ultimoMensaje: m.text || m.caption || '(sin texto)',
+            fecha: new Date((m.date || 0) * 1000).toISOString(),
+          };
+        }
+        return json(res, 200, { ok: true, chats: Object.values(chats), totalRaw: (data.result || []).length });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/tablero/foto — recibe foto del tablero físico, la procesa con Gemini ──
   // Body JSON: { base64: "...", mimeType: "image/jpeg" }
   // Aplica los cambios a pedidos y manda resumen por Telegram a Duvan.
