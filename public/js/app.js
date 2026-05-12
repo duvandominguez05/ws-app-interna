@@ -4165,18 +4165,29 @@ async function avanzarEtapaPedido(id) {
   render();
 }
 
-// Archivar todos los enviado-final en Notion y borrar del server
+// Archivar los enviado-final con MÁS DE 30 DÍAS en Notion y borrar del server.
+// Los enviados recientes (≤30d) se quedan visibles en la columna ENVIADOS.
 async function archivarEntregadosNotion() {
-  // Cuenta los enviado-final tanto en local como en server (puede haber desincronización)
-  const totalLocal = (pedidos || []).filter(p => p.estado === 'enviado-final').length;
-  const proceder = confirm('¿Archivar pedidos entregados en Notion y borrarlos del servidor?\n\n(Localmente veo ' + totalLocal + ' pedidos en estado entregado, pero el servidor puede tener más o menos)\n\nNo se puede deshacer.');
+  const DIAS_UMBRAL = 30;
+  const hace30 = Date.now() - DIAS_UMBRAL * 86400000;
+  const enviados = (pedidos || []).filter(p => p.estado === 'enviado-final');
+  const candidatosViejos = enviados.filter(p => {
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t > 0 && t < hace30;
+  });
+  const proceder = confirm(
+    '¿Archivar pedidos entregados de hace MÁS de ' + DIAS_UMBRAL + ' días en Notion?\n\n' +
+    'Candidatos (>30d): ' + candidatosViejos.length + '\n' +
+    'Enviados recientes (≤30d, se quedan visibles): ' + (enviados.length - candidatosViejos.length) + '\n\n' +
+    'No se puede deshacer.'
+  );
   if (!proceder) return;
   try {
     toast('⏳ Archivando pedidos en Notion...', 'info');
     const r = await fetch('/api/pedidos/archivar-bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+      body: JSON.stringify({ soloMasViejosQue: DIAS_UMBRAL })
     });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
