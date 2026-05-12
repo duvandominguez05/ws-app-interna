@@ -829,14 +829,30 @@ http.createServer((req, res) => {
         const hace24h = Date.now() - 24 * 60 * 60 * 1000;
         const comprobantes = db.leerComprobantes();
 
+        // Pre-calcular: telefonos de clientes con pedido ACTIVO en producción
+        // (si ya tienen pedido en curso, un nuevo comprobante es el saldo final, NO venta nueva)
+        const pedidosActivos = leerPedidos();
+        const ESTADOS_EN_CURSO = new Set(['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo']);
+        const telsEnCurso = new Set(
+          pedidosActivos
+            .filter(p => ESTADOS_EN_CURSO.has(p.estado))
+            .map(p => String(p.telefono || '').replace(/\D/g, ''))
+            .filter(Boolean)
+        );
+
         const resumen = [];
         for (const v of VENDEDORAS) {
           const propios = comprobantes.filter(c => {
             const ts = c.ts ? new Date(c.ts).getTime() : 0;
             if (ts < hace24h) return false;
             if (c.vendedora !== v.nombre) return false;
-            // Solo cuenta ventas reales, no abonos parciales
-            return c.clasificacion === 'venta-nueva' || c.clasificacion === 'cliente-recurrente' || !c.clasificacion;
+            // SOLO cuenta como "venta nueva que necesita sticker":
+            //  - Gemini la clasificó como venta-nueva
+            //  - Y el cliente NO tiene pedido activo en producción (sino sería saldo final)
+            if (c.clasificacion !== 'venta-nueva') return false;
+            const telCli = String(c.telefono || '').replace(/\D/g, '');
+            if (telCli && telsEnCurso.has(telCli)) return false; // saldo final, no sticker
+            return true;
           });
           const sinSticker = propios.filter(c => !c.stickerEnviado);
           resumen.push({ vendedora: v.nombre, total: propios.length, sinSticker: sinSticker.length, clientes: sinSticker.map(c => ({ cliente: c.cliente || '?', monto: c.monto || 0 })) });
