@@ -936,12 +936,20 @@ http.createServer((req, res) => {
             return e;
           }
 
-          // Si el cliente tiene datos más recientes o iguales, aceptar los del cliente pero preservar webhooks
+          // Si el cliente tiene datos más recientes o iguales, aceptar los del cliente pero
+          // PRESERVAR campos que solo el servidor genera (sticker, fechaVenta, etc).
+          // Sin esto, el POST del cliente borra esos campos y la venta deja de estar marcada.
           return {
             ...p,
             equipo: p.equipo || e.equipo || '',
             notaWebhook: p.notaWebhook || e.notaWebhook,
             ultimaActWebhook: p.ultimaActWebhook || e.ultimaActWebhook,
+            // Campos generados por el server (sticker handler, webhook, etc):
+            stickerVenta: p.stickerVenta || e.stickerVenta,
+            fechaVenta: p.fechaVenta || e.fechaVenta,
+            contactoChatwoot: p.contactoChatwoot || e.contactoChatwoot,
+            disenadorAsignado: p.disenadorAsignado || e.disenadorAsignado,
+            waMsgId: p.waMsgId || e.waMsgId,
           };
         });
         // Preservar pedidos del servidor que el cliente no tiene (creados por bot en otro momento)
