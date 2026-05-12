@@ -4145,6 +4145,7 @@ function abrirDetallePedido(id) {
           (p.telefono ? '<button onclick="window.open(\'https://wa.me/57' + String(p.telefono).replace(/\D/g, '') + '\', \'_blank\')" class="btn btn-sm" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">💬 WhatsApp</button>' : '<div></div>') +
           '<button onclick="openModalCompletar(' + p.id + '); document.getElementById(\'modal-detalle-pedido\').remove();" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">✏️ Editar datos</button>' +
         '</div>' +
+        '<button onclick="eliminarPedidoCualquierEstado(' + p.id + ')" class="btn btn-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;margin-top:4px;">🗑️ Eliminar pedido</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(modal);
@@ -4163,6 +4164,28 @@ async function avanzarEtapaPedido(id) {
   const modal = document.getElementById('modal-detalle-pedido');
   if (modal) modal.remove();
   render();
+}
+
+// Elimina un pedido en CUALQUIER estado (para limpiar pedidos basura: mal escritos,
+// sin telefono, duplicados, etc). Borra local + server.
+async function eliminarPedidoCualquierEstado(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const etiqueta = (p.equipo || p.telefono || '(sin nombre)') + ' #' + id;
+  if (!confirm('¿Eliminar permanentemente el pedido "' + etiqueta + '"?\n\nNo se puede deshacer.')) return;
+  eliminadosLocales.add(id);
+  pedidos = pedidos.filter(x => x.id !== id);
+  const modal = document.getElementById('modal-detalle-pedido');
+  if (modal) modal.remove();
+  render();
+  try {
+    const r = await fetch('/api/pedidos/' + id, { method: 'DELETE' });
+    if (!r.ok && r.status !== 404) {
+      console.error('[eliminar] server respondió', r.status);
+    }
+  } catch (e) { console.error('[eliminar] error:', e); }
+  guardar();
+  toast('🗑️ Pedido #' + id + ' eliminado', 'info');
 }
 
 // Archivar los enviado-final con MÁS DE 30 DÍAS en Notion y borrar del server.

@@ -37,19 +37,25 @@
     <nav class="sidebar-nav">
       <div class="nav-label">Cerebro</div>
 
-      <div class="nav-item active" onclick="showSection('torre-unificada', this); renderTorreUnificada();">
-        <span class="nav-icon">🗼</span>
-        <span>Torre de Control</span>
-        <span class="nav-badge" id="badge-torre-unif" style="background:rgba(245,158,11,0.2);color:#fbbf24;">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('tablero-principal', this); renderTableroPrincipal();">
+      <div class="nav-item active" onclick="showSection('tablero-principal', this); renderTableroPrincipal();">
         <span class="nav-icon">📋</span>
         <span>Tablero</span>
         <span class="nav-badge" id="badge-tab-principal" style="background:rgba(124,58,237,0.2);color:#c4b5fd;">0</span>
       </div>
 
+      <div class="nav-item" onclick="showSection('torre-unificada', this); renderTorreUnificada();">
+        <span class="nav-icon">🗼</span>
+        <span>Torre de Control</span>
+        <span class="nav-badge" id="badge-torre-unif" style="background:rgba(245,158,11,0.2);color:#fbbf24;">0</span>
+      </div>
+
       <div class="nav-label" style="margin-top:14px;">Operación</div>
+
+      <div class="nav-item" onclick="showSection('produccion', this)">
+        <span class="nav-icon">🏭</span>
+        <span>Producción</span>
+        <span class="nav-badge" id="badge-prod">0</span>
+      </div>
 
       <div class="nav-item" onclick="showSection('calandra', this)">
         <span class="nav-icon">📏</span>
@@ -95,12 +101,6 @@
           <span class="nav-icon">🎨</span>
           <span>Diseño (clásico)</span>
           <span class="nav-badge" id="badge-diseno">0</span>
-        </div>
-
-        <div class="nav-item" onclick="showSection('produccion', this)">
-          <span class="nav-icon">🏭</span>
-          <span>Producción (clásico)</span>
-          <span class="nav-badge" id="badge-prod">0</span>
         </div>
 
         <div class="nav-item" onclick="showSection('satelites', this)">
@@ -200,7 +200,7 @@
     </section>
 
     <!-- ─── 🗼 TORRE DE CONTROL UNIFICADA (KPIs + alertas + pipeline + ranking) ─── -->
-    <section id="torre-unificada" class="section-content section-bg active">
+    <section id="torre-unificada" class="section-content section-bg">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
         <h2 style="margin:0;font-family:'Outfit',sans-serif;font-size:1.4rem;font-weight:800;letter-spacing:0.5px;">🗼 Torre de Control</h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -212,7 +212,7 @@
     </section>
 
     <!-- ─── TABLERO PRINCIPAL (vista principal igual al tablero físico) ─── -->
-    <section id="tablero-principal" class="section-content section-bg">
+    <section id="tablero-principal" class="section-content section-bg active">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
         <input type="search" id="buscar-tab-principal" class="form-input" placeholder="🔍 Buscar equipo o teléfono…" oninput="filtrarTableroPrincipal(this.value)" style="max-width:380px;flex:1;min-width:200px;">
         <select id="sel-dis-filtro" class="form-input" onchange="filtrarTableroPorDisenador(this.value)" style="max-width:200px;font-size:0.82rem;padding:6px 10px;">
