@@ -3755,9 +3755,14 @@ function renderTableroPrincipal() {
   };
   const q = _tabPrincipalFiltro;
   const listaPedidos = Array.isArray(pedidos) ? pedidos : [];
+  const hace30Dias = Date.now() - 30 * 24 * 60 * 60 * 1000;
   listaPedidos.forEach(p => {
     const m = TAB_PRINCIPAL_MAP[p.estado];
     if (!m) return;
+    // Filtro de 30 días: pedidos sin movimiento hace más de 30 días no se ven
+    // (los enviado-final viejos quedan ocultos automáticamente)
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    if (!t || t < hace30Dias) return;
     if (q) {
       const haystack = (String(p.equipo || '') + ' ' + String(p.telefono || '') + ' ' + String(p.vendedora || '')).toLowerCase();
       if (!haystack.includes(q)) return;

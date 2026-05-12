@@ -940,6 +940,21 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/pedidos/purgar-enviado-final — BORRA enviado-final SIN archivar (asume ya archivados antes) ──
+  if (req.method === 'POST' && req.url === '/api/pedidos/purgar-enviado-final') {
+    try {
+      const pedidos = leerPedidos();
+      const aBorrar = pedidos.filter(p => p.estado === 'enviado-final');
+      const restantes = pedidos.filter(p => p.estado !== 'enviado-final');
+      aBorrar.forEach(p => agregarTombstone(p.id));
+      guardarPedidos(restantes, leerNextId());
+      console.log(`[purgar] borrados ${aBorrar.length} pedidos enviado-final + tombstones agregados`);
+      return json(res, 200, { ok: true, borrados: aBorrar.length, restantes: restantes.length });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/pedidos/archivar-bulk — archiva TODOS los enviado-final ──
   // Body opcional: { soloMasViejosQue: dias } para filtrar
   if (req.method === 'POST' && req.url === '/api/pedidos/archivar-bulk') {
