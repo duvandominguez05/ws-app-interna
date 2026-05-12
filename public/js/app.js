@@ -3810,6 +3810,34 @@ function abrirDetallePedido(id) {
   showSection('bandeja');
 }
 
+// Archivar todos los enviado-final en Notion y borrar del server
+async function archivarEntregadosNotion() {
+  const total = (pedidos || []).filter(p => p.estado === 'enviado-final').length;
+  if (!total) { toast('No hay pedidos entregados para archivar', 'info'); return; }
+  if (!confirm('¿Archivar ' + total + ' pedidos entregados en Notion y borrarlos del servidor?\n\nNo se puede deshacer.')) return;
+  try {
+    toast('⏳ Archivando ' + total + ' pedidos en Notion...', 'info');
+    const r = await fetch('/api/pedidos/archivar-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    const ok = data.archivados.length;
+    const fail = data.fallidos.length;
+    let msg = '✅ Archivados ' + ok + ' pedidos en Notion';
+    if (fail) msg += ' · ❌ ' + fail + ' fallaron';
+    toast(msg, fail ? 'error' : 'success');
+    if (fail && data.fallidos.length) {
+      console.error('Pedidos fallidos:', data.fallidos);
+    }
+    setTimeout(() => { if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true); if (typeof syncConServidor === 'function') syncConServidor(true); renderTableroPrincipal(); }, 500);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
 // Submenu "Más" en sidebar
 function toggleSubmenuMas() {
   const s = document.getElementById('submenu-mas');

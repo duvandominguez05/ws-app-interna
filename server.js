@@ -494,6 +494,102 @@ async function resolverCliente(remoteJid, telefono, pushNameFallback) {
 
 function guardarPedidos(pedidos, nextId) { db.guardarPedidos(pedidos, nextId); }
 
+// ─────────────────────────────────────────────────────────────
+// NOTION — Archivar pedidos entregados (enviado-final)
+// El pedido se sube a Notion y luego se borra del servidor.
+// Notion queda como histórico, Railway sigue ligero.
+// ─────────────────────────────────────────────────────────────
+async function archivarPedidoEnNotion(pedido) {
+  const token = process.env.NOTION_TOKEN;
+  const dbId = process.env.NOTION_DB_ARCHIVO_PEDIDOS;
+  if (!token || !dbId) {
+    console.log('[notion] sin token o db_id, saltando archivo');
+    return { ok: false, motivo: 'no configurado' };
+  }
+  try {
+    // Las opciones del select de vendedora en Notion: "Betty", "ney", "wendy", "paola"
+    const venRaw = String(pedido.vendedora || '').toLowerCase();
+    const VEN_MAP = { 'betty': 'Betty', 'ney': 'ney', 'wendy': 'wendy', 'paola': 'paola' };
+    const vendedoraNotion = VEN_MAP[venRaw] || null;
+
+    // Formatear items / prendas
+    let itemsTxt = '';
+    if (Array.isArray(pedido.items) && pedido.items.length) {
+      itemsTxt = pedido.items.map(i => {
+        if (typeof i === 'string') return i;
+        if (i && typeof i === 'object') return [i.prenda, i.tela, i.cantidad].filter(Boolean).join(' ');
+        return '';
+      }).filter(Boolean).join(', ').slice(0, 1900);
+    }
+
+    // Fecha creado: pedido.creadoEn puede venir como "d/m/yyyy" o ISO
+    function aIsoDate(f) {
+      if (!f) return null;
+      const m = String(f).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+      const t = new Date(f);
+      return isNaN(t.getTime()) ? null : t.toISOString().slice(0, 10);
+    }
+    const fechaCreadoISO = aIsoDate(pedido.creadoEn);
+    const fechaEntregadoISO = aIsoDate(pedido.ultimoMovimiento) || new Date().toISOString().slice(0, 10);
+
+    // Teléfono como número (Notion lo tiene como number)
+    const telNum = parseInt(String(pedido.telefono || '').replace(/\D/g, '')) || null;
+
+    const props = {
+      'Equipo': { title: [{ text: { content: String(pedido.equipo || 'Sin equipo').slice(0, 1900) } }] },
+      'Estado': { select: { name: 'Entregado' } },
+      'Fecha entregado': { date: { start: fechaEntregadoISO } },
+      'ID original': { number: pedido.id || null },
+    };
+    if (pedido.cliente) props['Cliente'] = { rich_text: [{ text: { content: String(pedido.cliente).slice(0, 1900) } }] };
+    if (vendedoraNotion) props['Vendedora'] = { select: { name: vendedoraNotion } };
+    if (telNum) props['Telefono'] = { number: telNum };
+    if (fechaCreadoISO) props['Fecha creado'] = { date: { start: fechaCreadoISO } };
+    if (itemsTxt) props['Items / Prendas'] = { rich_text: [{ text: { content: itemsTxt } }] };
+    if (pedido.total) props['Total'] = { number: Number(pedido.total) };
+
+    const r = await fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28',
+      },
+      body: JSON.stringify({
+        parent: { database_id: dbId },
+        properties: props,
+      }),
+    });
+    if (!r.ok) {
+      const errTxt = await r.text();
+      console.error('[notion archivar] HTTP', r.status, errTxt.slice(0, 400));
+      return { ok: false, motivo: `HTTP ${r.status}`, detalle: errTxt.slice(0, 400) };
+    }
+    const data = await r.json();
+    console.log(`[notion archivar] pedido #${pedido.id} archivado en Notion (page=${data.id})`);
+    return { ok: true, notionPageId: data.id };
+  } catch (e) {
+    console.error('[notion archivar error]', e.message);
+    return { ok: false, motivo: 'exception', detalle: e.message };
+  }
+}
+
+// Archiva un pedido por ID: lo sube a Notion y lo borra del servidor.
+// Devuelve { ok, notionPageId } o { ok:false, motivo }.
+async function archivarYBorrarPedido(pedidoId) {
+  const pedidos = leerPedidos();
+  const idx = pedidos.findIndex(p => p.id === pedidoId);
+  if (idx === -1) return { ok: false, motivo: 'pedido no encontrado' };
+  const pedido = pedidos[idx];
+  const resp = await archivarPedidoEnNotion(pedido);
+  if (!resp.ok) return resp;
+  // Borrar del servidor
+  pedidos.splice(idx, 1);
+  guardarPedidos(pedidos, leerNextId());
+  return { ok: true, notionPageId: resp.notionPageId, pedidoId };
+}
+
 const ESTADOS_VALIDOS = [
   'bandeja','hacer-diseno','confirmado','enviado-calandra',
   'llego-impresion','corte','calidad','costura','en-satelite','listo','enviado-final'
@@ -785,9 +881,54 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/pedidos/:id/archivar — archiva 1 pedido en Notion y lo borra del server ──
+  if (req.method === 'POST' && /^\/api\/pedidos\/\d+\/archivar$/.test(req.url)) {
+    const m = req.url.match(/^\/api\/pedidos\/(\d+)\/archivar$/);
+    const pedidoId = parseInt(m[1]);
+    (async () => {
+      const r = await archivarYBorrarPedido(pedidoId);
+      if (r.ok) return json(res, 200, r);
+      return json(res, 500, r);
+    })();
+    return;
+  }
+
+  // ── POST /api/pedidos/archivar-bulk — archiva TODOS los enviado-final ──
+  // Body opcional: { soloMasViejosQue: dias } para filtrar
+  if (req.method === 'POST' && req.url === '/api/pedidos/archivar-bulk') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      (async () => {
+        try {
+          let dias = null;
+          if (body) { try { dias = JSON.parse(body).soloMasViejosQue || null; } catch {} }
+          const pedidos = leerPedidos();
+          const limite = dias ? (Date.now() - dias * 86400000) : null;
+          const candidatos = pedidos.filter(p => {
+            if (p.estado !== 'enviado-final') return false;
+            if (!limite) return true;
+            const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+            return t < limite;
+          });
+          const resultado = { total: candidatos.length, archivados: [], fallidos: [] };
+          for (const p of candidatos) {
+            const r = await archivarYBorrarPedido(p.id);
+            if (r.ok) resultado.archivados.push({ id: p.id, equipo: p.equipo, notionPageId: r.notionPageId });
+            else resultado.fallidos.push({ id: p.id, equipo: p.equipo, motivo: r.motivo, detalle: r.detalle });
+          }
+          return json(res, 200, { ok: true, ...resultado });
+        } catch (e) {
+          return json(res, 500, { error: e.message });
+        }
+      })();
+    });
+    return;
+  }
+
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-4-detector-comprobantes-gemini', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length, evolution_api_key: !!process.env.EVOLUTION_API_KEY, evolution_api_key_preview: process.env.EVOLUTION_API_KEY ? process.env.EVOLUTION_API_KEY.slice(0, 6) + '...' : null, gemini_api_key: !!process.env.GEMINI_API_KEY });
+    return json(res, 200, { ok: true, version: 'sprint-5-notion-archivo', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, telegram_chat_duvan: !!process.env.TELEGRAM_CHAT_ID_DUVAN, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length, evolution_api_key: !!process.env.EVOLUTION_API_KEY, gemini_api_key: !!process.env.GEMINI_API_KEY, notion_token: !!process.env.NOTION_TOKEN, notion_db: !!process.env.NOTION_DB_ARCHIVO_PEDIDOS });
   }
 
   // ── GET /api/test-detector-comprobante?instance=ws%20wendy&jid=573124858901@s.whatsapp.net&id=XXX ──
