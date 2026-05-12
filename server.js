@@ -1599,6 +1599,37 @@ http.createServer((req, res) => {
   }
 
 
+  // ── GET /api/diag-stickers — últimos stickers recibidos (para verificar hashes) ──
+  if (req.method === 'GET' && req.url.startsWith('/api/diag-stickers')) {
+    try {
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
+      const stickers = [];
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha);
+        for (const payload of events) {
+          const ed = payload.data || payload;
+          if (ed?.messageType !== 'stickerMessage') continue;
+          const stk = ed.message?.stickerMessage || {};
+          const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+          const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+          stickers.push({
+            fecha,
+            instance: payload.instance || '?',
+            fromMe: ed.key?.fromMe,
+            remoteJid: ed.key?.remoteJid || '',
+            hash: hash || '(sin hash)',
+            coincide: STICKERS_VENTA.includes(hash),
+          });
+        }
+      }
+      stickers.sort((a, b) => b.fecha.localeCompare(a.fecha));
+      const hashesConfig = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',');
+      return json(res, 200, { total: stickers.length, hashesConfigurados: hashesConfig, stickers: stickers.slice(0, 50) });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/calandra — n8n registra envío de PDF a calandra ─
   // Body: { equipo, alto, ancho?, archivo?, diseñador? }
   // alto en cm, ancho en metros (opcional, default 1.50)

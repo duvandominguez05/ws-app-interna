@@ -1288,6 +1288,7 @@
     }
     .tab-card-badge.sub-calandra { background: rgba(245,158,11,0.18); color: #fcd34d; }
     .tab-card-badge.sub-impresion { background: rgba(14,165,233,0.18); color: #7dd3fc; }
+    .tab-card-badge.sub-calidad { background: rgba(168,85,247,0.18); color: #d8b4fe; }
     .tab-card-badge.sub-listo { background: rgba(34,197,94,0.18); color: #86efac; }
     .tab-card-badge.urgente-vencido { background: rgba(239,68,68,0.35); color: #fecaca; font-weight: 700; }
     .tab-card-badge.urgente-alta    { background: rgba(239,68,68,0.2); color: #fca5a5; }

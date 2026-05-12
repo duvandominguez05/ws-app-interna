@@ -3741,7 +3741,9 @@ const TAB_PRINCIPAL_MAP = {
   'confirmado':        { col: 'aprobados',      orden: 0, badge: null },
   'enviado-calandra':  { col: 'aprobados',      orden: 1, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
   'llego-impresion':   { col: 'aprobados',      orden: 2, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
-  'listo':             { col: 'aprobados',      orden: 3, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
+  'calidad':           { col: 'aprobados',      orden: 3, badge: { texto: '🔍 calidad',   clase: 'sub-calidad'   } },
+  'costura':           { col: 'aprobados',      orden: 4, badge: { texto: '🪡 costura',   clase: 'sub-listo'     } },
+  'listo':             { col: 'aprobados',      orden: 5, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
   'enviado-final':     { col: 'enviados',       orden: 0 },
 };
 let _tabPrincipalFiltro = '';
@@ -3945,8 +3947,8 @@ function renderTableroPrincipal() {
     const m = TAB_PRINCIPAL_MAP[p.estado];
     if (!m) return;
     // Filtro 30 días: oculta pedidos viejos sin movimiento
-    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-    if (!t || t < hace30Dias) return;
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : Date.now();
+    if (t < hace30Dias) return;
     // Filtro por diseñador
     const dis = String(p.disenadorAsignado || '').toLowerCase();
     if (disFiltro !== 'todos') {
