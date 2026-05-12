@@ -3816,11 +3816,8 @@ function renderTableroPrincipal() {
     } else {
       c.items.forEach(({ p, badge }) => {
         const eq = esc(p.equipo || p.telefono || 'Sin nombre');
-        const ven = p.vendedora ? esc(p.vendedora) : '';
         const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : '';
         const sinDis = !dis && p.estado !== 'bandeja';
-        const dias = p.ultimoMovimiento ? Math.round((Date.now() - new Date(p.ultimoMovimiento).getTime()) / 86400000) : null;
-        const diasStr = dias === null ? '' : (dias === 0 ? 'hoy' : dias + 'd');
         // Urgencia: cuántos días faltan para fecha entrega
         let urgencia = '';
         let urgenciaClase = '';
@@ -3834,12 +3831,12 @@ function renderTableroPrincipal() {
         html += '<div class="tab-card ' + (sinDis ? 'tab-card-sin-dis' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">';
         html += '<div class="tab-card-eq">' + eq + '</div>';
         html += '<div class="tab-card-meta">';
-        if (ven) html += '<span title="Vendedora">🛍️ ' + ven + '</span>';
-        if (dis) html += '<span title="Diseñador">🎨 ' + dis + '</span>';
-        else if (sinDis) html += '<span style="color:#fca5a5;" title="Falta asignar diseñador">⚠️ sin diseñador</span>';
-        if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
-        else if (diasStr) html += '<span>' + diasStr + '</span>';
+        // Mostrar SOLO el diseñador. Si no hay → "sin diseñador" en rojo. (La vendedora se ve al hacer click)
+        if (dis) html += '<span>🎨 ' + dis + '</span>';
+        else if (sinDis) html += '<span style="color:#fca5a5;">⚠️ sin diseñador</span>';
+        // Solo una insignia de urgencia/badge (la más crítica)
         if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
+        else if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
         html += '</div>';
         html += '</div>';
       });
