@@ -3812,11 +3812,12 @@ function abrirDetallePedido(id) {
 
 // Archivar todos los enviado-final en Notion y borrar del server
 async function archivarEntregadosNotion() {
-  const total = (pedidos || []).filter(p => p.estado === 'enviado-final').length;
-  if (!total) { toast('No hay pedidos entregados para archivar', 'info'); return; }
-  if (!confirm('¿Archivar ' + total + ' pedidos entregados en Notion y borrarlos del servidor?\n\nNo se puede deshacer.')) return;
+  // Cuenta los enviado-final tanto en local como en server (puede haber desincronización)
+  const totalLocal = (pedidos || []).filter(p => p.estado === 'enviado-final').length;
+  const proceder = confirm('¿Archivar pedidos entregados en Notion y borrarlos del servidor?\n\n(Localmente veo ' + totalLocal + ' pedidos en estado entregado, pero el servidor puede tener más o menos)\n\nNo se puede deshacer.');
+  if (!proceder) return;
   try {
-    toast('⏳ Archivando ' + total + ' pedidos en Notion...', 'info');
+    toast('⏳ Archivando pedidos en Notion...', 'info');
     const r = await fetch('/api/pedidos/archivar-bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3826,13 +3827,36 @@ async function archivarEntregadosNotion() {
     if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
     const ok = data.archivados.length;
     const fail = data.fallidos.length;
-    let msg = '✅ Archivados ' + ok + ' pedidos en Notion';
+    // FORZAR resincronización: traer pedidos del server y reemplazar localStorage
+    try {
+      const rp = await fetch('/api/pedidos');
+      const dp = await rp.json();
+      const srv = Array.isArray(dp) ? dp : (dp.pedidos || []);
+      pedidos = srv;
+      localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+    } catch (eSync) { console.error('[archivar] no se pudo resync:', eSync); }
+    let msg = '✅ ' + ok + ' archivados';
     if (fail) msg += ' · ❌ ' + fail + ' fallaron';
-    toast(msg, fail ? 'error' : 'success');
-    if (fail && data.fallidos.length) {
-      console.error('Pedidos fallidos:', data.fallidos);
-    }
-    setTimeout(() => { if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true); if (typeof syncConServidor === 'function') syncConServidor(true); renderTableroPrincipal(); }, 500);
+    toast(msg + ' · Total en servidor: ' + (Array.isArray(pedidos) ? pedidos.length : '?'), fail ? 'error' : 'success');
+    if (fail && data.fallidos.length) console.error('Pedidos fallidos:', data.fallidos);
+    render();
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// Reset duro: borra localStorage de pedidos y resincroniza con el servidor
+// (útil si la cache local quedó desincronizada)
+async function resincronizarConServidor() {
+  if (!confirm('Esto va a reemplazar todos los pedidos locales con los del servidor. ¿Continuar?')) return;
+  try {
+    const r = await fetch('/api/pedidos');
+    const d = await r.json();
+    const srv = Array.isArray(d) ? d : (d.pedidos || []);
+    pedidos = srv;
+    localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+    toast('✅ Resincronizado · ' + pedidos.length + ' pedidos del servidor', 'success');
+    render();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
