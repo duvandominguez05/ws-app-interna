@@ -812,41 +812,76 @@ http.createServer((req, res) => {
     }
   }
 
-  // ── POST /api/recordatorio-sticker — envía WA a cada vendedora recordando usar sticker ──
-  // Llamar manualmente desde la app o por cron n8n a la hora deseada.
-  if (req.method === 'POST' && req.url === '/api/recordatorio-sticker') {
+  // ── POST /api/reporte-stickers-faltantes ──
+  // Revisa los comprobantes recibidos en las últimas 24h por cada vendedora.
+  // Si tiene comprobantes (venta-nueva o cliente-recurrente) SIN sticker enviado,
+  // le manda un WA personalizado. A las que están al día no las molesta.
+  // Llamar con cron desde n8n al final del día (ej. 7 PM).
+  if (req.method === 'POST' && req.url === '/api/reporte-stickers-faltantes') {
     (async () => {
       try {
         const VENDEDORAS = [
-          { nombre: 'Betty',  instance: 'ws-duvan',  telefono: process.env.WA_BETTY  || '573138060086' },
-          { nombre: 'Ney',    instance: 'ws-duvan',  telefono: process.env.WA_NEY    || '573208374213' },
-          { nombre: 'Wendy',  instance: 'ws-duvan',  telefono: process.env.WA_WENDY  || '573208374213' },
-          { nombre: 'Paola',  instance: 'ws-duvan',  telefono: process.env.WA_PAOLA  || '573208374213' },
+          { nombre: 'Betty',  telefono: process.env.WA_BETTY  || '' },
+          { nombre: 'Ney',    telefono: process.env.WA_NEY    || '' },
+          { nombre: 'Wendy',  telefono: process.env.WA_WENDY  || '' },
+          { nombre: 'Paola',  telefono: process.env.WA_PAOLA  || '' },
         ];
-        const msg =
-          '☀️ *Buenos días!*\n\n' +
-          'Recordatorio diario:\n\n' +
-          '💰 Cada que confirmes una venta y el cliente mande la *foto del comprobante*, ' +
-          'envía el sticker *VENTA CONFIRMADA* al cliente.\n\n' +
-          'Eso sube la venta a la app automáticamente y el diseñador empieza a trabajar 🎨\n\n' +
-          '⚠️ Si no usas el sticker, la venta NO aparece en la app.';
-        const enviados = [];
-        const fallidos = [];
+        const hace24h = Date.now() - 24 * 60 * 60 * 1000;
+        const comprobantes = db.leerComprobantes();
+
+        const resumen = [];
         for (const v of VENDEDORAS) {
-          try {
-            const url = `${process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app'}/message/sendText/${v.instance}`;
-            const r = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
-              body: JSON.stringify({ number: v.telefono, text: msg }),
-            });
-            if (r.ok) enviados.push(v.nombre);
-            else fallidos.push({ nombre: v.nombre, status: r.status });
-          } catch (e) {
-            fallidos.push({ nombre: v.nombre, error: e.message });
+          const propios = comprobantes.filter(c => {
+            const ts = c.ts ? new Date(c.ts).getTime() : 0;
+            if (ts < hace24h) return false;
+            if (c.vendedora !== v.nombre) return false;
+            // Solo cuenta ventas reales, no abonos parciales
+            return c.clasificacion === 'venta-nueva' || c.clasificacion === 'cliente-recurrente' || !c.clasificacion;
+          });
+          const sinSticker = propios.filter(c => !c.stickerEnviado);
+          resumen.push({ vendedora: v.nombre, total: propios.length, sinSticker: sinSticker.length, clientes: sinSticker.map(c => ({ cliente: c.cliente || '?', monto: c.monto || 0 })) });
+
+          // Avisar solo si tiene gap Y tenemos su teléfono configurado
+          if (sinSticker.length > 0 && v.telefono) {
+            const lista = sinSticker.slice(0, 5).map(c => {
+              const monto = c.monto ? '$' + Number(c.monto).toLocaleString('es-CO') : 's/m';
+              return '• ' + (c.cliente || 'cliente') + ' (' + monto + ')';
+            }).join('\n');
+            const extras = sinSticker.length > 5 ? '\n... y ' + (sinSticker.length - 5) + ' más' : '';
+            const msg =
+              '👋 Hola ' + v.nombre + '!\n\n' +
+              '📊 *Resumen del día:*\n' +
+              'Hoy recibiste *' + propios.length + '* comprobante(s) de pago — pero *' +
+              sinSticker.length + '* no tienen el sticker de venta confirmada.\n\n' +
+              '*Comprobantes sin sticker:*\n' + lista + extras + '\n\n' +
+              '💰 Mañana temprano por favor envía el sticker *VENTA CONFIRMADA* al chat de cada uno.\n\n' +
+              '⚠️ Si no usas el sticker, la venta NO aparece en la app y el diseñador no se entera.';
+            try {
+              const url = `${process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app'}/message/sendText/ws-duvan`;
+              await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
+                body: JSON.stringify({ number: v.telefono, text: msg }),
+              });
+            } catch (e) {
+              console.error('[reporte-stickers] error enviando a ' + v.nombre, e.message);
+            }
           }
         }
-        return json(res, 200, { ok: true, enviados, fallidos });
+
+        // Reporte resumen a Duvan por Telegram
+        const conGap = resumen.filter(r => r.sinSticker > 0);
+        if (conGap.length > 0) {
+          const totalGap = conGap.reduce((s, r) => s + r.sinSticker, 0);
+          let msgTG = '📊 *Reporte stickers faltantes (24h)*\n\n';
+          msgTG += `❌ *${totalGap}* comprobante(s) sin sticker\n\n`;
+          conGap.forEach(r => {
+            msgTG += `*${r.vendedora}:* ${r.sinSticker}/${r.total} sin sticker\n`;
+          });
+          notificarTelegramDuvan(msgTG).catch(()=>{});
+        }
+
+        return json(res, 200, { ok: true, resumen });
       } catch (e) {
         return json(res, 500, { error: e.message });
       }
@@ -1557,6 +1592,26 @@ http.createServer((req, res) => {
                   if (contactoChatwoot) {
                     etiquetarChatwootContacto(contactoChatwoot, 'venta-confirmada').catch(()=>{});
                   }
+
+                  // Marcar como stickerEnviado=true los comprobantes recientes (≤48h) del mismo cliente
+                  // Así el reporte de "stickers faltantes" no avisa de ventas ya confirmadas.
+                  try {
+                    const compList = db.leerComprobantes();
+                    const hace48h = Date.now() - 48 * 60 * 60 * 1000;
+                    let marcados = 0;
+                    compList.forEach(c => {
+                      const cTel = String(c.telefono || '').replace(/\D/g, '');
+                      const cTs = c.ts ? new Date(c.ts).getTime() : 0;
+                      if (cTel === telefonoCliente && cTs > hace48h && !c.stickerEnviado) {
+                        c.stickerEnviado = true;
+                        marcados++;
+                      }
+                    });
+                    if (marcados > 0) {
+                      db.guardarComprobantes(compList);
+                      console.log(`[sticker-venta] marcados ${marcados} comprobantes con stickerEnviado=true (cliente ${telefonoCliente})`);
+                    }
+                  } catch (eMarcar) { console.error('[marcar-comprobantes]', eMarcar); }
                 }
               }
             } else if (esStickerVenta && !esDeNuestroWA) {
