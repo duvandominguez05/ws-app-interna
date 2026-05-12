@@ -49,11 +49,6 @@
         <span class="nav-badge" id="badge-tab-principal" style="background:rgba(124,58,237,0.2);color:#c4b5fd;">0</span>
       </div>
 
-      <div class="nav-item" onclick="showSection('tablero-foto', this); renderTableroFoto();">
-        <span class="nav-icon">📸</span>
-        <span>Subir tablero</span>
-      </div>
-
       <div class="nav-label" style="margin-top:14px;">Operación</div>
 
       <div class="nav-item" onclick="showSection('calandra', this)">
@@ -232,7 +227,6 @@
           <button class="btn btn-sm" onclick="renderTableroPrincipal()" title="Actualizar" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;">🔄</button>
           <button class="btn btn-sm" onclick="resincronizarConServidor()" title="Forzar resincronizacion con el servidor" style="background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);color:#fcd34d;">⚡ Resync</button>
           <button class="btn btn-sm" onclick="archivarEntregadosNotion()" title="Archivar pedidos entregados a Notion" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;">🧹 Archivar</button>
-          <button class="btn btn-orange btn-sm" onclick="showSection('tablero-foto'); renderTableroFoto();">📸 Subir tablero</button>
         </div>
       </div>
       <div id="tab-principal-content" class="tab-principal-grid">

@@ -1858,6 +1858,18 @@ function syncConServidor(silencioso = false) {
         return;
       }
 
+      // HARD OVERRIDE: si local tiene 0 o muchos menos que el server, reemplazar entero.
+      // Evita quedar trancado con cache vieja que no sincroniza.
+      if (pedidos.length === 0 || pedidos.length < serverPedidos.length / 2) {
+        pedidos = serverPedidos.map(p => ({ ...p }));
+        nextId = Math.max(nextId, serverNextId || 1, ...pedidos.map(p => p.id + 1));
+        localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+        localStorage.setItem('ws_nextId3', String(nextId));
+        render();
+        if (!silencioso) toast('🔄 ' + pedidos.length + ' pedidos cargados del servidor', 'success');
+        return;
+      }
+
       const mapaServer = new Map(serverPedidos.map(p => [p.id, p]));
       const mapaLocal  = new Map(pedidos.map(p => [p.id, p]));
       const merged = [];
@@ -1907,6 +1919,23 @@ function syncConServidor(silencioso = false) {
 }
 
 // Sync al cargar — el servidor manda
+// HARD-LOAD: al primer arranque traemos los pedidos directo del servidor y reemplazamos
+// localStorage. Garantiza que aunque la cache local esté rota/vieja, los pedidos aparezcan.
+(function hardLoadInicial() {
+  fetch('/api/pedidos')
+    .then(r => r.json())
+    .then(data => {
+      const srv = Array.isArray(data) ? data : (data.pedidos || []);
+      console.log('[hard-load] servidor devolvió', srv.length, 'pedidos');
+      if (srv.length === 0) return;
+      pedidos = srv.map(p => ({ ...p }));
+      nextId = Math.max(nextId || 1, data.nextId || 1, ...pedidos.map(p => (p.id || 0) + 1));
+      localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+      localStorage.setItem('ws_nextId3', String(nextId));
+      try { render(); } catch (e) { console.error('[hard-load] render error', e); }
+    })
+    .catch(e => console.error('[hard-load] fetch error', e));
+})();
 syncConServidor(false);
 
 // Polling automático cada 7 segundos (era 15)
