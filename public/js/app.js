@@ -3559,6 +3559,9 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof renderTableroPrincipal === 'function') {
     try { renderTableroPrincipal(); } catch (e) { console.error('[tab-principal init]', e); }
   }
+  // Restaurar filtro de diseñador
+  const selDis = document.getElementById('sel-dis-filtro');
+  if (selDis) selDis.value = _tabPrincipalDisFiltro || 'todos';
   const hash = window.location.hash;
   if(hash === '#/ventas') {
     showSection('bandeja', document.querySelector('[onclick*="bandeja"]'));
@@ -3737,9 +3740,16 @@ const TAB_PRINCIPAL_MAP = {
   'enviado-final':     { col: 'enviados',       orden: 0 },
 };
 let _tabPrincipalFiltro = '';
+let _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
 
 function filtrarTableroPrincipal(q) {
   _tabPrincipalFiltro = String(q || '').trim().toLowerCase();
+  renderTableroPrincipal();
+}
+
+function filtrarTableroPorDisenador(dis) {
+  _tabPrincipalDisFiltro = dis || 'todos';
+  localStorage.setItem('ws_tab_dis_filtro', _tabPrincipalDisFiltro);
   renderTableroPrincipal();
 }
 
@@ -3754,26 +3764,48 @@ function renderTableroPrincipal() {
     'enviados':      { titulo: 'ENVIADOS',      clase: 'tab-col-enviados',      items: [] },
   };
   const q = _tabPrincipalFiltro;
+  const disFiltro = _tabPrincipalDisFiltro;
   const listaPedidos = Array.isArray(pedidos) ? pedidos : [];
   const hace30Dias = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  let sinDisenador = 0;
   listaPedidos.forEach(p => {
     const m = TAB_PRINCIPAL_MAP[p.estado];
     if (!m) return;
-    // Filtro de 30 días: pedidos sin movimiento hace más de 30 días no se ven
-    // (los enviado-final viejos quedan ocultos automáticamente)
+    // Filtro 30 días: oculta pedidos viejos sin movimiento
     const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
     if (!t || t < hace30Dias) return;
+    // Filtro por diseñador
+    const dis = String(p.disenadorAsignado || '').toLowerCase();
+    if (disFiltro !== 'todos') {
+      if (disFiltro === 'sin-asignar') {
+        if (dis) return;
+      } else if (dis !== disFiltro) return;
+    }
+    if (!dis && p.estado !== 'bandeja') sinDisenador++;
+    // Búsqueda por texto
     if (q) {
-      const haystack = (String(p.equipo || '') + ' ' + String(p.telefono || '') + ' ' + String(p.vendedora || '')).toLowerCase();
+      const haystack = (String(p.equipo || '') + ' ' + String(p.telefono || '') + ' ' + String(p.vendedora || '') + ' ' + String(p.disenadorAsignado || '')).toLowerCase();
       if (!haystack.includes(q)) return;
     }
     cols[m.col].items.push({ p, badge: m.badge || null, orden: m.orden });
   });
-  // Ordenar dentro de cada columna por orden de subestado + fecha desc
-  Object.values(cols).forEach(c => c.items.sort((a, b) => (a.orden - b.orden) || ((b.p.ultimoMovimiento || '').localeCompare(a.p.ultimoMovimiento || ''))));
+  // Ordenar: dentro de cada columna por urgencia (fecha entrega más cercana primero) + orden subestado
+  Object.values(cols).forEach(c => c.items.sort((a, b) => {
+    const fa = a.p.fechaEntrega ? new Date(a.p.fechaEntrega).getTime() : Infinity;
+    const fb = b.p.fechaEntrega ? new Date(b.p.fechaEntrega).getTime() : Infinity;
+    if (fa !== fb) return fa - fb;
+    return (a.orden - b.orden) || ((b.p.ultimoMovimiento || '').localeCompare(a.p.ultimoMovimiento || ''));
+  }));
 
   let html = '';
-  for (const [key, c] of Object.entries(cols)) {
+  // Banner si hay pedidos sin diseñador
+  if (sinDisenador > 0 && disFiltro === 'todos') {
+    html += '<div style="grid-column:1/-1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);border-radius:8px;padding:10px 14px;margin-bottom:10px;color:#fca5a5;font-size:0.82rem;">';
+    html += '⚠️ <strong>' + sinDisenador + '</strong> pedido(s) <strong>sin diseñador asignado</strong> — ';
+    html += '<a href="#" onclick="filtrarTableroPorDisenador(\'sin-asignar\');document.getElementById(\'sel-dis-filtro\').value=\'sin-asignar\';return false;" style="color:#fca5a5;text-decoration:underline;">Ver solo esos</a>';
+    html += '</div>';
+  }
+  for (const [, c] of Object.entries(cols)) {
     html += '<div class="tab-principal-col">';
     html += '<div class="tab-principal-col-header ' + c.clase + '">';
     html += '<span class="tab-principal-col-title">' + c.titulo + '</span>';
@@ -3785,13 +3817,28 @@ function renderTableroPrincipal() {
       c.items.forEach(({ p, badge }) => {
         const eq = esc(p.equipo || p.telefono || 'Sin nombre');
         const ven = p.vendedora ? esc(p.vendedora) : '';
+        const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : '';
+        const sinDis = !dis && p.estado !== 'bandeja';
         const dias = p.ultimoMovimiento ? Math.round((Date.now() - new Date(p.ultimoMovimiento).getTime()) / 86400000) : null;
         const diasStr = dias === null ? '' : (dias === 0 ? 'hoy' : dias + 'd');
-        html += '<div class="tab-card" onclick="abrirDetallePedido(' + p.id + ')">';
+        // Urgencia: cuántos días faltan para fecha entrega
+        let urgencia = '';
+        let urgenciaClase = '';
+        if (p.fechaEntrega) {
+          const diasParaEntrega = Math.ceil((new Date(p.fechaEntrega).getTime() - Date.now()) / 86400000);
+          if (diasParaEntrega < 0) { urgencia = '🚨 VENCIDO ' + Math.abs(diasParaEntrega) + 'd'; urgenciaClase = 'urgente-vencido'; }
+          else if (diasParaEntrega <= 2) { urgencia = '🔥 ' + diasParaEntrega + 'd'; urgenciaClase = 'urgente-alta'; }
+          else if (diasParaEntrega <= 5) { urgencia = '⏰ ' + diasParaEntrega + 'd'; urgenciaClase = 'urgente-media'; }
+          else { urgencia = '📅 ' + diasParaEntrega + 'd'; urgenciaClase = ''; }
+        }
+        html += '<div class="tab-card ' + (sinDis ? 'tab-card-sin-dis' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">';
         html += '<div class="tab-card-eq">' + eq + '</div>';
         html += '<div class="tab-card-meta">';
-        if (ven) html += '<span>' + ven + '</span>';
-        if (diasStr) html += '<span>' + diasStr + '</span>';
+        if (ven) html += '<span title="Vendedora">🛍️ ' + ven + '</span>';
+        if (dis) html += '<span title="Diseñador">🎨 ' + dis + '</span>';
+        else if (sinDis) html += '<span style="color:#fca5a5;" title="Falta asignar diseñador">⚠️ sin diseñador</span>';
+        if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
+        else if (diasStr) html += '<span>' + diasStr + '</span>';
         if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
         html += '</div>';
         html += '</div>';

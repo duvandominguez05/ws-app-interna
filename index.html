@@ -214,10 +214,18 @@
     <section id="tablero-principal" class="section-content section-bg active">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
         <input type="search" id="buscar-tab-principal" class="form-input" placeholder="🔍 Buscar equipo o teléfono…" oninput="filtrarTableroPrincipal(this.value)" style="max-width:380px;flex:1;min-width:200px;">
+        <select id="sel-dis-filtro" class="form-input" onchange="filtrarTableroPorDisenador(this.value)" style="max-width:200px;font-size:0.82rem;padding:6px 10px;">
+          <option value="todos">🎨 Todos los diseñadores</option>
+          <option value="ney">Ney</option>
+          <option value="wendy">Wendy</option>
+          <option value="paola">Paola</option>
+          <option value="betty">Betty</option>
+          <option value="sin-asignar">⚠️ Sin asignar</option>
+        </select>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-sm" onclick="renderTableroPrincipal()" title="Actualizar" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;">🔄</button>
-          <button class="btn btn-sm" onclick="resincronizarConServidor()" title="Forzar resincronizacion con el servidor (borra cache local)" style="background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);color:#fcd34d;">⚡ Resync</button>
-          <button class="btn btn-sm" onclick="archivarEntregadosNotion()" title="Archivar pedidos entregados a Notion" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;">🧹 Archivar entregados</button>
+          <button class="btn btn-sm" onclick="resincronizarConServidor()" title="Forzar resincronizacion con el servidor" style="background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.4);color:#fcd34d;">⚡ Resync</button>
+          <button class="btn btn-sm" onclick="archivarEntregadosNotion()" title="Archivar pedidos entregados a Notion" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;">🧹 Archivar</button>
           <button class="btn btn-orange btn-sm" onclick="showSection('tablero-foto'); renderTableroFoto();">📸 Subir tablero</button>
         </div>
       </div>
