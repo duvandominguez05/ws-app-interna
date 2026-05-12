@@ -1,0 +1,173 @@
+{
+  "name": "Resumen Comprobantes 8PM",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-400, 0],
+      "id": "comp-8pm-0001",
+      "name": "Cada dia 8pm"
+    },
+    {
+      "parameters": {
+        "url": "https://ws-app-interna-production.up.railway.app/api/comprobantes-detectados?desde=hace18h&soloSinSticker=true&soloNoProcesados=true",
+        "options": { "timeout": 15000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-180, 0],
+      "id": "comp-8pm-0002",
+      "name": "Obtener Comprobantes"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agrupa los comprobantes por vendedora y prepara mensajes\nconst items = $input.first().json.items || [];\n\nconst NUMEROS_WA = {\n  betty: '573506974711',\n  ney:   '573016639430',\n  wendy: '573118287892',\n  paola: '573026027865',\n};\n\n// Agrupar por vendedora\nconst porVendedora = {};\nconst messageIds = [];\nfor (const c of items) {\n  if (c.messageId) messageIds.push(c.messageId);\n  const ven = String(c.vendedora || 'desconocida').toLowerCase();\n  if (!porVendedora[ven]) porVendedora[ven] = { ventasNuevas: [], abonos: [], otros: [] };\n  if (c.clasificacion === 'venta-nueva') porVendedora[ven].ventasNuevas.push(c);\n  else if (c.clasificacion === 'abono') porVendedora[ven].abonos.push(c);\n  else porVendedora[ven].otros.push(c);\n}\n\nfunction fmtMonto(m) { if (!m) return '?'; return '$' + Number(m).toLocaleString('es-CO'); }\n\n// Mensajes para cada vendedora\nconst vendedorasMensajes = [];\nfor (const [ven, data] of Object.entries(porVendedora)) {\n  const numero = NUMEROS_WA[ven];\n  if (!numero) continue;\n  const total = data.ventasNuevas.length + data.abonos.length + data.otros.length;\n  if (!total) continue;\n  let txt = `Hola ${ven.charAt(0).toUpperCase() + ven.slice(1)} 👋\\n\\n`;\n  txt += `Detectamos ${total} comprobante${total > 1 ? 's' : ''} hoy en chats que NO marcaste con 💰:\\n`;\n  if (data.ventasNuevas.length) {\n    txt += `\\n🆕 *Posibles ventas nuevas:*\\n`;\n    data.ventasNuevas.forEach(c => { txt += `• ${c.cliente || c.telefono} — ${c.banco || '?'} ${fmtMonto(c.monto)}\\n`; });\n  }\n  if (data.abonos.length) {\n    txt += `\\n💵 *Pagos a pedidos en proceso (informativo):*\\n`;\n    data.abonos.forEach(c => { txt += `• ${c.cliente || c.telefono} — pedido \"${c.pedidoMatch?.equipo || '?'}\" — ${c.banco || '?'} ${fmtMonto(c.monto)}\\n`; });\n  }\n  if (data.otros.length) {\n    txt += `\\n👀 *Cliente recurrente:*\\n`;\n    data.otros.forEach(c => { txt += `• ${c.cliente || c.telefono} — ${c.banco || '?'} ${fmtMonto(c.monto)}\\n`; });\n  }\n  txt += `\\nSi alguna es venta confirmada, mandale el sticker 💰 al chat.`;\n  vendedorasMensajes.push({ vendedora: ven, numero, mensaje: txt });\n}\n\n// Resumen consolidado para Duvan\nlet resumenDuvan = `📊 *Resumen del día — Comprobantes detectados*\\n\\n`;\nresumenDuvan += `Total sin marcar: ${items.length}\\n\\n`;\nfor (const [ven, data] of Object.entries(porVendedora)) {\n  const total = data.ventasNuevas.length + data.abonos.length + data.otros.length;\n  resumenDuvan += `*${ven.charAt(0).toUpperCase() + ven.slice(1)}:* ${total}`;\n  if (data.ventasNuevas.length) resumenDuvan += ` (🆕 ${data.ventasNuevas.length} nuevas`;\n  if (data.abonos.length) resumenDuvan += `${data.ventasNuevas.length ? ', ' : ' ('}💵 ${data.abonos.length} abonos`;\n  if (data.ventasNuevas.length || data.abonos.length) resumenDuvan += ')';\n  resumenDuvan += `\\n`;\n}\nif (!items.length) resumenDuvan = `✅ Hoy todas las vendedoras marcaron sus ventas.`;\n\nreturn [{\n  json: {\n    hay: items.length > 0,\n    total: items.length,\n    vendedorasMensajes,\n    resumenDuvan,\n    messageIds,\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 0],
+      "id": "comp-8pm-0003",
+      "name": "Preparar Mensajes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "cond-hay-comprobantes",
+              "leftValue": "={{ $json.hay }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equal" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [260, 0],
+      "id": "comp-8pm-0004",
+      "name": "¿Hay comprobantes?"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "vendedorasMensajes",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [480, -180],
+      "id": "comp-8pm-0005",
+      "name": "Una vendedora a la vez"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evolution-api-production-0be7c.up.railway.app/message/sendText/ws-duvan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "apikey", "value": "REEMPLAZAR_CON_APIKEY_EVOLUTION" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.numero }}\",\n  \"text\": {{ JSON.stringify($json.mensaje) }}\n}",
+        "options": { "timeout": 15000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, -180],
+      "id": "comp-8pm-0006",
+      "name": "Enviar WA a vendedora"
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CON_CHAT_ID_DUVAN",
+        "text": "={{ $('Preparar Mensajes').first().json.resumenDuvan }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 0],
+      "id": "comp-8pm-0007",
+      "name": "Resumen a Duvan",
+      "webhookId": "comp-8pm-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ws-app-interna-production.up.railway.app/api/comprobantes-detectados/marcar-procesados",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messageIds\": {{ JSON.stringify($('Preparar Mensajes').first().json.messageIds) }}\n}",
+        "options": { "timeout": 15000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 180],
+      "id": "comp-8pm-0008",
+      "name": "Marcar como procesados"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada dia 8pm": {
+      "main": [[{ "node": "Obtener Comprobantes", "type": "main", "index": 0 }]]
+    },
+    "Obtener Comprobantes": {
+      "main": [[{ "node": "Preparar Mensajes", "type": "main", "index": 0 }]]
+    },
+    "Preparar Mensajes": {
+      "main": [[{ "node": "¿Hay comprobantes?", "type": "main", "index": 0 }]]
+    },
+    "¿Hay comprobantes?": {
+      "main": [
+        [
+          { "node": "Una vendedora a la vez", "type": "main", "index": 0 },
+          { "node": "Resumen a Duvan", "type": "main", "index": 0 },
+          { "node": "Marcar como procesados", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "Una vendedora a la vez": {
+      "main": [[{ "node": "Enviar WA a vendedora", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "ResumenComprobantes8PM",
+  "tags": []
+}

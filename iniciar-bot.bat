@@ -12,4 +12,4 @@ del /f /q "wa_auth_puppeteer\session\.org.chromium.Chromium*" >nul 2>&1
 
 start "WS Server" cmd /k "cd /d C:\CLAUDE\ws-app-interna && node server.js"
 timeout /t 3 /nobreak >nul
-start "WS Bot" cmd /k "cd /d C:\CLAUDE\ws-app-interna && node bot-puppeteer.js"
+start "WS Bot" cmd /k "cd /d C:\CLAUDE\ws-app-interna && node bot-local.js"

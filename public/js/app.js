@@ -3555,6 +3555,10 @@ function modoMiniApp(seccion) {
 
 // Al inicio de la aplicación verificamos si hay algún Hash
 window.addEventListener('DOMContentLoaded', () => {
+  // Renderizar inmediatamente el Tablero principal con lo que haya en localStorage
+  if (typeof renderTableroPrincipal === 'function') {
+    try { renderTableroPrincipal(); } catch (e) { console.error('[tab-principal init]', e); }
+  }
   const hash = window.location.hash;
   if(hash === '#/ventas') {
     showSection('bandeja', document.querySelector('[onclick*="bandeja"]'));
@@ -3566,8 +3570,11 @@ window.addEventListener('DOMContentLoaded', () => {
     showSection('satelites', document.querySelector('[onclick*="satelites"]'));
   } else if(hash === '#/tv') {
     activarModoTV();
+  } else if(hash === '#tablero-foto') {
+    showSection('tablero-foto', document.querySelector('[onclick*="tablero-foto"]'));
+    if (typeof renderTableroFoto === 'function') renderTableroFoto();
   }
-  // Por defecto ya muestra Vista General (active en HTML)
+  // Por defecto muestra el Tablero principal (active en HTML)
 });
 
 /* ════════════════════════════════════════════════════════════════
@@ -3737,6 +3744,7 @@ function filtrarTableroPrincipal(q) {
 }
 
 function renderTableroPrincipal() {
+  try {
   const cont = document.getElementById('tab-principal-content');
   if (!cont) return;
   const cols = {
@@ -3746,7 +3754,8 @@ function renderTableroPrincipal() {
     'enviados':      { titulo: 'ENVIADOS',      clase: 'tab-col-enviados',      items: [] },
   };
   const q = _tabPrincipalFiltro;
-  (pedidos || []).forEach(p => {
+  const listaPedidos = Array.isArray(pedidos) ? pedidos : [];
+  listaPedidos.forEach(p => {
     const m = TAB_PRINCIPAL_MAP[p.estado];
     if (!m) return;
     if (q) {
@@ -3790,6 +3799,9 @@ function renderTableroPrincipal() {
   const total = Object.values(cols).reduce((a, c) => a + c.items.length, 0);
   const bd = document.getElementById('badge-tab-principal');
   if (bd) bd.textContent = total;
+  } catch (e) {
+    console.error('[tablero-principal] render error', e);
+  }
 }
 
 // Abre el modal de detalle al hacer click en una card del tablero principal.

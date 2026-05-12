@@ -1,0 +1,65 @@
+{
+  "name": "Recordatorio Foto Tablero 8AM",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 0],
+      "id": "tablero-rec-0001",
+      "name": "Cada dia 8am"
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CON_CHAT_ID_DUVAN",
+        "text": "📸 *Buenos días Duvan!*\n\nNo olvides la foto del tablero hoy.\n\nSubila en la app → sección \"Tablero (foto)\":\nhttps://ws-app-interna-production.up.railway.app/#tablero-foto",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [240, 0],
+      "id": "tablero-rec-0002",
+      "name": "Recordar a Duvan",
+      "webhookId": "tablero-rec-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "2f6tAgO4oskAcMV7",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cada dia 8am": {
+      "main": [
+        [
+          {
+            "node": "Recordar a Duvan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "c8cdeb92e56a59f7fa801454c20590e396c6591ff0e6335700e16b4c7a85d401"
+  },
+  "id": "RecordatorioFotoTablero8AM",
+  "tags": []
+}

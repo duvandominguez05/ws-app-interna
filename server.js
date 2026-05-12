@@ -3,13 +3,12 @@ const fs   = require('fs');
 const path = require('path');
 const { webcrypto } = require('crypto');
 if (!global.crypto) global.crypto = webcrypto;
+const db   = require('./db');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE   = path.join(__dirname, 'data', 'pedidos.json');
-const NEXTID_FILE = path.join(__dirname, 'data', 'nextId.json');
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -87,19 +86,8 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function leerPedidos() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return [];
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch { return []; }
-}
-
-function leerNextId() {
-  try {
-    if (!fs.existsSync(NEXTID_FILE)) return 1;
-    return JSON.parse(fs.readFileSync(NEXTID_FILE, 'utf8')).nextId || 1;
-  } catch { return 1; }
-}
+function leerPedidos() { return db.leerPedidos(); }
+function leerNextId() { return db.leerNextId(); }
 
 // Manda mensaje a Telegram. No bloquea — si falla, solo loguea.
 async function notificarTelegram(texto) {
@@ -406,18 +394,11 @@ async function descargarImagenEvolution(instance, messageKey) {
   }
 }
 
-// Guarda un comprobante detectado en data/comprobantes-detectados.json
+// Guarda un comprobante detectado en SQLite
 function guardarComprobanteDetectado(registro) {
-  const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
-  let lista = [];
-  try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
-  lista.push(registro);
-  // Mantener solo últimos 30 días
-  const hace30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  lista = lista.filter(r => new Date(r.ts).getTime() >= hace30);
-  fs.mkdirSync(path.dirname(FILE), { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(lista, null, 2));
+  db.upsertComprobante(registro);
 }
+
 
 // Etiqueta una conversación de Chatwoot por contactId con la etiqueta dada.
 // Crea la etiqueta si no existe, busca la conversación abierta del contacto y le añade la etiqueta.
@@ -511,15 +492,11 @@ async function resolverCliente(remoteJid, telefono, pushNameFallback) {
   return { nombre: `Cliente +57 ${telefono.slice(-10)}`, contactoChatwoot: cw?.id || null };
 }
 
-function guardarPedidos(pedidos, nextId) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(pedidos, null, 2));
-  if (nextId) fs.writeFileSync(NEXTID_FILE, JSON.stringify({ nextId }));
-}
+function guardarPedidos(pedidos, nextId) { db.guardarPedidos(pedidos, nextId); }
 
 const ESTADOS_VALIDOS = [
   'bandeja','hacer-diseno','confirmado','enviado-calandra',
-  'llego-impresion','corte','calidad','costura','listo','enviado-final'
+  'llego-impresion','corte','calidad','costura','en-satelite','listo','enviado-final'
 ];
 
 // ── Matching de nombres de archivo a equipos ───────────────────
@@ -930,15 +907,9 @@ http.createServer((req, res) => {
         // Marca de versión para diagnóstico
         if (!global._reaccionesLoaded) { console.log('[boot] sprint-1 reacciones cargado'); global._reaccionesLoaded = true; }
         
-        // 1. Guardar log crudo para debug (esencial para ver cómo llegan los stickers y etiquetas)
-        const EVOLUTION_LOG_DIR = path.join(__dirname, 'data', 'evolution-events');
-        if (!fs.existsSync(EVOLUTION_LOG_DIR)) {
-            fs.mkdirSync(EVOLUTION_LOG_DIR, { recursive: true });
-        }
+        // 1. Guardar log crudo para debug (en SQLite)
         const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // Formato YYYY-MM-DD
-        const logFile = path.join(EVOLUTION_LOG_DIR, `${hoy}.log`);
-        const logEntry = `[${new Date().toISOString()}] ${JSON.stringify(payload)}\n`;
-        fs.appendFileSync(logFile, logEntry);
+        db.insertEvolutionEvent(hoy, payload);
 
         // 2. Seguridad Básica: Validar Token (por query ?token=... o header apikey)
         const urlParams = new URL(req.url, `http://${req.headers.host || 'localhost'}`).searchParams;
@@ -1025,6 +996,11 @@ http.createServer((req, res) => {
             const MAPA_REACCIONES = {
               '🟡': { accion: 'cotizar', tipoBandeja: 'cotizar', estadoFinal: 'bandeja' },
               '🎨': { accion: 'diseno-confirmado', tipoBandeja: 'pedido', estadoFinal: 'confirmado', requierePedidoEnHacerDiseno: true },
+              // === Cierre de flujo de taller ===
+              '📦': { accion: 'llego-impresion', avancePedido: { de: 'enviado-calandra', a: 'llego-impresion' } },
+              '🪡': { accion: 'costura-lista', avancePedido: { de: 'llego-impresion', a: 'listo' } },
+              '🧵': { accion: 'costura-lista', avancePedido: { de: 'llego-impresion', a: 'listo' } },
+              '✅': { accion: 'entregado', avancePedido: { de: 'listo', a: 'enviado-final' } },
             };
             const config = MAPA_REACCIONES[emoji];
 
@@ -1361,19 +1337,11 @@ http.createServer((req, res) => {
     return;
   }
 
-  // ── GET /api/evolution-logs — lista archivos de log disponibles ──
+  // ── GET /api/evolution-logs — lista fechas disponibles ──
   if (req.method === 'GET' && req.url === '/api/evolution-logs') {
     try {
-      const dir = path.join(__dirname, 'data', 'evolution-events');
-      if (!fs.existsSync(dir)) return json(res, 200, { archivos: [], aviso: 'Aún no hay eventos registrados' });
-      const archivos = fs.readdirSync(dir)
-        .filter(f => f.endsWith('.log'))
-        .sort()
-        .reverse()
-        .map(f => {
-          const stat = fs.statSync(path.join(dir, f));
-          return { archivo: f, tamano_kb: Math.round(stat.size / 1024 * 10) / 10, modificado: stat.mtime };
-        });
+      const rows = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC').all();
+      const archivos = rows.map(r => ({ archivo: r.fecha + '.log', fecha: r.fecha }));
       return json(res, 200, { archivos });
     } catch (e) {
       return json(res, 500, { error: e.message });
@@ -1381,7 +1349,6 @@ http.createServer((req, res) => {
   }
 
   // ── GET /api/evolution-logs/:fecha — devuelve eventos del día ──
-  // ?last=20 para últimos N eventos, ?filter=texto para filtrar por substring
   if (req.method === 'GET' && req.url.startsWith('/api/evolution-logs/')) {
     try {
       const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -1389,24 +1356,17 @@ http.createServer((req, res) => {
       const last = parseInt(urlObj.searchParams.get('last')) || 50;
       const filtro = (urlObj.searchParams.get('filter') || '').toLowerCase();
 
-      const archivo = path.join(__dirname, 'data', 'evolution-events', `${fecha}.log`);
-      if (!fs.existsSync(archivo)) {
+      const allEvents = db.leerEvolutionEvents(fecha);
+      if (!allEvents.length) {
         return json(res, 404, { error: `No hay log para ${fecha}`, sugerencia: 'GET /api/evolution-logs para ver fechas disponibles' });
       }
 
-      const lineas = fs.readFileSync(archivo, 'utf8').split('\n').filter(l => l.trim());
-      let filtradas = filtro ? lineas.filter(l => l.toLowerCase().includes(filtro)) : lineas;
-      const total = filtradas.length;
-      filtradas = filtradas.slice(-last);
+      let filtrados = filtro ? allEvents.filter(e => JSON.stringify(e).toLowerCase().includes(filtro)) : allEvents;
+      const total = filtrados.length;
+      filtrados = filtrados.slice(-last);
 
-      const eventos = filtradas.map(linea => {
-        const m = linea.match(/^\[([^\]]+)\]\s+(.*)$/);
-        if (!m) return { raw: linea };
-        try { return { ts: m[1], payload: JSON.parse(m[2]) }; }
-        catch { return { ts: m[1], raw: m[2] }; }
-      });
-
-      return json(res, 200, { fecha, total_en_archivo: lineas.length, total_filtrado: total, mostrando: eventos.length, eventos });
+      const eventos = filtrados.map(payload => ({ payload }));
+      return json(res, 200, { fecha, total_en_archivo: allEvents.length, total_filtrado: total, mostrando: eventos.length, eventos });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
@@ -1429,13 +1389,7 @@ http.createServer((req, res) => {
         if (isNaN(altoCm) || altoCm < 0) altoCm = 0;
 
         const metros  = parseFloat((altoCm / 100).toFixed(3));
-        const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-
-        let registros = [];
-        try {
-          if (fs.existsSync(CAL_FILE))
-            registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
-        } catch {}
+        let registros = db.leerCalandra();
 
         // Usar fecha real del PDF si viene, si no usar hoy en Colombia
         const fechaReal = fechaDrive || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
@@ -1479,8 +1433,7 @@ http.createServer((req, res) => {
         } else if (driveIndex !== undefined && driveIndex !== null) {
           registros[existeIdx].driveIndex = driveIndex;
         }
-        fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
-        fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
+        db.guardarCalandraArray(registros);
 
         // PDF en Drive detectado: marca el pedido como "PDF listo" y, si ya hay WT, avanza a enviado-calandra.
         // Acepta múltiples archivos del mismo equipo (Camilo 1.pdf, Camilo 2.pdf, ...).
@@ -1516,9 +1469,7 @@ http.createServer((req, res) => {
 
   // ── DELETE /api/calandra/reset — limpia todos los registros ──
   if (req.method === 'DELETE' && req.url === '/api/calandra/reset') {
-    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-    fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
-    fs.writeFileSync(CAL_FILE, JSON.stringify([], null, 2));
+    db.resetCalandra();
     console.log('[calandra] reset completo');
     return json(res, 200, { ok: true, mensaje: 'Calandra limpiada' });
   }
@@ -1526,40 +1477,25 @@ http.createServer((req, res) => {
   // ── DELETE /api/calandra/:id — borra un registro ────────────
   if (req.method === 'DELETE' && req.url.startsWith('/api/calandra/')) {
     const id = req.url.split('/')[3];
-    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-    let registros = [];
-    try {
-      if (fs.existsSync(CAL_FILE))
-        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
-    } catch {}
+    const registros = db.leerCalandra();
     const antes = registros.length;
-    registros = registros.filter(r => String(r.id) !== String(id));
-    fs.mkdirSync(path.dirname(CAL_FILE), { recursive: true });
-    fs.writeFileSync(CAL_FILE, JSON.stringify(registros, null, 2));
-    console.log(`[calandra] borrado id=${id}, quedaron ${registros.length}/${antes}`);
-    return json(res, 200, { ok: true, borrado: antes !== registros.length });
+    const nuevos = registros.filter(r => String(r.id) !== String(id));
+    db.guardarCalandraArray(nuevos);
+    console.log(`[calandra] borrado id=${id}, quedaron ${nuevos.length}/${antes}`);
+    return json(res, 200, { ok: true, borrado: antes !== nuevos.length });
   }
 
   // ── GET /api/drive-pdfs — todos los PDFs de Drive ordenados por fecha real ──
   if (req.method === 'GET' && req.url === '/api/drive-pdfs') {
-    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-    const WT_FILE  = path.join(__dirname, 'data', 'pendientes-wt.json');
-    let registros = [];
+    let registros = db.leerCalandra();
     let enviados = new Set();
     try {
-      if (fs.existsSync(CAL_FILE))
-        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
-    } catch {}
-    try {
-      if (fs.existsSync(WT_FILE)) {
-        const wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
-        const pendientes = (wt.pendientes || []).map(p => p.nombre.toLowerCase());
-        // Los que NO están en pendientes fueron enviados
-        registros.forEach(r => {
-          const nombre = (r.archivo || '').toLowerCase();
-          if (!pendientes.includes(nombre)) enviados.add(nombre);
-        });
-      }
+      const wt = db.leerPendientesWt();
+      const pendientes = (wt.pendientes || []).map(p => p.nombre.toLowerCase());
+      registros.forEach(r => {
+        const nombre = (r.archivo || '').toLowerCase();
+        if (!pendientes.includes(nombre)) enviados.add(nombre);
+      });
     } catch {}
     // Ordenar del más nuevo al más viejo por createdTime de Drive (fecha real de subida)
     registros.sort((a, b) => {
@@ -1576,12 +1512,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/calandra — devuelve todos los registros ────────
   if (req.method === 'GET' && req.url === '/api/calandra') {
-    const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-    let registros = [];
-    try {
-      if (fs.existsSync(CAL_FILE))
-        registros = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8'));
-    } catch {}
+    let registros = db.leerCalandra();
     registros.sort((a, b) => b.id - a.id);
     return json(res, 200, { registros });
   }
@@ -1599,12 +1530,7 @@ http.createServer((req, res) => {
         if (!['enviado', 'descargado'].includes(tipo))
           return json(res, 400, { error: 'tipo debe ser enviado o descargado' });
 
-        const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
-        let registros = [];
-        try {
-          if (fs.existsSync(WT_FILE))
-            registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
-        } catch {}
+        const registros = db.leerWetransfer();
 
         // Evitar duplicados por gmailId
         if (gmailId && registros.some(r => r.gmailId === gmailId))
@@ -1621,9 +1547,7 @@ http.createServer((req, res) => {
           ts:      new Date().toISOString(),
         };
 
-        registros.push(registro);
-        fs.mkdirSync(path.dirname(WT_FILE), { recursive: true });
-        fs.writeFileSync(WT_FILE, JSON.stringify(registros, null, 2));
+        db.insertWetransfer(registro);
 
         // Correo WeTransfer detectado: marca el pedido como "WT listo" y, si ya hay PDF, avanza a enviado-calandra.
         let pedidoAutmovido = null;
@@ -1666,9 +1590,7 @@ http.createServer((req, res) => {
       const soloNoProc = u.searchParams.get('soloNoProcesados') === 'true';
       const soloSinSticker = u.searchParams.get('soloSinSticker') === 'true';
 
-      const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
-      let lista = [];
-      try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+      let lista = db.leerComprobantes();
 
       // Filtro por fecha
       if (desde) {
@@ -1746,9 +1668,7 @@ http.createServer((req, res) => {
       try {
         const { messageIds } = JSON.parse(body);
         if (!Array.isArray(messageIds)) return json(res, 400, { error: 'messageIds debe ser array' });
-        const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
-        let lista = [];
-        try { if (fs.existsSync(FILE)) lista = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
+        let lista = db.leerComprobantes();
         const idsSet = new Set(messageIds);
         let count = 0;
         lista.forEach(r => {
@@ -1758,7 +1678,7 @@ http.createServer((req, res) => {
             count++;
           }
         });
-        fs.writeFileSync(FILE, JSON.stringify(lista, null, 2));
+        db.guardarComprobantes(lista);
         return json(res, 200, { ok: true, marcados: count });
       } catch (e) {
         return json(res, 400, { error: e.message });
@@ -1777,13 +1697,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/wetransfer — devuelve todos los registros ──────
   if (req.method === 'GET' && req.url === '/api/wetransfer') {
-    const WT_FILE = path.join(__dirname, 'data', 'wetransfer.json');
-    let registros = [];
-    try {
-      if (fs.existsSync(WT_FILE))
-        registros = JSON.parse(fs.readFileSync(WT_FILE, 'utf8'));
-    } catch {}
-    return json(res, 200, { registros });
+    return json(res, 200, { registros: db.leerWetransfer() });
   }
 
   // ── GET /api/pdfs-huerfanos — archivos Drive/WT recientes sin pedido asociado ──
@@ -1796,14 +1710,9 @@ http.createServer((req, res) => {
     }
 
     try {
-      const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-      const WT_FILE  = path.join(__dirname, 'data', 'wetransfer.json');
-      const IGN_FILE = path.join(__dirname, 'data', 'pdfs-ignorados.json');
-
-      let calandra = [], wt = [], ignorados = { drive: [], wt: [] };
-      try { if (fs.existsSync(CAL_FILE)) calandra = JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')); } catch {}
-      try { if (fs.existsSync(WT_FILE)) wt = JSON.parse(fs.readFileSync(WT_FILE, 'utf8')); } catch {}
-      try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
+      let calandra = db.leerCalandra();
+      let wt = db.leerWetransfer();
+      let ignorados = db.leerIgnorados();
 
       const ignDrive = new Set((ignorados.drive || []).map(String));
       const ignWt    = new Set((ignorados.wt    || []).map(String));
@@ -2032,16 +1941,7 @@ http.createServer((req, res) => {
       try {
         const { tipo, idItem } = JSON.parse(body);
         if (!tipo || !idItem) return json(res, 400, { error: 'tipo e idItem requeridos' });
-        const IGN_FILE = path.join(__dirname, 'data', 'pdfs-ignorados.json');
-        let ignorados = { drive: [], wt: [] };
-        try { if (fs.existsSync(IGN_FILE)) ignorados = JSON.parse(fs.readFileSync(IGN_FILE, 'utf8')); } catch {}
-        if (tipo === 'drive') {
-          if (!ignorados.drive.includes(String(idItem))) ignorados.drive.push(String(idItem));
-        } else if (tipo === 'wt') {
-          if (!ignorados.wt.includes(String(idItem))) ignorados.wt.push(String(idItem));
-        }
-        fs.mkdirSync(path.dirname(IGN_FILE), { recursive: true });
-        fs.writeFileSync(IGN_FILE, JSON.stringify(ignorados, null, 2));
+        db.insertIgnorado(tipo, idItem);
         global._huerfanosCache = null; // invalidar cache
         return json(res, 200, { ok: true });
       } catch (e) {
@@ -2053,12 +1953,8 @@ http.createServer((req, res) => {
 
   // ── GET /api/docs/nums — devuelve nextCot, nextFac e historial ──
   if (req.method === 'GET' && req.url === '/api/docs/nums') {
-    const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
-    const HIST_FILE = path.join(__dirname, 'data', 'docsHistorial.json');
-    let nums = { nextCot: 210, nextFac: 501 };
-    let historial = [];
-    try { if (fs.existsSync(NUMS_FILE)) nums = JSON.parse(fs.readFileSync(NUMS_FILE, 'utf8')); } catch {}
-    try { if (fs.existsSync(HIST_FILE)) historial = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch {}
+    const nums = db.leerDocsNums();
+    const historial = db.leerDocsHistorial();
     return json(res, 200, { ...nums, historial });
   }
 
@@ -2069,19 +1965,15 @@ http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const { nextCot, nextFac, historial } = JSON.parse(body);
-        const NUMS_FILE = path.join(__dirname, 'data', 'docsNums.json');
-        const HIST_FILE = path.join(__dirname, 'data', 'docsHistorial.json');
-        fs.mkdirSync(path.dirname(NUMS_FILE), { recursive: true });
-        fs.writeFileSync(NUMS_FILE, JSON.stringify({ nextCot, nextFac }));
+        db.guardarDocsNums({ nextCot, nextFac });
         // Merge historial: combinar con lo existente, sin duplicados por id
         if (Array.isArray(historial) && historial.length > 0) {
-          let existente = [];
-          try { if (fs.existsSync(HIST_FILE)) existente = JSON.parse(fs.readFileSync(HIST_FILE, 'utf8')); } catch {}
+          const existente = db.leerDocsHistorial();
           const todos = [...historial, ...existente];
           const vistos = new Set();
           const merged = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
           merged.sort((a, b) => b.id - a.id);
-          fs.writeFileSync(HIST_FILE, JSON.stringify(merged.slice(0, 100), null, 2));
+          db.guardarDocsHistorial(merged.slice(0, 100));
         }
         return json(res, 200, { ok: true });
       } catch (e) {
@@ -2100,14 +1992,12 @@ http.createServer((req, res) => {
       try {
         const { pendientes, semana } = JSON.parse(body);
         if (!Array.isArray(pendientes)) return json(res, 400, { error: 'pendientes debe ser array' });
-        const FILE = path.join(__dirname, 'data', 'pendientes-wt.json');
         const registro = {
           ts: new Date().toISOString(),
           semana: semana || '',
           pendientes,
         };
-        fs.mkdirSync(path.dirname(FILE), { recursive: true });
-        fs.writeFileSync(FILE, JSON.stringify(registro, null, 2));
+        db.guardarPendientesWt(registro);
         console.log(`[pendientes-wt] ${pendientes.length} pendientes registrados`);
         return json(res, 200, { ok: true, total: pendientes.length });
       } catch (e) {
@@ -2119,18 +2009,12 @@ http.createServer((req, res) => {
 
   // ── GET /api/pendientes-wt — devuelve último reporte ────────
   if (req.method === 'GET' && req.url === '/api/pendientes-wt') {
-    const FILE = path.join(__dirname, 'data', 'pendientes-wt.json');
-    let data = { pendientes: [], ts: null };
-    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
-    return json(res, 200, data);
+    return json(res, 200, db.leerPendientesWt());
   }
 
   // ── GET /api/arreglos ────────────────────────────────────────
   if (req.method === 'GET' && req.url === '/api/arreglos') {
-    const FILE = path.join(__dirname, 'data', 'arreglos.json');
-    let data = [];
-    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
-    return json(res, 200, { arreglos: data });
+    return json(res, 200, { arreglos: db.leerArreglos() });
   }
 
   // ── POST /api/arreglos — reemplaza lista completa ────────────
@@ -2141,9 +2025,7 @@ http.createServer((req, res) => {
       try {
         const { arreglos } = JSON.parse(body);
         if (!Array.isArray(arreglos)) return json(res, 400, { error: 'arreglos debe ser array' });
-        const FILE = path.join(__dirname, 'data', 'arreglos.json');
-        fs.mkdirSync(path.dirname(FILE), { recursive: true });
-        fs.writeFileSync(FILE, JSON.stringify(arreglos, null, 2));
+        db.guardarArreglos(arreglos);
         return json(res, 200, { ok: true, total: arreglos.length });
       } catch { return json(res, 400, { error: 'JSON inválido' }); }
     });
@@ -2152,10 +2034,7 @@ http.createServer((req, res) => {
 
   // ── GET /api/satelites ───────────────────────────────────────
   if (req.method === 'GET' && req.url === '/api/satelites') {
-    const FILE = path.join(__dirname, 'data', 'satelites.json');
-    let data = [];
-    try { if (fs.existsSync(FILE)) data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch {}
-    return json(res, 200, { movimientos: data });
+    return json(res, 200, { movimientos: db.leerSatelites() });
   }
 
   // ── POST /api/satelites — reemplaza lista completa ──────────
@@ -2166,9 +2045,7 @@ http.createServer((req, res) => {
       try {
         const { movimientos } = JSON.parse(body);
         if (!Array.isArray(movimientos)) return json(res, 400, { error: 'movimientos debe ser array' });
-        const FILE = path.join(__dirname, 'data', 'satelites.json');
-        fs.mkdirSync(path.dirname(FILE), { recursive: true });
-        fs.writeFileSync(FILE, JSON.stringify(movimientos, null, 2));
+        db.guardarSatelites(movimientos);
         return json(res, 200, { ok: true, total: movimientos.length });
       } catch { return json(res, 400, { error: 'JSON inválido' }); }
     });
@@ -2182,9 +2059,8 @@ http.createServer((req, res) => {
 
   // ── Notificaciones compartidas (campana) ───────────────────────
   // Todos los dispositivos ven las mismas notificaciones
-  const NOTIFS_FILE = path.join(__dirname, 'data', 'notificaciones.json');
-  const leerNotifs = () => { try { return JSON.parse(fs.readFileSync(NOTIFS_FILE, 'utf8')); } catch { return []; } };
-  const guardarNotifs = arr => { fs.mkdirSync(path.dirname(NOTIFS_FILE), { recursive: true }); fs.writeFileSync(NOTIFS_FILE, JSON.stringify(arr, null, 2)); };
+  const leerNotifs = () => db.leerNotifs();
+  const guardarNotifs = arr => db.guardarNotifs(arr);
 
   if (req.method === 'GET' && req.url === '/api/notificaciones') {
     return json(res, 200, { notificaciones: leerNotifs() });
@@ -2204,9 +2080,8 @@ http.createServer((req, res) => {
   }
 
   // ── Configuración compartida (ancho calandra, mes, etc.) ───────
-  const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
-  const leerConfig = () => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; } };
-  const guardarConfig = obj => { fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true }); fs.writeFileSync(CONFIG_FILE, JSON.stringify(obj, null, 2)); };
+  const leerConfig = () => db.leerConfig();
+  const guardarConfig = obj => db.guardarConfig(obj);
 
   if (req.method === 'GET' && req.url === '/api/config') {
     return json(res, 200, leerConfig());
@@ -2231,14 +2106,11 @@ http.createServer((req, res) => {
     try {
       const pedidosData = leerPedidos();
       const nextId = leerNextId();
-      const ARR_FILE = path.join(__dirname, 'data', 'arreglos.json');
-      const SAT_FILE = path.join(__dirname, 'data', 'satelites.json');
-      const CAL_FILE = path.join(__dirname, 'data', 'calandra.json');
-      const DOCS_FILE = path.join(__dirname, 'data', 'docsNums.json');
-      const arreglos = fs.existsSync(ARR_FILE) ? JSON.parse(fs.readFileSync(ARR_FILE, 'utf8')) : [];
-      const satelites = fs.existsSync(SAT_FILE) ? JSON.parse(fs.readFileSync(SAT_FILE, 'utf8')) : [];
-      const calandra = fs.existsSync(CAL_FILE) ? JSON.parse(fs.readFileSync(CAL_FILE, 'utf8')) : [];
-      const docs = fs.existsSync(DOCS_FILE) ? JSON.parse(fs.readFileSync(DOCS_FILE, 'utf8')) : { historial: [], nextCot: 210, nextFac: 501 };
+      const arreglos = db.leerArreglos();
+      const satelites = db.leerSatelites();
+      const calandra = db.leerCalandra();
+      const docsNums = db.leerDocsNums();
+      const docs = { ...docsNums, historial: db.leerDocsHistorial() };
       return json(res, 200, {
         ok: true,
         ts: Date.now(),
@@ -2360,9 +2232,8 @@ function _huelaPMBogota() {
 
 async function enviarResumenComprobantes() {
   try {
-    const FILE = path.join(__dirname, 'data', 'comprobantes-detectados.json');
-    if (!fs.existsSync(FILE)) return;
-    const lista = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    const lista = db.leerComprobantes();
+    if (!lista.length) return;
 
     // Filtrar últimas 18h (cubre el día de trabajo de las vendedoras)
     const limite = Date.now() - 18 * 60 * 60 * 1000;
