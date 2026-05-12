@@ -3853,10 +3853,105 @@ function renderTableroPrincipal() {
   }
 }
 
-// Abre el modal de detalle al hacer click en una card del tablero principal.
+// Etapas del flujo (orden secuencial) y nombres legibles
+const ETAPAS_FLUJO = [
+  { id: 'bandeja',          label: 'Cotización' },
+  { id: 'hacer-diseno',     label: 'Hacer diseño (Venta)' },
+  { id: 'confirmado',       label: 'Aprobado (Diseño OK)' },
+  { id: 'enviado-calandra', label: 'Enviado a calandra' },
+  { id: 'llego-impresion',  label: 'Llegó impresión' },
+  { id: 'listo',            label: 'Listo' },
+  { id: 'enviado-final',    label: 'Entregado al cliente' },
+];
+
+function siguienteEtapa(estadoActual) {
+  const i = ETAPAS_FLUJO.findIndex(e => e.id === estadoActual);
+  if (i < 0 || i >= ETAPAS_FLUJO.length - 1) return null;
+  return ETAPAS_FLUJO[i + 1];
+}
+
+function etapaActualLabel(estado) {
+  const e = ETAPAS_FLUJO.find(x => x.id === estado);
+  return e ? e.label : estado;
+}
+
+// Modal de DETALLE de pedido (no completar). Muestra info + acciones rápidas.
 function abrirDetallePedido(id) {
-  if (typeof openModalCompletar === 'function') return openModalCompletar(id);
-  showSection('bandeja');
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  // Eliminar modal previo
+  const existente = document.getElementById('modal-detalle-pedido');
+  if (existente) existente.remove();
+
+  const siguiente = siguienteEtapa(p.estado);
+  const tel = p.telefono ? esc(p.telefono) : '—';
+  const ven = p.vendedora ? esc(p.vendedora) : 'Sin asignar';
+  const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : 'Sin asignar';
+  const fechaEntrega = p.fechaEntrega ? esc(p.fechaEntrega) : 'Sin fecha';
+  const notas = p.notas ? esc(p.notas) : '';
+  const items = Array.isArray(p.items) && p.items.length
+    ? p.items.map(i => esc(typeof i === 'string' ? i : [i.prenda, i.tela].filter(Boolean).join(' · '))).join(', ')
+    : 'Sin prendas registradas';
+
+  // Urgencia
+  let urgencia = '';
+  if (p.fechaEntrega) {
+    const dParaEntrega = Math.ceil((new Date(p.fechaEntrega).getTime() - Date.now()) / 86400000);
+    if (dParaEntrega < 0) urgencia = '<span style="color:#fca5a5;font-weight:700;">🚨 Vencido hace ' + Math.abs(dParaEntrega) + ' días</span>';
+    else if (dParaEntrega <= 2) urgencia = '<span style="color:#fca5a5;font-weight:600;">🔥 Faltan ' + dParaEntrega + ' días</span>';
+    else if (dParaEntrega <= 5) urgencia = '<span style="color:#fcd34d;">⏰ Faltan ' + dParaEntrega + ' días</span>';
+    else urgencia = '<span style="color:var(--text-muted);">📅 Faltan ' + dParaEntrega + ' días</span>';
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-detalle-pedido';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML =
+    '<div style="background:#12141c;border:1px solid rgba(255,255,255,0.1);border-radius:14px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">' +
+        '<div>' +
+          '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:1.15rem;color:var(--text);line-height:1.2;">' + esc(p.equipo || 'Sin equipo') + '</div>' +
+          '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;letter-spacing:0.6px;text-transform:uppercase;">Pedido #' + p.id + ' · ' + etapaActualLabel(p.estado) + '</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'modal-detalle-pedido\').remove()" style="background:transparent;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;padding:0 6px;line-height:1;">×</button>' +
+      '</div>' +
+      // Datos del pedido
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:9px;padding:12px;font-size:0.82rem;margin-bottom:12px;">' +
+        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Teléfono</div><div>' + tel + '</div></div>' +
+        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Vendedora</div><div>🛍️ ' + ven + '</div></div>' +
+        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Diseñador</div><div>🎨 ' + dis + '</div></div>' +
+        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Fecha entrega</div><div>' + fechaEntrega + (urgencia ? '<br>' + urgencia : '') + '</div></div>' +
+        '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Prendas</div><div>' + items + '</div></div>' +
+        (notas ? '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Notas</div><div>' + notas + '</div></div>' : '') +
+      '</div>' +
+      // Acciones
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        (siguiente
+          ? '<button onclick="avanzarEtapaPedido(' + p.id + ')" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:11px;border:none;border-radius:9px;font-weight:600;font-size:0.92rem;cursor:pointer;">➡️ Pasar a: ' + siguiente.label + '</button>'
+          : '<div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:11px;border-radius:9px;text-align:center;font-size:0.85rem;">✅ Pedido terminado (entregado)</div>') +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
+          (p.telefono ? '<button onclick="window.open(\'https://wa.me/57' + String(p.telefono).replace(/\D/g, '') + '\', \'_blank\')" class="btn btn-sm" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">💬 WhatsApp</button>' : '<div></div>') +
+          '<button onclick="openModalCompletar(' + p.id + '); document.getElementById(\'modal-detalle-pedido\').remove();" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">✏️ Editar datos</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+}
+
+async function avanzarEtapaPedido(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const sig = siguienteEtapa(p.estado);
+  if (!sig) { toast('Ya está en la última etapa', 'info'); return; }
+  if (!confirm('¿Pasar pedido a "' + sig.label + '"?')) return;
+  p.estado = sig.id;
+  p.ultimoMovimiento = new Date().toISOString();
+  guardar();
+  toast('✅ Movido a ' + sig.label, 'success');
+  const modal = document.getElementById('modal-detalle-pedido');
+  if (modal) modal.remove();
+  render();
 }
 
 // Archivar todos los enviado-final en Notion y borrar del server
