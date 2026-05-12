@@ -205,26 +205,21 @@ function closeSidebar() {
    RENDER PRINCIPAL
 ════════════════════════════════════════════════════════════════ */
 function render() {
-  renderMetricas();
-  renderDashboard();
-  renderBadges();
-  renderTablaRecientes();
-  if (typeof renderTableroPrincipal === 'function') renderTableroPrincipal();
-  if (typeof renderTorreUnificada === 'function') renderTorreUnificada();
-  renderBandeja();
-  renderKanban('hacer-diseno');
-  renderKanban('confirmado');
-  renderKanban('enviado-calandra');
-  renderKanban('llego-impresion');
-  renderKanban('calidad');
-  renderKanban('costura');
-  renderKanban('listo');
-  renderKanban('enviado-final');
-  cargarWT();
-  renderArreglos();
-  renderCalandra();
-  renderSatelites();
-  if (document.body.classList.contains('modo-tv')) renderTVLista();
+  const safe = (nombre, fn) => { try { fn(); } catch (e) { console.error('[render]', nombre, e); } };
+  safe('metricas', renderMetricas);
+  safe('dashboard', renderDashboard);
+  safe('badges', renderBadges);
+  safe('tabla-recientes', renderTablaRecientes);
+  if (typeof renderTableroPrincipal === 'function') safe('tablero-principal', renderTableroPrincipal);
+  if (typeof renderTorreUnificada === 'function') safe('torre-unificada', renderTorreUnificada);
+  safe('bandeja', renderBandeja);
+  ['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']
+    .forEach(estado => safe('kanban-' + estado, () => renderKanban(estado)));
+  safe('wt', cargarWT);
+  safe('arreglos', renderArreglos);
+  safe('calandra', renderCalandra);
+  safe('satelites', renderSatelites);
+  if (document.body.classList.contains('modo-tv')) safe('tv-lista', renderTVLista);
 }
 
 /* ─── Métricas ────────────────────────────────────────────────── */
