@@ -1913,25 +1913,37 @@ function syncConServidor(silencioso = false) {
     .catch(() => {});
 }
 
-// Sync al cargar — el servidor manda
-// HARD-LOAD: al primer arranque traemos los pedidos directo del servidor y reemplazamos
-// localStorage. Garantiza que aunque la cache local esté rota/vieja, los pedidos aparezcan.
-(function hardLoadInicial() {
-  fetch('/api/pedidos')
+// SERVER-DRIVEN SYNC: el servidor es la única fuente de verdad.
+// Reemplazamos pedidos locales con los del server SIEMPRE, respetando solo los
+// eliminadosLocales recientes (TTL 7d) para que un dispositivo offline no
+// reviva pedidos que otro borró.
+function hardSyncFromServer(silencioso = false) {
+  return fetch('/api/pedidos')
     .then(r => r.json())
     .then(data => {
       const srv = Array.isArray(data) ? data : (data.pedidos || []);
-      console.log('[hard-load] servidor devolvió', srv.length, 'pedidos');
-      if (srv.length === 0) return;
-      pedidos = srv.map(p => ({ ...p }));
+      const archivados = new Set(data.archivados || []);
+      const filtrados = srv
+        .filter(p => !eliminadosLocales.has(p.id))
+        .filter(p => !archivados.has(p.id));
+      const map = new Map();
+      filtrados.forEach(p => map.set(p.id, { ...p }));
+      const nuevos = Array.from(map.values());
+      const cambios = JSON.stringify(nuevos) !== JSON.stringify(pedidos);
+      pedidos = nuevos;
       nextId = Math.max(nextId || 1, data.nextId || 1, ...pedidos.map(p => (p.id || 0) + 1));
       localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
       localStorage.setItem('ws_nextId3', String(nextId));
-      try { render(); } catch (e) { console.error('[hard-load] render error', e); }
+      if (cambios) { try { render(); } catch (e) { console.error('[sync] render error', e); } }
+      if (!silencioso) console.log('[sync] ' + pedidos.length + ' pedidos del servidor');
     })
-    .catch(e => console.error('[hard-load] fetch error', e));
-})();
-syncConServidor(false);
+    .catch(e => console.error('[sync] fetch error', e));
+}
+// Mantenemos syncConServidor como alias para no romper llamadas existentes
+const _syncOld = syncConServidor;
+syncConServidor = hardSyncFromServer;
+// Sync inicial
+hardSyncFromServer(false);
 
 // Polling automático cada 7 segundos (era 15)
 setInterval(() => syncConServidor(true), 7000);
