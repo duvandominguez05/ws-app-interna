@@ -494,6 +494,43 @@ async function resolverCliente(remoteJid, telefono, pushNameFallback) {
 
 function guardarPedidos(pedidos, nextId) { db.guardarPedidos(pedidos, nextId); }
 
+// Tombstones: IDs de pedidos archivados (en Notion) para evitar que el cliente los reviva.
+// Se mantienen los últimos 30 días.
+const TOMBSTONES_FILE = path.join(__dirname, 'data', 'pedidos-archivados-tombstones.json');
+function leerTombstones() {
+  try {
+    if (!fs.existsSync(TOMBSTONES_FILE)) return [];
+    const arr = JSON.parse(fs.readFileSync(TOMBSTONES_FILE, 'utf8'));
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function guardarTombstones(arr) {
+  try {
+    fs.mkdirSync(path.dirname(TOMBSTONES_FILE), { recursive: true });
+    fs.writeFileSync(TOMBSTONES_FILE, JSON.stringify(arr, null, 2));
+  } catch (e) { console.error('[tombstones]', e.message); }
+}
+function agregarTombstone(pedidoId) {
+  const lista = leerTombstones();
+  const hace30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const filtrado = lista.filter(t => t.ts >= hace30);
+  if (!filtrado.find(t => t.id === pedidoId)) {
+    filtrado.push({ id: pedidoId, ts: Date.now() });
+    guardarTombstones(filtrado);
+  }
+}
+function idsArchivados() {
+  return new Set(leerTombstones().map(t => t.id));
+}
+
+// Limpia pedidos.json de cualquier ID que esté en tombstones.
+// Esto se ejecuta antes de servir /api/pedidos y al guardar nuevos pedidos.
+function purgarArchivados(pedidos) {
+  const archivados = idsArchivados();
+  if (!archivados.size) return pedidos;
+  return pedidos.filter(p => !archivados.has(p.id));
+}
+
 // ─────────────────────────────────────────────────────────────
 // NOTION — Archivar pedidos entregados (enviado-final)
 // El pedido se sube a Notion y luego se borra del servidor.
@@ -587,6 +624,8 @@ async function archivarYBorrarPedido(pedidoId) {
   // Borrar del servidor
   pedidos.splice(idx, 1);
   guardarPedidos(pedidos, leerNextId());
+  // Tombstone: que el cliente no lo reviva
+  agregarTombstone(pedidoId);
   return { ok: true, notionPageId: resp.notionPageId, pedidoId };
 }
 
@@ -703,9 +742,11 @@ http.createServer((req, res) => {
     return;
   }
 
-  // ── GET /api/pedidos — lista todos los pedidos ──────────────
+  // ── GET /api/pedidos — lista todos los pedidos (purgando archivados) ──
   if (req.method === 'GET' && req.url === '/api/pedidos') {
-    return json(res, 200, { pedidos: leerPedidos(), nextId: leerNextId() });
+    const peds = purgarArchivados(leerPedidos());
+    const tomb = leerTombstones();
+    return json(res, 200, { pedidos: peds, nextId: leerNextId(), archivados: tomb.map(t => t.id) });
   }
 
   // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
@@ -729,13 +770,19 @@ http.createServer((req, res) => {
         if (!Array.isArray(incoming)) return json(res, 400, { error: 'pedidos debe ser array' });
         const eliminadosSet = new Set(Array.isArray(eliminadosCliente) ? eliminadosCliente : []);
 
+        // Bloquear pedidos archivados (tombstones) — el cliente puede mandarlos por cache vieja
+        const archivadosSet = idsArchivados();
+        const incomingFiltrado = incoming.filter(p => !archivadosSet.has(p.id));
+        const rechazados = incoming.length - incomingFiltrado.length;
+        if (rechazados > 0) console.log(`[POST /api/pedidos] rechazados ${rechazados} pedidos archivados`);
+
         // Merge: preservar campos del servidor que el cliente puede no tener
         const existing = leerPedidos();
         const mapaExisting = new Map(existing.map(p => [p.id, p]));
-        const merged = incoming.map(p => {
+        const merged = incomingFiltrado.map(p => {
           const e = mapaExisting.get(p.id);
           if (!e) return p;
-          
+
           const tIn = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
           const tEx = e.ultimoMovimiento ? new Date(e.ultimoMovimiento).getTime() : 0;
 
@@ -753,9 +800,9 @@ http.createServer((req, res) => {
           };
         });
         // Preservar pedidos del servidor que el cliente no tiene (creados por bot en otro momento)
-        // pero NO reagregar los que el cliente eliminó explícitamente
-        const incomingIds = new Set(incoming.map(p => p.id));
-        existing.forEach(e => { if (!incomingIds.has(e.id) && !eliminadosSet.has(e.id)) merged.push(e); });
+        // pero NO reagregar los que el cliente eliminó explícitamente NI los archivados
+        const incomingIds = new Set(incomingFiltrado.map(p => p.id));
+        existing.forEach(e => { if (!incomingIds.has(e.id) && !eliminadosSet.has(e.id) && !archivadosSet.has(e.id)) merged.push(e); });
         merged.sort((a, b) => a.id - b.id);
 
         guardarPedidos(merged, nextId);
