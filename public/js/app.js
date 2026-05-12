@@ -4188,6 +4188,39 @@ async function eliminarPedidoCualquierEstado(id) {
   toast('🗑️ Pedido #' + id + ' eliminado', 'info');
 }
 
+// Limpieza masiva: borra todos los pedidos sin teléfono Y sin vendedora.
+// Útil para limpiar el spam del lector de tablero foto.
+async function limpiarBasura() {
+  // Contar localmente para mostrar al usuario
+  const candidatos = (pedidos || []).filter(p => {
+    if (p.estado === 'enviado-final') return false;
+    if (p.stickerVenta) return false;
+    const sinTel = !p.telefono || String(p.telefono).replace(/\D/g, '').length < 7;
+    const sinVen = !p.vendedora || p.vendedora === 'Sin asignar' || p.vendedora === '';
+    return sinTel && sinVen;
+  });
+  if (candidatos.length === 0) {
+    toast('No hay pedidos basura para limpiar 🎉', 'info');
+    return;
+  }
+  const ejemplos = candidatos.slice(0, 8).map(p => '#' + p.id + ' ' + (p.equipo || '(sin nombre)')).join(', ');
+  const extras = candidatos.length > 8 ? ' y ' + (candidatos.length - 8) + ' más' : '';
+  if (!confirm('¿Borrar ' + candidatos.length + ' pedido(s) sin teléfono y sin vendedora?\n\n' + ejemplos + extras + '\n\nNo se puede deshacer.')) return;
+  try {
+    toast('⏳ Limpiando...', 'info');
+    const r = await fetch('/api/pedidos/limpiar-basura', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    // Marcar como eliminados localmente para que el sync no los reviva
+    (data.ids || []).forEach(id => eliminadosLocales.add(id));
+    // Forzar resync
+    await hardSyncFromServer(true);
+    toast('✅ ' + data.eliminados + ' pedidos basura eliminados', 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
 // Archivar los enviado-final con MÁS DE 30 DÍAS en Notion y borrar del server.
 // Los enviados recientes (≤30d) se quedan visibles en la columna ENVIADOS.
 async function archivarEntregadosNotion() {

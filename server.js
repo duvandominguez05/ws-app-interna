@@ -773,7 +773,7 @@ http.createServer((req, res) => {
   }
 
   // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
-  if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/')) {
+  if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/') && !req.url.includes('limpiar-basura')) {
     const id = parseInt(req.url.split('/')[3]);
     const pedidos = leerPedidos();
     const nuevos = pedidos.filter(p => p.id !== id);
@@ -781,6 +781,77 @@ http.createServer((req, res) => {
     guardarPedidos(nuevos);
     console.log(`[api] Pedido #${id} eliminado`);
     return json(res, 200, { ok: true });
+  }
+
+  // ── POST /api/pedidos/limpiar-basura — borra pedidos sin teléfono Y sin vendedora ──
+  // Útil para limpiar el spam del lector de tablero foto cuando Gemini equivoca.
+  if (req.method === 'POST' && req.url === '/api/pedidos/limpiar-basura') {
+    try {
+      const pedidos = leerPedidos();
+      const esBasura = (p) => {
+        const sinTel = !p.telefono || String(p.telefono).replace(/\D/g, '').length < 7;
+        const sinVen = !p.vendedora || p.vendedora === 'Sin asignar' || p.vendedora === '';
+        // No borramos enviado-final (ya entregados) ni los que tengan stickerVenta
+        if (p.estado === 'enviado-final') return false;
+        if (p.stickerVenta) return false;
+        return sinTel && sinVen;
+      };
+      const basura = pedidos.filter(esBasura);
+      const limpios = pedidos.filter(p => !esBasura(p));
+      guardarPedidos(limpios);
+      console.log(`[limpiar-basura] eliminados ${basura.length} pedidos sin tel+sin vendedora`);
+      return json(res, 200, {
+        ok: true,
+        eliminados: basura.length,
+        ids: basura.map(p => p.id),
+        total_antes: pedidos.length,
+        total_despues: limpios.length,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/recordatorio-sticker — envía WA a cada vendedora recordando usar sticker ──
+  // Llamar manualmente desde la app o por cron n8n a la hora deseada.
+  if (req.method === 'POST' && req.url === '/api/recordatorio-sticker') {
+    (async () => {
+      try {
+        const VENDEDORAS = [
+          { nombre: 'Betty',  instance: 'ws-duvan',  telefono: process.env.WA_BETTY  || '573138060086' },
+          { nombre: 'Ney',    instance: 'ws-duvan',  telefono: process.env.WA_NEY    || '573208374213' },
+          { nombre: 'Wendy',  instance: 'ws-duvan',  telefono: process.env.WA_WENDY  || '573208374213' },
+          { nombre: 'Paola',  instance: 'ws-duvan',  telefono: process.env.WA_PAOLA  || '573208374213' },
+        ];
+        const msg =
+          '☀️ *Buenos días!*\n\n' +
+          'Recordatorio diario:\n\n' +
+          '💰 Cada que confirmes una venta y el cliente mande la *foto del comprobante*, ' +
+          'envía el sticker *VENTA CONFIRMADA* al cliente.\n\n' +
+          'Eso sube la venta a la app automáticamente y el diseñador empieza a trabajar 🎨\n\n' +
+          '⚠️ Si no usas el sticker, la venta NO aparece en la app.';
+        const enviados = [];
+        const fallidos = [];
+        for (const v of VENDEDORAS) {
+          try {
+            const url = `${process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app'}/message/sendText/${v.instance}`;
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
+              body: JSON.stringify({ number: v.telefono, text: msg }),
+            });
+            if (r.ok) enviados.push(v.nombre);
+            else fallidos.push({ nombre: v.nombre, status: r.status });
+          } catch (e) {
+            fallidos.push({ nombre: v.nombre, error: e.message });
+          }
+        }
+        return json(res, 200, { ok: true, enviados, fallidos });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
   }
 
   // ── POST /api/pedidos — app sincroniza su estado al servidor ─
