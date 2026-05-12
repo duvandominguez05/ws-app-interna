@@ -311,6 +311,7 @@ function aplicarTableroAPedidos(estructura) {
   const pedidos = leerPedidos();
   const ahora = new Date().toISOString();
   const creados = [], movidos = [], yaCorrectos = [];
+  const idsTocados = new Set(); // IDs de pedidos que aparecieron en la foto
   let nextId = leerNextId();
 
   function nombresParecen(a, b) {
@@ -332,6 +333,7 @@ function aplicarTableroAPedidos(estructura) {
       }
       if (!pd) pd = pedidos.find(p => nombresParecen(p.equipo, equipo));
       if (pd) {
+        idsTocados.add(pd.id);
         if (pd.estado !== estadoApp) {
           const estadoAnterior = pd.estado;
           pd.estado = estadoApp;
@@ -362,14 +364,35 @@ function aplicarTableroAPedidos(estructura) {
           origenTablero: true,
         };
         pedidos.push(nuevo);
+        idsTocados.add(nuevo.id);
         creados.push({ id: nuevo.id, equipo, columna });
         nextId++;
       }
     }
   }
+
+  // Pedidos activos que NO están en la foto → candidatos a archivar
+  // Solo considerar pedidos con movimiento en los últimos 60 días (ignorar zombies viejos)
+  const hace60Dias = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const noEnTablero = pedidos
+    .filter(p => !idsTocados.has(p.id))
+    .filter(p => {
+      const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+      return t >= hace60Dias;
+    })
+    .map(p => ({
+      id: p.id,
+      equipo: p.equipo || '',
+      telefono: p.telefono || '',
+      vendedora: p.vendedora || '',
+      disenadorAsignado: p.disenadorAsignado || '',
+      estado: p.estado,
+      ultimoMovimiento: p.ultimoMovimiento || null,
+    }));
+
   guardarPedidos(pedidos, nextId);
   global._huerfanosCache = null;
-  return { creados, movidos, yaCorrectos };
+  return { creados, movidos, yaCorrectos, noEnTablero };
 }
 
 // Descarga la imagen base64 desde Evolution API.

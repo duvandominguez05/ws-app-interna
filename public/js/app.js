@@ -4072,11 +4072,70 @@ async function onTableroFotoSeleccionada(ev) {
     }
     html += '<div style="margin-top:12px;font-size:0.78rem;color:var(--text-muted);">📲 Resumen enviado por Telegram</div>';
     html += '</div>';
+
+    // Pedidos que NO están en la foto → ofrecer revisar uno por uno
+    const noEnTab = (data.resultado && Array.isArray(data.resultado.noEnTablero)) ? data.resultado.noEnTablero : [];
+    if (noEnTab.length) {
+      html += '<div style="margin-top:16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:16px;">';
+      html += '<div style="font-weight:700;font-size:0.95rem;margin-bottom:8px;color:#fcd34d;">🔍 ' + noEnTab.length + ' pedido(s) NO aparecen en el tablero</div>';
+      html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px;">Revisalos. Si ya se entregaron, marcalos como entregados (se archivan en Notion). Si no, dejalos activos.</div>';
+      html += '<div id="lista-no-en-tablero" style="display:flex;flex-direction:column;gap:8px;">';
+      noEnTab.forEach(p => {
+        const idAttr = 'no-tab-' + p.id;
+        html += '<div id="' + idAttr + '" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">';
+        html += '<div style="flex:1;min-width:200px;">';
+        html += '<div style="font-weight:600;font-size:0.88rem;">#' + p.id + ' ' + esc(p.equipo) + '</div>';
+        html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;">';
+        html += 'Estado: ' + p.estado;
+        if (p.vendedora) html += ' · 🛍️ ' + esc(p.vendedora);
+        if (p.disenadorAsignado) html += ' · 🎨 ' + esc(p.disenadorAsignado);
+        if (p.telefono) html += ' · ' + esc(p.telefono);
+        html += '</div></div>';
+        html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
+        html += '<button onclick="dejarPedidoActivo(' + p.id + ',\'' + idAttr + '\')" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">↺ Dejar activo</button>';
+        html += '<button onclick="archivarPedidoUno(' + p.id + ',\'' + idAttr + '\')" class="btn btn-sm" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;padding:6px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Ya entregado (archivar)</button>';
+        html += '</div></div>';
+      });
+      html += '</div></div>';
+    }
+
     resultado.innerHTML = html;
     if (typeof syncTodoConServidor === 'function') setTimeout(() => syncTodoConServidor(true), 1000);
+    if (typeof syncConServidor === 'function') setTimeout(() => syncConServidor(true), 1500);
   } catch (e) {
     resultado.innerHTML = '<div style="color:#fca5a5;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;">❌ Error: ' + esc(e.message) + '</div>';
   }
+}
+
+// Archivar un pedido individual en Notion + borrar del servidor
+async function archivarPedidoUno(id, divId) {
+  if (!confirm('¿Marcar #' + id + ' como entregado y archivarlo en Notion?')) return;
+  try {
+    const r = await fetch('/api/pedidos/' + id + '/archivar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || data.motivo || 'fallo');
+    toast('✅ #' + id + ' archivado en Notion', 'success');
+    const el = document.getElementById(divId);
+    if (el) el.style.opacity = '0.4';
+    if (el) el.innerHTML = '<div style="color:#86efac;font-size:0.82rem;">✅ Archivado en Notion</div>';
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// Marcar pedido como "activo" (solo actualiza ultimoMovimiento para que no se quede colgado)
+function dejarPedidoActivo(id, divId) {
+  const p = pedidos.find(x => x.id === id);
+  if (p) {
+    p.ultimoMovimiento = new Date().toISOString();
+    guardar();
+  }
+  const el = document.getElementById(divId);
+  if (el) { el.style.opacity = '0.4'; el.innerHTML = '<div style="color:#c4b5fd;font-size:0.82rem;">↺ Marcado como activo (no archivar)</div>'; }
+  toast('Pedido #' + id + ' queda activo', 'info');
 }
 
 /* ════════════════════════════════════════════════════════════════
