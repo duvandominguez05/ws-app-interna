@@ -35,55 +35,31 @@
     </div>
 
     <nav class="sidebar-nav">
-      <div class="nav-label">Navegación</div>
+      <div class="nav-label">Tablero</div>
 
-      <div class="nav-item active" onclick="showSection('vista-general', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        </span>
-        <span>Vista general</span>
-        <span class="nav-badge" id="badge-general">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('torre', this); renderTorreControl();">
-        <span class="nav-icon">🗼</span>
-        <span>Torre Control</span>
-        <span class="nav-badge" id="badge-torre" style="background:rgba(245,158,11,0.2);color:#fbbf24;">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('pdfs-huerfanos', this); renderPdfsHuerfanos();">
-        <span class="nav-icon">📎</span>
-        <span>PDFs sin asignar</span>
-        <span class="nav-badge" id="badge-huerfanos" style="background:rgba(239,68,68,0.2);color:#fca5a5;">0</span>
+      <div class="nav-item active" onclick="showSection('tablero-principal', this); renderTableroPrincipal();">
+        <span class="nav-icon">📋</span>
+        <span>Tablero</span>
+        <span class="nav-badge" id="badge-tab-principal" style="background:rgba(124,58,237,0.2);color:#c4b5fd;">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('tablero-foto', this); renderTableroFoto();">
         <span class="nav-icon">📸</span>
-        <span>Tablero (foto)</span>
+        <span>Subir tablero</span>
       </div>
 
-      <div class="nav-item" onclick="showSection('bandeja', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-        </span>
-        <span>Ventas</span>
-        <span class="nav-badge" id="badge-bandeja">0</span>
+      <div class="nav-label" style="margin-top:14px;">Operación</div>
+
+      <div class="nav-item" onclick="showSection('calandra', this)">
+        <span class="nav-icon">📏</span>
+        <span>Calandra</span>
+        <span class="nav-badge" id="badge-calandra">0</span>
       </div>
 
-      <div class="nav-item" onclick="showSection('diseno', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r="0.5"/><circle cx="17.5" cy="10.5" r="0.5"/><circle cx="8.5" cy="7.5" r="0.5"/><circle cx="6.5" cy="12.5" r="0.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-        </span>
-        <span>Diseño</span>
-        <span class="nav-badge" id="badge-diseno">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('produccion', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7-6H4a2 2 0 0 0-2 2z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M8 18v-1"/><path d="M16 18v-3"/></svg>
-        </span>
-        <span>Producción</span>
-        <span class="nav-badge" id="badge-prod">0</span>
+      <div class="nav-item" onclick="showSection('wetransfer', this)">
+        <span class="nav-icon">📤</span>
+        <span>WeTransfer</span>
+        <span class="nav-badge" id="badge-wt">0</span>
       </div>
 
       <div class="nav-item" onclick="showSection('arreglos', this)">
@@ -92,29 +68,57 @@
         <span class="nav-badge" id="badge-arreglos">0</span>
       </div>
 
-      <div class="nav-item" onclick="showSection('wetransfer', this)">
-        <span class="nav-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </span>
-        <span>WeTransfer</span>
-        <span class="nav-badge" id="badge-wt">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('calandra', this)">
-        <span class="nav-icon">📏</span>
-        <span>Calandra</span>
-        <span class="nav-badge" id="badge-calandra">0</span>
-      </div>
-
-      <div class="nav-item" onclick="showSection('satelites', this)">
-        <span class="nav-icon">🧵</span>
-        <span>Satélites</span>
-        <span class="nav-badge" id="badge-satelites">0</span>
-      </div>
-
       <div class="nav-item" onclick="showSection('cotizaciones', this)">
         <span class="nav-icon">🧾</span>
         <span>Facturas</span>
+      </div>
+
+      <div class="nav-label" style="margin-top:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="toggleSubmenuMas()">
+        <span>Más ▾</span>
+      </div>
+
+      <div id="submenu-mas" style="display:none;">
+        <div class="nav-item" onclick="showSection('vista-general', this)">
+          <span class="nav-icon">📊</span>
+          <span>Vista general</span>
+          <span class="nav-badge" id="badge-general">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('torre', this); renderTorreControl();">
+          <span class="nav-icon">🗼</span>
+          <span>Torre Control</span>
+          <span class="nav-badge" id="badge-torre" style="background:rgba(245,158,11,0.2);color:#fbbf24;">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('pdfs-huerfanos', this); renderPdfsHuerfanos();">
+          <span class="nav-icon">📎</span>
+          <span>PDFs sin asignar</span>
+          <span class="nav-badge" id="badge-huerfanos" style="background:rgba(239,68,68,0.2);color:#fca5a5;">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('bandeja', this)">
+          <span class="nav-icon">💼</span>
+          <span>Ventas (clásico)</span>
+          <span class="nav-badge" id="badge-bandeja">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('diseno', this)">
+          <span class="nav-icon">🎨</span>
+          <span>Diseño (clásico)</span>
+          <span class="nav-badge" id="badge-diseno">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('produccion', this)">
+          <span class="nav-icon">🏭</span>
+          <span>Producción (clásico)</span>
+          <span class="nav-badge" id="badge-prod">0</span>
+        </div>
+
+        <div class="nav-item" onclick="showSection('satelites', this)">
+          <span class="nav-icon">🧵</span>
+          <span>Satélites</span>
+          <span class="nav-badge" id="badge-satelites">0</span>
+        </div>
       </div>
     </nav>
 
@@ -149,6 +153,14 @@
       </div>
       <div class="header-actions">
         <div class="header-date" id="header-date"></div>
+        <!-- Selector de Rol -->
+        <select id="role-selector" class="form-select" onchange="cambiarRol()" style="background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); color: #c4b5fd; font-size: 0.75rem; padding: 4px 8px; margin-right: 10px; width: auto; font-weight: 600;">
+          <option value="admin">👑 Admin / General</option>
+          <option value="ventas">💼 Ventas</option>
+          <option value="diseno">🎨 Diseño</option>
+          <option value="produccion">🏭 Producción</option>
+          <option value="costura">🧵 Costura / Satélites</option>
+        </select>
         <!-- Campana notificaciones -->
         <button class="notif-btn" onclick="toggleNotifPanel()" title="Notificaciones">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -198,9 +210,28 @@
       </div>
     </section>
 
-    <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
-    <section id="vista-general" class="section-content section-bg active">
+    <!-- ─── TABLERO PRINCIPAL (vista principal igual al tablero físico) ─── -->
+    <section id="tablero-principal" class="section-content section-bg active">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <input type="search" id="buscar-tab-principal" class="form-input" placeholder="🔍 Buscar equipo o teléfono…" oninput="filtrarTableroPrincipal(this.value)" style="max-width:380px;flex:1;min-width:200px;">
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" onclick="renderTableroPrincipal()" title="Actualizar" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;">🔄</button>
+          <button class="btn btn-orange btn-sm" onclick="showSection('tablero-foto'); renderTableroFoto();">📸 Subir tablero</button>
+        </div>
+      </div>
+      <div id="tab-principal-content" class="tab-principal-grid">
+        <!-- Las 4 columnas se inyectan desde renderTableroPrincipal() -->
+      </div>
+    </section>
 
+    <!-- ─── VISTA GENERAL / DASHBOARD ─────────────────────────── -->
+    <section id="vista-general" class="section-content section-bg">
+
+      <!-- Contenedor Mi Día (Proactivo) -->
+      <div id="proactive-dashboard" style="display:none; flex-direction:column; gap:20px;"></div>
+
+      <!-- Dashboard de Admin (Pasivo / Global) -->
+      <div id="admin-dashboard" style="display:block;">
       <!-- KPIs rápidos (arriba, lo primero que ves) -->
       <div class="dash-metrics-top">
         <div class="dash-kpi" style="--kpi-color:#c4b5fd;">
@@ -282,8 +313,7 @@
         </div>
         <div class="pedidos-lista" id="tabla-recientes"></div>
       </div>
-
-      <!-- KPIs movidos arriba -->
+      </div> <!-- End admin-dashboard -->
 
     </section>
 
@@ -513,12 +543,17 @@
 
     <!-- ─── ARREGLOS ──────────────────────────────────────────── -->
     <section id="arreglos" class="section-content">
-      <div class="section-heading">
-        <span class="dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>
-        Control de arreglos
+      <div class="section-heading" style="color:#ef4444;">
+        <span class="dot" style="background:#ef4444;box-shadow:0 0 10px #ef4444; animation: pulse 1s infinite;"></span>
+        Triage de Arreglos (Urgentes)
       </div>
+      
+      <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:18px;">
+        Prioridad máxima: Los pedidos aquí mostrados están detenidos y requieren corrección inmediata para continuar.
+      </div>
+
       <div style="display:flex;gap:10px;margin-bottom:18px;">
-        <button class="btn btn-danger btn-sm" onclick="registrarArregloManual()">+ Agregar arreglo</button>
+        <button class="btn btn-danger btn-sm" onclick="registrarArregloManual()">+ Registrar arreglo manual</button>
       </div>
 
       <!-- Formulario -->
@@ -550,13 +585,8 @@
         </div>
       </div>
 
-      <!-- Lista arreglos desde pedidos (calidad con arreglo) -->
-      <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">En pedidos activos</div>
-      <div id="lista-arreglos-pedidos"></div>
-
-      <!-- Lista arreglos manuales -->
-      <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-top:18px;margin-bottom:10px;">Registros manuales</div>
-      <div id="lista-arreglos-manuales"></div>
+      <!-- Lista Unificada de Arreglos -->
+      <div id="lista-arreglos-unificada" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;"></div>
     </section>
 
     <!-- ─── CALANDRA (METRAJE) ───────────────────────────────────── -->
@@ -566,61 +596,90 @@
     <section id="satelites" class="section-content">
       <div class="section-heading">
         <span class="dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>
-        Control de satélites — entrega y recepción de uniformes
+        Centro de Control de Costura
       </div>
 
-      <div class="sat-resumen-grid" id="sat-resumen"></div>
+      <!-- Resumen (Nómina y stats por satélite) -->
+      <div class="sat-resumen-grid" id="sat-resumen" style="margin-bottom: 24px;"></div>
 
-      <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-        <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">📦 Registrar entrega</button>
-        <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">✅ Registrar recepción</button>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        
+        <!-- Columna 1: Para Enviar a Satélite -->
+        <div style="flex:1; min-width:300px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:var(--radius); padding:16px;">
+          <div style="font-size:0.9rem; font-weight:700; color:#f472b6; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.2rem;">📦</span> Para Enviar a Satélite
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:16px;">Pedidos que ya pasaron control de calidad y esperan asignación.</div>
+          <div id="sat-para-enviar-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+
+        <!-- Columna 2: En Satélite (Esperando retorno) -->
+        <div style="flex:1; min-width:300px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:var(--radius); padding:16px;">
+          <div style="font-size:0.9rem; font-weight:700; color:#4ade80; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.2rem;">🧵</span> En Satélite (Trabajando)
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:16px;">Uniformes actualmente en proceso de costura.</div>
+          <div id="sat-trabajando-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+
       </div>
 
-      <div id="form-sat" style="display:none;background:var(--card-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar entrega a satélite</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Satélite</label>
-            <select class="form-select" id="sat-nombre">
-              <option value="">— Seleccionar —</option>
-              <option>Marcela</option>
-              <option>Yamile</option>
-              <option>Wilson</option>
-              <option>Cristina</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Equipo / Pedido</label>
-            <input type="text" class="form-input" id="sat-equipo" placeholder="Ej: Parroquia Funza">
-          </div>
+      <!-- Mantener el historial general colapsado por si acaso -->
+      <div style="margin-top:24px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:12px; cursor:pointer;" onclick="document.getElementById('historial-sat-container').style.display = document.getElementById('historial-sat-container').style.display === 'none' ? 'block' : 'none'">
+          Ver historial de movimientos y registros manuales ▼
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Tipo de prenda</label>
-            <select class="form-select" id="sat-prenda">
-              <option>Camiseta</option>
-              <option>Uniforme completo</option>
-              <option>Pantalón</option>
-              <option>Pantaloneta</option>
-              <option>Chaqueta</option>
-              <option>Buso</option>
-              <option>Sudadera</option>
-              <option>Portero acolchado buso</option>
-              <option>Portero acolchado pantalón</option>
-            </select>
+        <div id="historial-sat-container" style="display:none;">
+          <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+            <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega')">📦 Entrega Manual</button>
+            <button class="btn btn-glass btn-sm" onclick="abrirFormSat('recepcion')">✅ Recepción Manual</button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Cantidad</label>
-            <input type="number" class="form-input" id="sat-cantidad" placeholder="Ej: 20" min="1">
+          <div id="form-sat" style="display:none;background:var(--card-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+            <div style="font-size:0.82rem;font-weight:700;color:#4ade80;margin-bottom:12px;" id="form-sat-titulo">Registrar movimiento manual</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Satélite</label>
+                <select class="form-select" id="sat-nombre">
+                  <option value="">— Seleccionar —</option>
+                  <option>Marcela</option>
+                  <option>Yamile</option>
+                  <option>Wilson</option>
+                  <option>Cristina</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Equipo / Pedido</label>
+                <input type="text" class="form-input" id="sat-equipo" placeholder="Ej: Parroquia Funza">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tipo de prenda</label>
+                <select class="form-select" id="sat-prenda">
+                  <option>Camiseta</option>
+                  <option>Uniforme completo</option>
+                  <option>Pantalón</option>
+                  <option>Pantaloneta</option>
+                  <option>Chaqueta</option>
+                  <option>Buso</option>
+                  <option>Sudadera</option>
+                  <option>Portero acolchado buso</option>
+                  <option>Portero acolchado pantalón</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cantidad</label>
+                <input type="number" class="form-input" id="sat-cantidad" placeholder="Ej: 20" min="1">
+              </div>
+            </div>
+            <div class="form-actions" style="margin-top:10px;padding-top:10px;">
+              <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-sat').style.display='none'">Cancelar</button>
+              <button class="btn btn-success btn-sm" onclick="guardarSat()">Guardar</button>
+            </div>
           </div>
-        </div>
-        <div class="form-actions" style="margin-top:10px;padding-top:10px;">
-          <button class="btn btn-glass btn-sm" onclick="document.getElementById('form-sat').style.display='none'">Cancelar</button>
-          <button class="btn btn-success btn-sm" onclick="guardarSat()">Guardar</button>
+          <div id="lista-satelites"></div>
         </div>
       </div>
-
-      <div id="lista-satelites"></div>
     </section>
 
     <!-- ═══════════════════════════════════════════════════════════

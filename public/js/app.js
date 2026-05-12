@@ -88,6 +88,23 @@ let satTipoActual  = 'entrega';
 let _syncEstado = 'cargando'; // 'cargando' | 'ok' | 'error'
 let _syncUltimoTs = 0;
 
+// Rol del usuario actual
+let userRol = localStorage.getItem('ws_rol') || 'admin';
+function cambiarRol() {
+  const sel = document.getElementById('role-selector');
+  if(sel) {
+    userRol = sel.value;
+    localStorage.setItem('ws_rol', userRol);
+    render();
+  }
+}
+// Inicializar selector
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('role-selector');
+  if(sel) sel.value = userRol;
+});
+
+
 /* ════════════════════════════════════════════════════════════════
    PERSISTENCIA
 ════════════════════════════════════════════════════════════════ */
@@ -128,6 +145,7 @@ const HEADER_INFO = {
   'torre':         { icon: '🗼', title: 'Torre de Control' },
   'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
   'tablero-foto':  { icon: '📸', title: 'Lector del tablero' },
+  'tablero-principal': { icon: '📋', title: 'Tablero W&S' },
   'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
@@ -190,6 +208,7 @@ function render() {
   renderDashboard();
   renderBadges();
   renderTablaRecientes();
+  if (typeof renderTableroPrincipal === 'function') renderTableroPrincipal();
   renderBandeja();
   renderKanban('hacer-diseno');
   renderKanban('confirmado');
@@ -221,6 +240,21 @@ function renderMetricas() {
 
 /* ─── Dashboard ──────────────────────────────────────────────── */
 function renderDashboard() {
+  const adminDash = document.getElementById('admin-dashboard');
+  const proDash   = document.getElementById('proactive-dashboard');
+  
+  if(userRol !== 'admin' && proDash && adminDash) {
+    adminDash.style.display = 'none';
+    proDash.style.display = 'flex';
+    renderMiDia(proDash);
+    return;
+  }
+  
+  if(proDash && adminDash) {
+    proDash.style.display = 'none';
+    adminDash.style.display = 'block';
+  }
+
   // KPIs calandra y satélites
   const semanaKey = getSemanaKey(new Date());
   const semLista  = calandraRegistros.filter(r => r.semana === semanaKey);
@@ -339,6 +373,137 @@ function renderDashboard() {
       · ${ultimoEnvio.metros}m · ${ultimoEnvio.fecha || ''}
     </div>`;
   }
+}
+
+function renderMiDia(container) {
+  let html = `<div style="font-family:'Outfit',sans-serif; font-size:1.6rem; font-weight:800; color:var(--text); margin-bottom:10px;">👋 Hola, equipo de <span style="color:var(--accent2);">${userRol.toUpperCase()}</span></div>`;
+  html += `<div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:20px;">Aquí tienes tu resumen operativo para hoy. ¡Vamos a darle! 🚀</div>`;
+  
+  const activos = pedidos.filter(p => p.estado !== 'enviado-final');
+  let tareas = [];
+
+  if (userRol === 'ventas') {
+    const listos = activos.filter(p => p.estado === 'listo');
+    const enAprobacion = activos.filter(p => p.estado === 'bandeja');
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #4ade80;">
+        <div class="dash-panel-title">📦 Pedidos Listos para Entregar (${listos.length})</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Estos pedidos ya terminaron producción. ¡Contacta al cliente!</div>
+        ${listos.length ? listos.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="irAlPedido(${p.id})">
+            <div>
+              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">Vendedora: ${esc(p.vendedora || '-')}</div>
+            </div>
+            <button class="btn btn-success btn-sm">Ver</button>
+          </div>
+        `).join('') : '<div class="dash-empty">No hay pedidos listos.</div>'}
+      </div>
+    `);
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #94a3b8;">
+        <div class="dash-panel-title">⏳ Cotizaciones Pendientes (${enAprobacion.length})</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Haz seguimiento para confirmarlas.</div>
+        ${enAprobacion.slice(0, 5).map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="showSection('bandeja', document.querySelector('[onclick*=bandeja]'))">
+            <div>
+              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            </div>
+          </div>
+        `).join('')}
+        ${enAprobacion.length > 5 ? `<div style="text-align:center; font-size:0.75rem; color:var(--text-muted); margin-top:10px;">y ${enAprobacion.length - 5} más...</div>` : ''}
+        ${enAprobacion.length === 0 ? '<div class="dash-empty">No hay cotizaciones pendientes.</div>' : ''}
+      </div>
+    `);
+  } 
+  else if (userRol === 'diseno') {
+    const porDisenar = activos.filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado);
+    const misDisenos = activos.filter(p => p.estado === 'hacer-diseno' && p.disenadorAsignado);
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #a78bfa;">
+        <div class="dash-panel-title">🎨 Diseños Sin Asignar (${porDisenar.length})</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Toma un pedido de la cola para empezar a trabajar.</div>
+        ${porDisenar.slice(0,5).map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="showSection('diseno', document.querySelector('[onclick*=diseno]'))">
+            <div>
+              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-size:0.75rem; color:var(--orange);">Entrega: ${p.fechaEntrega ? fmtFecha(p.fechaEntrega) : 'Sin fecha'}</div>
+            </div>
+            <button class="btn btn-primary btn-sm">Ir a Diseño</button>
+          </div>
+        `).join('')}
+        ${porDisenar.length === 0 ? '<div class="dash-empty">Cola vacía. ¡Buen trabajo!</div>' : ''}
+      </div>
+    `);
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #06b6d4;">
+        <div class="dash-panel-title">🔥 Diseños en Proceso (${misDisenos.length})</div>
+        ${misDisenos.slice(0,5).map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px;">
+            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Asignado a: ${esc(p.disenadorAsignado)}</div>
+          </div>
+        `).join('')}
+        ${misDisenos.length === 0 ? '<div class="dash-empty">Nadie está diseñando actualmente.</div>' : ''}
+      </div>
+    `);
+  }
+  else if (userRol === 'produccion') {
+    const porCortar = activos.filter(p => p.estado === 'llego-impresion');
+    const enCalidad = activos.filter(p => p.estado === 'calidad');
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #f97316;">
+        <div class="dash-panel-title">✂️ Llegó Impresión / Por Cortar (${porCortar.length})</div>
+        ${porCortar.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Calidad →</button>
+          </div>
+        `).join('')}
+        ${porCortar.length === 0 ? '<div class="dash-empty">No hay tela pendiente por cortar.</div>' : ''}
+      </div>
+    `);
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #fbbf24;">
+        <div class="dash-panel-title">🔍 Control de Calidad (${enCalidad.length})</div>
+        ${enCalidad.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Aprobar Costura →</button>
+          </div>
+        `).join('')}
+        ${enCalidad.length === 0 ? '<div class="dash-empty">No hay pedidos en calidad.</div>' : ''}
+      </div>
+    `);
+  }
+  else if (userRol === 'costura') {
+    const enCostura = activos.filter(p => p.estado === 'costura');
+    
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #f472b6;">
+        <div class="dash-panel-title">🧵 Pedidos Listos para Satélite (${enCostura.length})</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Estos pedidos ya pasaron calidad y deben enviarse a un satélite.</div>
+        ${enCostura.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="display:flex; gap:6px;">
+               <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega'); document.getElementById('sat-equipo').value='${esc(p.equipo||p.telefono)}'">📦 Entregar</button>
+               <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Marcar Listo ✓</button>
+            </div>
+          </div>
+        `).join('')}
+        ${enCostura.length === 0 ? '<div class="dash-empty">No hay pedidos pendientes de costura.</div>' : ''}
+      </div>
+    `);
+  }
+
+  container.innerHTML = html + `<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">${tareas.join('')}</div>`;
 }
 
 /* ─── Badges sidebar ─────────────────────────────────────────── */
@@ -1570,69 +1735,92 @@ function resolverArregloManual(id) {
 }
 
 function renderArreglos() {
-  const contPed = document.getElementById('lista-arreglos-pedidos');
-  const contMan = document.getElementById('lista-arreglos-manuales');
-  if (!contPed || !contMan) return;
+  const container = document.getElementById('lista-arreglos-unificada');
+  if (!container) return;
 
+  const badgeArr = document.getElementById('badge-arreglos');
+  
   // Arreglos de pedidos activos
   const conArreglo = pedidos.filter(p => p.arreglo && p.arreglo !== 'pendiente' && p.estado !== 'enviado-final');
-  const badgeArr = document.getElementById('badge-arreglos');
-  if (badgeArr) badgeArr.textContent = conArreglo.length + arreglosManuales.filter(a => !a.resuelto).length;
-
-  if (!conArreglo.length) {
-    contPed.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin arreglos en pedidos activos</div>`;
-  } else {
-    contPed.innerHTML = conArreglo.map(p => `
-      <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),var(--card-bg));border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-          <span style="font-size:0.65rem;color:var(--text-muted);">#${p.id}</span>
-          <span style="font-weight:700;font-size:0.88rem;">${esc(p.equipo || p.telefono)}</span>
-          <span style="font-size:0.68rem;background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:2px 7px;">calidad</span>
-        </div>
-        <div style="font-size:0.78rem;color:#fca5a5;white-space:pre-line;">🔧 ${esc(p.arreglo)}</div>
-      </div>
-    `).join('');
-  }
-
+  
   const pendientes = arreglosManuales.filter(a => !a.resuelto);
   const resueltos  = arreglosManuales.filter(a =>  a.resuelto);
 
-  if (!pendientes.length && !resueltos.length) {
-    contMan.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.78rem;">Sin registros manuales</div>`;
-    return;
-  }
+  if (badgeArr) badgeArr.textContent = conArreglo.length + pendientes.length;
 
-  contMan.innerHTML = [...pendientes, ...resueltos].map(a => {
-    const dis = a.disenador ? `<span style="font-size:0.72rem;color:#a78bfa;font-weight:600;">🎨 ${esc(a.disenador)}</span>` : '';
+  let htmlElements = [];
 
+  // 1. Pedidos activos con arreglo
+  conArreglo.forEach(p => {
+    htmlElements.push(`
+      <div style="background:linear-gradient(135deg, rgba(239,68,68,0.1), rgba(153,27,27,0.3)); border:1px solid rgba(239,68,68,0.5); border-radius:var(--radius); padding:16px; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#ef4444;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+          <div>
+            <div style="font-size:0.65rem; color:#fca5a5; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Pedido de Producción #${p.id}</div>
+            <div style="font-weight:800; font-size:1.1rem; color:#fff; margin-top:2px;">${esc(p.equipo || p.telefono)}</div>
+          </div>
+          <span style="font-size:0.7rem; background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); border-radius:4px; padding:2px 8px;">En Calidad</span>
+        </div>
+        <div style="font-size:0.85rem; color:#fecaca; white-space:pre-line; margin-bottom:14px; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border-left:2px solid #ef4444;">
+          ⚠️ ${esc(p.arreglo)}
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-danger btn-sm" style="flex:1;" onclick="avanzar(${p.id}); setTimeout(render,100)">✅ Marcar como Resuelto</button>
+          <button class="btn btn-glass btn-sm" onclick="irAlPedido(${p.id})">Ver Pedido</button>
+        </div>
+      </div>
+    `);
+  });
+
+  // 2. Arreglos Manuales
+  [...pendientes, ...resueltos].forEach(a => {
+    const dis = a.disenador ? `<span style="font-size:0.75rem; color:#c4b5fd; font-weight:700; background:rgba(124,58,237,0.2); padding:2px 8px; border-radius:4px;">🎨 ${esc(a.disenador)}</span>` : '';
+    
     let estadoBadge = '';
     let accionHtml = '';
+    let cardStyle = '';
+    let accentColor = '';
 
     if (a.resuelto) {
-      estadoBadge = `<span style="font-size:0.65rem;background:rgba(16,185,129,0.15);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:2px 7px;">✅ Llegó</span>`;
-      accionHtml = `<span style="font-size:0.7rem;color:#6ee7b7;">✅ Resuelto</span>`;
+      estadoBadge = `<span style="font-size:0.7rem; background:rgba(16,185,129,0.15); color:#6ee7b7; border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:2px 8px;">✅ Listo</span>`;
+      accionHtml = `<div style="font-size:0.8rem; color:#6ee7b7; text-align:center; padding:6px; background:rgba(16,185,129,0.1); border-radius:4px;">El arreglo ya fue resuelto</div>`;
+      cardStyle = 'opacity:0.6; filter:grayscale(0.5);';
+      accentColor = '#10b981';
     } else if (a.enviado) {
-      estadoBadge = `<span style="font-size:0.65rem;background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.3);border-radius:10px;padding:2px 7px;">📤 Enviado</span>`;
-      accionHtml = `<button class="btn btn-success btn-xs" onclick="llegoArregloManual(${a.id})">✅ Ya llegó</button>`;
+      estadoBadge = `<span style="font-size:0.7rem; background:rgba(6,182,212,0.15); color:#67e8f9; border:1px solid rgba(6,182,212,0.3); border-radius:4px; padding:2px 8px;">📤 Enviado al Taller</span>`;
+      accionHtml = `<button class="btn btn-success btn-sm" style="width:100%;" onclick="llegoArregloManual(${a.id})">✅ Recibir y Marcar Resuelto</button>`;
+      accentColor = '#06b6d4';
     } else {
-      estadoBadge = `<span style="font-size:0.65rem;background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3);border-radius:10px;padding:2px 7px;">⏳ Esperando envío</span>`;
-      accionHtml = `<button class="btn btn-xs" onclick="enviarArregloManual(${a.id})" style="background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.35);color:#67e8f9;font-size:0.72rem;padding:4px 10px;border-radius:5px;cursor:pointer;">📤 Diseñador lo envió</button>`;
+      estadoBadge = `<span style="font-size:0.7rem; background:rgba(251,146,60,0.15); color:#fb923c; border:1px solid rgba(251,146,60,0.3); border-radius:4px; padding:2px 8px;">⏳ Esperando Diseño</span>`;
+      accionHtml = `<button class="btn btn-primary btn-sm" style="width:100%;" onclick="enviarArregloManual(${a.id})">📤 Diseñador Ya Envió Archivo</button>`;
+      accentColor = '#fb923c';
     }
 
-    const borderColor = a.resuelto ? 'rgba(16,185,129,0.2)' : a.enviado ? 'rgba(6,182,212,0.2)' : 'rgba(239,68,68,0.2)';
-
-    return `
-    <div style="background:var(--card-bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;${a.resuelto ? 'opacity:0.55;' : ''}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
-        <span style="font-weight:700;font-size:0.88rem;">${esc(a.equipo)}</span>
-        ${dis}
-        ${estadoBadge}
-        <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);">${a.fecha}</span>
+    htmlElements.push(`
+      <div style="background:var(--card-bg); border:1px solid rgba(255,255,255,0.08); border-radius:var(--radius); padding:16px; position:relative; overflow:hidden; ${cardStyle}">
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:${accentColor};"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+          <div>
+            <div style="font-size:0.65rem; color:var(--text-muted); font-weight:700; letter-spacing:1px; text-transform:uppercase;">Registro Manual - ${a.fecha}</div>
+            <div style="font-weight:800; font-size:1.1rem; color:#fff; margin-top:2px;">${esc(a.equipo)}</div>
+          </div>
+          ${estadoBadge}
+        </div>
+        <div style="font-size:0.85rem; color:var(--text); white-space:pre-line; margin-bottom:14px; background:rgba(255,255,255,0.03); padding:10px; border-radius:6px;">
+          🔧 ${esc(a.faltante)}
+        </div>
+        <div style="margin-bottom:14px;">${dis}</div>
+        ${accionHtml}
       </div>
-      <div style="font-size:0.78rem;color:${a.resuelto ? '#6ee7b7' : '#fca5a5'};margin-bottom:8px;">🔧 ${esc(a.faltante)}</div>
-      ${accionHtml}
-    </div>`;
-  }).join('');
+    `);
+  });
+
+  if (htmlElements.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1 / -1; text-align:center; padding:40px; color:var(--text-muted); font-size:0.9rem; background:var(--card-bg); border:1px dashed rgba(255,255,255,0.1); border-radius:var(--radius);">🎉 ¡No hay arreglos pendientes! Todo está marchando perfecto.</div>`;
+  } else {
+    container.innerHTML = htmlElements.join('');
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -2140,6 +2328,51 @@ function guardarSat() {
   toast(`${satTipoActual === 'entrega' ? 'Entregado' : 'Recibido'}: ${cantidad} ${prenda} a ${nombre}`, 'success');
 }
 
+// Funciones integradas (Pedido <-> Satélite)
+function asignarSatelitePedido(id, satelite) {
+  const p = pedidos.find(x => x.id === id);
+  if(!p) return;
+  p.satelite = satelite;
+  p.estado = 'en-satelite'; // Nuevo sub-estado o simplemente mantener costura pero con satelite asignado
+  
+  // Opcional: auto-registrar movimiento
+  const cant = p.cantidades ? p.cantidades.reduce((a,b)=>a+b.c,0) : 1;
+  const hoy = new Date().toLocaleDateString('es-CO');
+  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  satMovimientos.unshift({
+    id: Date.now(), tipo: 'entrega', satelite,
+    equipo: p.equipo || p.telefono, prenda: 'Uniforme completo', cantidad: cant,
+    fecha: hoy, hora
+  });
+  guardarSat_store();
+  guardar();
+  render();
+  toast(`Pedido #${id} enviado a ${satelite}`, 'success');
+}
+
+function recibirSatelitePedido(id) {
+  const p = pedidos.find(x => x.id === id);
+  if(!p || !p.satelite) return;
+  const satelite = p.satelite;
+  delete p.satelite;
+  p.estado = 'listo'; // Si ya volvió del satélite, asumo que está listo o pasa a revisión
+  
+  // Auto-registrar recepción
+  const cant = p.cantidades ? p.cantidades.reduce((a,b)=>a+b.c,0) : 1;
+  const hoy = new Date().toLocaleDateString('es-CO');
+  const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  satMovimientos.unshift({
+    id: Date.now(), tipo: 'recepcion', satelite,
+    equipo: p.equipo || p.telefono, prenda: 'Uniforme completo', cantidad: cant,
+    fecha: hoy, hora
+  });
+  guardarSat_store();
+  guardar();
+  render();
+  toast(`Pedido #${id} recibido de ${satelite}. Marcado como LISTO.`, 'success');
+}
+
+
 function renderSatelites() {
   const contResumen = document.getElementById('sat-resumen');
   const contLista   = document.getElementById('lista-satelites');
@@ -2250,7 +2483,47 @@ function renderSatelites() {
     `;
   }).join('') + `</div>`;
 
-  // Lista de movimientos por satélite — cada uno su columna
+  // NUEVAS LISTAS OPERATIVAS (Para Enviar y En Satélite)
+  const listParaEnviar = document.getElementById('sat-para-enviar-list');
+  const listTrabajando = document.getElementById('sat-trabajando-list');
+  
+  if (listParaEnviar && listTrabajando) {
+    const pParaEnviar = pedidos.filter(p => p.estado === 'costura' && !p.satelite);
+    const pTrabajando = pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite));
+    
+    // Select dinámico de satélites
+    const satOptions = SATELITES.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    listParaEnviar.innerHTML = pParaEnviar.length ? pParaEnviar.map(p => `
+      <div class="sat-card" style="margin:0; padding:12px;">
+        <div style="font-weight:700; margin-bottom:4px;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">${p.prendas?.map(pr=>pr.tipo).join(', ') || 'Uniforme'}</div>
+        <div style="display:flex; gap:6px;">
+          <select class="form-select" id="sel-sat-${p.id}" style="padding:4px; font-size:0.75rem;">
+            <option value="">-- Satélite --</option>
+            ${satOptions}
+          </select>
+          <button class="btn btn-success btn-sm" onclick="if(document.getElementById('sel-sat-${p.id}').value) asignarSatelitePedido(${p.id}, document.getElementById('sel-sat-${p.id}').value); else toast('Seleccione satélite','error')">Enviar</button>
+        </div>
+      </div>
+    `).join('') : '<div class="dash-empty">No hay pedidos pendientes de enviar a satélite.</div>';
+
+    listTrabajando.innerHTML = pTrabajando.length ? pTrabajando.map(p => {
+      const sName = p.satelite || 'Desconocido';
+      const col = SAT_COLORS[sName] || { header: '#94a3b8' };
+      return `
+      <div class="sat-card" style="margin:0; padding:12px; border-left:4px solid ${col.header};">
+        <div style="font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
+          <span>#${p.id} - ${esc(p.equipo || p.telefono)}</span>
+          <span style="font-size:0.7rem; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">${sName}</span>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">${p.prendas?.map(pr=>pr.tipo).join(', ') || 'Uniforme'}</div>
+        <button class="btn btn-success btn-sm" style="width:100%;" onclick="recibirSatelitePedido(${p.id})">✅ Recibir y Terminar</button>
+      </div>
+    `}).join('') : '<div class="dash-empty">No hay pedidos actualmente en satélite.</div>';
+  }
+
+  // Lista de movimientos por satélite — cada uno su columna (Historial)
   if (!satMovimientos.length) {
     contLista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:0.8rem;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);">Sin movimientos registrados</div>`;
     return;
@@ -3441,6 +3714,96 @@ function _actualizarBadgeTorre() {
 /* ════════════════════════════════════════════════════════════════
    📸 LECTOR DEL TABLERO — foto del tablero físico → Gemini → pedidos
 ════════════════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════════════════════
+   📋 TABLERO PRINCIPAL — vista de 4 columnas igual al tablero físico
+════════════════════════════════════════════════════════════════ */
+
+// Mapeo estado app → columna del tablero físico
+const TAB_PRINCIPAL_MAP = {
+  'bandeja':           { col: 'hacer-disenos', orden: 0 },
+  'hacer-diseno':      { col: 'ventas',         orden: 0 },
+  'confirmado':        { col: 'aprobados',      orden: 0, badge: null },
+  'enviado-calandra':  { col: 'aprobados',      orden: 1, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
+  'llego-impresion':   { col: 'aprobados',      orden: 2, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
+  'listo':             { col: 'aprobados',      orden: 3, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
+  'enviado-final':     { col: 'enviados',       orden: 0 },
+};
+let _tabPrincipalFiltro = '';
+
+function filtrarTableroPrincipal(q) {
+  _tabPrincipalFiltro = String(q || '').trim().toLowerCase();
+  renderTableroPrincipal();
+}
+
+function renderTableroPrincipal() {
+  const cont = document.getElementById('tab-principal-content');
+  if (!cont) return;
+  const cols = {
+    'hacer-disenos': { titulo: 'HACER DISEÑOS', clase: 'tab-col-hacer-disenos', items: [] },
+    'ventas':        { titulo: 'VENTAS',        clase: 'tab-col-ventas',        items: [] },
+    'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
+    'enviados':      { titulo: 'ENVIADOS',      clase: 'tab-col-enviados',      items: [] },
+  };
+  const q = _tabPrincipalFiltro;
+  (pedidos || []).forEach(p => {
+    const m = TAB_PRINCIPAL_MAP[p.estado];
+    if (!m) return;
+    if (q) {
+      const haystack = (String(p.equipo || '') + ' ' + String(p.telefono || '') + ' ' + String(p.vendedora || '')).toLowerCase();
+      if (!haystack.includes(q)) return;
+    }
+    cols[m.col].items.push({ p, badge: m.badge || null, orden: m.orden });
+  });
+  // Ordenar dentro de cada columna por orden de subestado + fecha desc
+  Object.values(cols).forEach(c => c.items.sort((a, b) => (a.orden - b.orden) || ((b.p.ultimoMovimiento || '').localeCompare(a.p.ultimoMovimiento || ''))));
+
+  let html = '';
+  for (const [key, c] of Object.entries(cols)) {
+    html += '<div class="tab-principal-col">';
+    html += '<div class="tab-principal-col-header ' + c.clase + '">';
+    html += '<span class="tab-principal-col-title">' + c.titulo + '</span>';
+    html += '<span class="tab-principal-col-count">' + c.items.length + '</span>';
+    html += '</div>';
+    if (!c.items.length) {
+      html += '<div class="tab-empty">—</div>';
+    } else {
+      c.items.forEach(({ p, badge }) => {
+        const eq = esc(p.equipo || p.telefono || 'Sin nombre');
+        const ven = p.vendedora ? esc(p.vendedora) : '';
+        const dias = p.ultimoMovimiento ? Math.round((Date.now() - new Date(p.ultimoMovimiento).getTime()) / 86400000) : null;
+        const diasStr = dias === null ? '' : (dias === 0 ? 'hoy' : dias + 'd');
+        html += '<div class="tab-card" onclick="abrirDetallePedido(' + p.id + ')">';
+        html += '<div class="tab-card-eq">' + eq + '</div>';
+        html += '<div class="tab-card-meta">';
+        if (ven) html += '<span>' + ven + '</span>';
+        if (diasStr) html += '<span>' + diasStr + '</span>';
+        if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+  }
+  cont.innerHTML = html;
+  // Badge sidebar
+  const total = Object.values(cols).reduce((a, c) => a + c.items.length, 0);
+  const bd = document.getElementById('badge-tab-principal');
+  if (bd) bd.textContent = total;
+}
+
+// Abre el modal de detalle al hacer click en una card del tablero principal.
+function abrirDetallePedido(id) {
+  if (typeof openModalCompletar === 'function') return openModalCompletar(id);
+  showSection('bandeja');
+}
+
+// Submenu "Más" en sidebar
+function toggleSubmenuMas() {
+  const s = document.getElementById('submenu-mas');
+  if (!s) return;
+  s.style.display = s.style.display === 'none' ? 'block' : 'none';
+}
 
 function renderTableroFoto() {
   const cont = document.getElementById('tablero-foto-content');
