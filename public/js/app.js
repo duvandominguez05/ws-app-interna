@@ -146,6 +146,7 @@ const HEADER_INFO = {
   'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
   'tablero-foto':  { icon: '📸', title: 'Lector del tablero' },
   'tablero-principal': { icon: '📋', title: 'Tablero W&S' },
+  'torre-unificada':   { icon: '🗼', title: 'Torre de Control' },
   'bandeja':       { icon: '💼', title: 'Ventas' },
   'diseno':        { icon: '🎨', title: 'Diseño' },
   'produccion':    { icon: '🏭', title: 'Producción' },
@@ -209,6 +210,7 @@ function render() {
   renderBadges();
   renderTablaRecientes();
   if (typeof renderTableroPrincipal === 'function') renderTableroPrincipal();
+  if (typeof renderTorreUnificada === 'function') renderTorreUnificada();
   renderBandeja();
   renderKanban('hacer-diseno');
   renderKanban('confirmado');
@@ -3555,9 +3557,12 @@ function modoMiniApp(seccion) {
 
 // Al inicio de la aplicación verificamos si hay algún Hash
 window.addEventListener('DOMContentLoaded', () => {
-  // Renderizar inmediatamente el Tablero principal con lo que haya en localStorage
+  // Renderizar inmediatamente el Tablero principal y la Torre con lo que haya en localStorage
   if (typeof renderTableroPrincipal === 'function') {
     try { renderTableroPrincipal(); } catch (e) { console.error('[tab-principal init]', e); }
+  }
+  if (typeof renderTorreUnificada === 'function') {
+    try { renderTorreUnificada(); } catch (e) { console.error('[torre-unif init]', e); }
   }
   // Restaurar filtro de diseñador
   const selDis = document.getElementById('sel-dis-filtro');
@@ -3751,6 +3756,174 @@ function filtrarTableroPorDisenador(dis) {
   _tabPrincipalDisFiltro = dis || 'todos';
   localStorage.setItem('ws_tab_dis_filtro', _tabPrincipalDisFiltro);
   renderTableroPrincipal();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   🗼 TORRE DE CONTROL UNIFICADA — KPIs + alertas + pipeline + ranking
+════════════════════════════════════════════════════════════════ */
+
+function renderTorreUnificada() {
+  try {
+  const cont = document.getElementById('torre-unificada-content');
+  if (!cont) return;
+  const lista = Array.isArray(pedidos) ? pedidos : [];
+  const ahora = Date.now();
+  const hace30 = ahora - 30 * 86400000;
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+
+  // Solo pedidos con movimiento últimos 30d (ignora zombies)
+  const activos = lista.filter(p => {
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t >= hace30;
+  });
+
+  // KPIs por estado
+  const enDiseno = activos.filter(p => ['bandeja', 'hacer-diseno'].includes(p.estado)).length;
+  const enProduccion = activos.filter(p => ['confirmado', 'enviado-calandra', 'llego-impresion'].includes(p.estado)).length;
+  const listos = activos.filter(p => p.estado === 'listo').length;
+  const entregadosHoy = activos.filter(p => {
+    if (p.estado !== 'enviado-final') return false;
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t >= new Date().setHours(0,0,0,0);
+  }).length;
+  const totalActivos = activos.filter(p => p.estado !== 'enviado-final').length;
+
+  // Alertas
+  const alertas = [];
+  activos.forEach(p => {
+    if (p.estado === 'enviado-final') return;
+    // Vencidos
+    if (p.fechaEntrega) {
+      const dias = Math.ceil((new Date(p.fechaEntrega).getTime() - ahora) / 86400000);
+      if (dias < 0) alertas.push({ nivel: 'rojo', tipo: 'vencido', p, txt: 'VENCIDO ' + Math.abs(dias) + 'd' });
+      else if (dias <= 2) alertas.push({ nivel: 'naranja', tipo: 'urgente', p, txt: 'Entrega en ' + dias + 'd' });
+    }
+    // Sin movimiento +7d
+    const dSinMov = Math.round((ahora - new Date(p.ultimoMovimiento).getTime()) / 86400000);
+    if (dSinMov >= 7) alertas.push({ nivel: dSinMov >= 14 ? 'rojo' : 'naranja', tipo: 'parado', p, txt: dSinMov + 'd sin moverse' });
+    // Sin diseñador
+    if (!p.disenadorAsignado && p.estado !== 'bandeja') alertas.push({ nivel: 'amarillo', tipo: 'sin-dis', p, txt: 'Sin diseñador asignado' });
+  });
+  // Top 8 alertas, priorizar rojas
+  alertas.sort((a, b) => {
+    const peso = { rojo: 0, naranja: 1, amarillo: 2 };
+    return peso[a.nivel] - peso[b.nivel];
+  });
+  const topAlertas = alertas.slice(0, 8);
+
+  // Pipeline counts (4 columnas tablero)
+  const pipeline = {
+    hd: activos.filter(p => p.estado === 'bandeja').length,
+    v: activos.filter(p => p.estado === 'hacer-diseno').length,
+    a: activos.filter(p => p.estado === 'confirmado').length,
+    e: activos.filter(p => ['enviado-calandra', 'llego-impresion', 'listo', 'enviado-final'].includes(p.estado)).length,
+  };
+
+  // Ranking vendedoras (ventas este mes — pedidos creados en hacer-diseno o más allá)
+  const ranking = {};
+  lista.forEach(p => {
+    if (!p.creadoEn) return;
+    let t = 0;
+    const m = String(p.creadoEn).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) t = new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])).getTime();
+    else t = new Date(p.creadoEn).getTime();
+    if (isNaN(t) || t < inicioMes.getTime()) return;
+    if (p.estado === 'bandeja') return; // solo ventas confirmadas
+    const v = p.vendedora || 'Sin asignar';
+    ranking[v] = (ranking[v] || 0) + 1;
+  });
+  const rankArr = Object.entries(ranking).sort((a, b) => b[1] - a[1]);
+  const maxRank = rankArr[0] ? rankArr[0][1] : 1;
+
+  // HTML
+  let html = '';
+  // KPIs
+  html += '<div class="torre-kpis">';
+  html += kpiCard('📊', totalActivos, 'Activos', '#c4b5fd');
+  html += kpiCard('🎨', enDiseno, 'En diseño', '#7dd3fc');
+  html += kpiCard('🏭', enProduccion, 'En producción', '#fcd34d');
+  html += kpiCard('✅', listos, 'Listos', '#86efac');
+  html += kpiCard('📦', entregadosHoy, 'Entregados hoy', '#f9a8d4');
+  html += '</div>';
+
+  // Alertas
+  html += '<div class="torre-section">';
+  html += '<div class="torre-section-title">🚨 Alertas (' + alertas.length + ')</div>';
+  if (!topAlertas.length) {
+    html += '<div class="torre-empty">✅ Sin alertas — todo en orden</div>';
+  } else {
+    topAlertas.forEach(a => {
+      const colorEmoji = a.nivel === 'rojo' ? '🔴' : a.nivel === 'naranja' ? '🟠' : '🟡';
+      html += '<div class="torre-alerta" onclick="abrirDetallePedido(' + a.p.id + ')">';
+      html += '<span class="torre-alerta-emoji">' + colorEmoji + '</span>';
+      html += '<span class="torre-alerta-eq">#' + a.p.id + ' ' + esc(a.p.equipo || a.p.telefono || 'Sin equipo') + '</span>';
+      html += '<span class="torre-alerta-meta">' + esc(a.txt) + '</span>';
+      html += '</div>';
+    });
+    if (alertas.length > 8) {
+      html += '<div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:8px;">... y ' + (alertas.length - 8) + ' alertas más</div>';
+    }
+  }
+  html += '</div>';
+
+  // Pipeline
+  html += '<div class="torre-section">';
+  html += '<div class="torre-section-title">📈 Pipeline de producción</div>';
+  html += '<div class="torre-pipeline">';
+  html += pipelineStep('HACER DISEÑOS', pipeline.hd, 'rgba(96,165,250,0.6)');
+  html += pipelineArrow();
+  html += pipelineStep('VENTAS', pipeline.v, 'rgba(34,197,94,0.6)');
+  html += pipelineArrow();
+  html += pipelineStep('APROBADOS', pipeline.a, 'rgba(168,85,247,0.6)');
+  html += pipelineArrow();
+  html += pipelineStep('ENVIADOS', pipeline.e, 'rgba(148,163,184,0.6)');
+  html += '</div></div>';
+
+  // Ranking vendedoras
+  html += '<div class="torre-section">';
+  html += '<div class="torre-section-title">👥 Ventas este mes (' + inicioMes.toLocaleDateString('es-CO', { month: 'long' }) + ')</div>';
+  if (!rankArr.length) {
+    html += '<div class="torre-empty">Aún sin ventas este mes</div>';
+  } else {
+    rankArr.forEach(([nombre, count]) => {
+      const pct = Math.round((count / maxRank) * 100);
+      html += '<div class="torre-rank-row">';
+      html += '<span class="torre-rank-nombre">' + esc(nombre) + '</span>';
+      html += '<div class="torre-rank-barra"><div class="torre-rank-fill" style="width:' + pct + '%;"></div></div>';
+      html += '<span class="torre-rank-count">' + count + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  cont.innerHTML = html;
+
+  // Badge sidebar = alertas pendientes
+  const bd = document.getElementById('badge-torre-unif');
+  if (bd) bd.textContent = alertas.length;
+
+  } catch (e) {
+    console.error('[torre-unificada] error', e);
+  }
+}
+
+function kpiCard(icon, value, label, color) {
+  return '<div class="torre-kpi">' +
+    '<div class="torre-kpi-icon" style="color:' + color + ';">' + icon + '</div>' +
+    '<div class="torre-kpi-val">' + value + '</div>' +
+    '<div class="torre-kpi-label">' + label + '</div>' +
+    '</div>';
+}
+
+function pipelineStep(label, count, color) {
+  return '<div class="torre-pipe-step" style="border-color:' + color + ';">' +
+    '<div class="torre-pipe-count">' + count + '</div>' +
+    '<div class="torre-pipe-label">' + label + '</div>' +
+    '</div>';
+}
+
+function pipelineArrow() {
+  return '<div class="torre-pipe-arrow">→</div>';
 }
 
 function renderTableroPrincipal() {
