@@ -1820,9 +1820,11 @@ http.createServer((req, res) => {
   // (Telegram a Duvan + WA grupo Trabajo en familia + Chatwoot). Hace exactamente
   // lo mismo que el handler en vivo, para arreglar stickers que llegaron pero el
   // handler falló (timeout, Chatwoot caído, etc).
-  if (req.method === 'POST' && req.url === '/api/marcar-stickers-retroactivo') {
+  if (req.method === 'POST' && req.url.startsWith('/api/marcar-stickers-retroactivo')) {
     (async () => {
       try {
+        const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const force = urlObj.searchParams.get('force') === 'true';
         const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
         const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
         function normTel(t) {
@@ -1857,9 +1859,10 @@ http.createServer((req, res) => {
         for (const c of candidatos) {
           try {
             // Skip si ya hay pedido del cliente con el mismo sticker (ya procesado antes)
+            // Con ?force=true igual reenvia notificaciones de los pedidos ya marcados.
             const pedidosActual = leerPedidos();
             const yaHecho = pedidosActual.find(p => normTel(p.telefono) === c.telCli && p.stickerVenta === c.hash);
-            if (yaHecho) {
+            if (yaHecho && !force) {
               skippedYaHecho.push({ id: yaHecho.id, telCli: c.telCli, vendedora: c.vendedora });
               continue;
             }
