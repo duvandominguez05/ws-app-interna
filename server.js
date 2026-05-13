@@ -1816,92 +1816,150 @@ http.createServer((req, res) => {
   }
 
   // ── POST /api/marcar-stickers-retroactivo ──
-  // Recorre stickers de evolution_events de últimos 7 días que matchean el hash
-  // y vinieron de nuestro WA (fromMe=true), y marca los pedidos correspondientes
-  // con stickerVenta. Útil para corregir el caso donde el sticker llegó pero el
-  // handler falló o no marcó por bug del dedupe.
+  // Reprocesa stickers de últimos 7 días: crea/marca pedido + DISPARA notificaciones
+  // (Telegram a Duvan + WA grupo Trabajo en familia + Chatwoot). Hace exactamente
+  // lo mismo que el handler en vivo, para arreglar stickers que llegaron pero el
+  // handler falló (timeout, Chatwoot caído, etc).
   if (req.method === 'POST' && req.url === '/api/marcar-stickers-retroactivo') {
-    try {
-      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
-      const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
-      const pedidos = leerPedidos();
-      function normTel(t) {
-        const d = String(t || '').replace(/\D/g, '');
-        return d.startsWith('57') ? d.slice(2) : d;
-      }
-      const marcados = [];
-      const noMatch = [];
-      for (const fecha of fechas) {
-        const events = db.leerEvolutionEvents(fecha);
-        for (const payload of events) {
-          const ed = payload.data || payload;
-          if (ed?.messageType !== 'stickerMessage') continue;
-          const fromMe = ed.key?.fromMe;
-          if (fromMe !== true) continue;
-          const stk = ed.message?.stickerMessage || {};
-          const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
-          if (!STICKERS_VENTA.includes(hash)) continue;
-          const remoteJid = ed.key?.remoteJid || '';
-          const telCli = normTel(remoteJid.replace('@s.whatsapp.net', ''));
-          if (!telCli) continue;
-          // Busca pedido del mismo cliente este mes que NO tenga ya stickerVenta
-          const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
-          const pd = pedidos.find(p => {
-            if (p.stickerVenta) return false;
-            if (p.estado === 'enviado-final') return false;
-            if (normTel(p.telefono) !== telCli) return false;
-            const pMes = (p.creadoEn || '').slice(-7);
-            return pMes === mesActual;
-          });
-          if (pd) {
-            pd.stickerVenta = hash;
-            pd.fechaVenta = pd.fechaVenta || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
-            if (pd.estado === 'bandeja') {
-              pd.estado = 'hacer-diseno';
-              pd.tipoBandeja = 'pedido';
-              pd.ultimoMovimiento = new Date().toISOString();
-            }
-            marcados.push({ id: pd.id, equipo: pd.equipo, telefono: pd.telefono, vendedora: pd.vendedora });
-          } else {
-            // No hay pedido del cliente este mes — CREARLO ahora (el handler en vivo falló).
+    (async () => {
+      try {
+        const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
+        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+        function normTel(t) {
+          const d = String(t || '').replace(/\D/g, '');
+          return d.startsWith('57') ? d.slice(2) : d;
+        }
+        const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+        const procesados = [];
+        const skippedYaHecho = [];
+        const errores = [];
+
+        // Junta TODOS los stickers válidos de los últimos 7 días
+        const candidatos = [];
+        for (const fecha of fechas) {
+          const events = db.leerEvolutionEvents(fecha);
+          for (const payload of events) {
+            const ed = payload.data || payload;
+            if (ed?.messageType !== 'stickerMessage') continue;
+            if (ed.key?.fromMe !== true) continue;
+            const stk = ed.message?.stickerMessage || {};
+            const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+            if (!STICKERS_VENTA.includes(hash)) continue;
+            const remoteJid = ed.key?.remoteJid || '';
+            const telCli = normTel(remoteJid.replace('@s.whatsapp.net', ''));
+            if (!telCli) continue;
             const vendedora = vendedoraDeInstancia(payload.instance);
-            const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
-            if (VENDEDORAS_VALIDAS.includes(vendedora.toLowerCase())) {
-              // Verifica que no haya otro ya con sticker enviado (evita duplicar)
-              const yaHay = pedidos.find(p => normTel(p.telefono) === telCli && p.stickerVenta === hash);
-              if (!yaHay) {
-                const nextId = leerNextId();
-                const nuevo = {
-                  id: nextId,
-                  equipo: '',
-                  telefono: telCli.length === 10 ? telCli : telCli, // sin prefijo 57 (normTel lo quitó)
-                  vendedora: vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
-                  tipoBandeja: 'pedido',
-                  estado: 'hacer-diseno',
-                  creadoEn: new Date().toLocaleDateString('es-CO'),
-                  ultimoMovimiento: new Date().toISOString(),
-                  items: [],
-                  fechaEntrega: '',
-                  notas: '',
-                  arreglo: null,
-                  stickerVenta: hash,
-                  fechaVenta: new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),
-                  disenadorAsignado: VENDEDORAS_DISENADORAS.has(vendedora) ? vendedora : '',
-                };
-                pedidos.push(nuevo);
-                marcados.push({ id: nuevo.id, equipo: '(creado por retro)', telefono: nuevo.telefono, vendedora: nuevo.vendedora, creado: true });
-              }
-            } else {
-              noMatch.push({ fecha, telCli, instance: payload.instance, motivo: 'vendedora no válida' });
-            }
+            if (!VENDEDORAS_VALIDAS.includes(vendedora.toLowerCase())) continue;
+            candidatos.push({ fecha, hash, telCli, remoteJid, vendedora, instance: payload.instance, ts: ed.messageTimestamp || 0 });
           }
         }
+
+        for (const c of candidatos) {
+          try {
+            // Skip si ya hay pedido del cliente con el mismo sticker (ya procesado antes)
+            const pedidosActual = leerPedidos();
+            const yaHecho = pedidosActual.find(p => normTel(p.telefono) === c.telCli && p.stickerVenta === c.hash);
+            if (yaHecho) {
+              skippedYaHecho.push({ id: yaHecho.id, telCli: c.telCli, vendedora: c.vendedora });
+              continue;
+            }
+
+            // Resolver nombre del cliente
+            let nombreCliente = '';
+            let contactoChatwoot = null;
+            try {
+              const r = await resolverCliente(c.remoteJid, c.telCli, '');
+              nombreCliente = r.nombre;
+              contactoChatwoot = r.contactoChatwoot;
+            } catch (e) { nombreCliente = `Cliente +57 ${c.telCli}`; }
+
+            // Buscar pedido existente del cliente este mes (sin sticker)
+            const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
+            const pdExistente = pedidosActual.find(p => {
+              if (p.estado === 'enviado-final') return false;
+              if (normTel(p.telefono) !== c.telCli) return false;
+              const pMes = (p.creadoEn || '').slice(-7);
+              return pMes === mesActual;
+            });
+
+            let pdProcesado;
+            if (pdExistente) {
+              // Actualizar pedido existente
+              pdExistente.estado = pdExistente.estado === 'bandeja' ? 'hacer-diseno' : pdExistente.estado;
+              pdExistente.tipoBandeja = 'pedido';
+              pdExistente.ultimoMovimiento = new Date().toISOString();
+              pdExistente.stickerVenta = c.hash;
+              pdExistente.fechaVenta = pdExistente.fechaVenta || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+              if (contactoChatwoot) pdExistente.contactoChatwoot = contactoChatwoot;
+              if (VENDEDORAS_DISENADORAS.has(c.vendedora) && !pdExistente.disenadorAsignado) {
+                pdExistente.disenadorAsignado = c.vendedora;
+              }
+              if (!pdExistente.equipo && nombreCliente) pdExistente.equipo = nombreCliente;
+              pdProcesado = pdExistente;
+              guardarPedidos(pedidosActual, leerNextId());
+            } else {
+              // Crear pedido nuevo
+              const resCrear = crearVentaInterna('pedido', c.vendedora, c.telCli, null, nombreCliente);
+              if (!resCrear.ok) { errores.push({ telCli: c.telCli, error: resCrear.error }); continue; }
+              const pp = leerPedidos();
+              const nuevo = pp.find(p => p.id === resCrear.id);
+              if (nuevo) {
+                nuevo.estado = 'hacer-diseno';
+                nuevo.tipoBandeja = 'pedido';
+                nuevo.ultimoMovimiento = new Date().toISOString();
+                nuevo.stickerVenta = c.hash;
+                nuevo.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+                if (contactoChatwoot) nuevo.contactoChatwoot = contactoChatwoot;
+                if (VENDEDORAS_DISENADORAS.has(c.vendedora)) nuevo.disenadorAsignado = c.vendedora;
+                guardarPedidos(pp, leerNextId());
+                pdProcesado = nuevo;
+              }
+            }
+
+            if (!pdProcesado) continue;
+
+            // ── DISPARAR NOTIFICACIONES (igual que el handler en vivo) ──
+            const fechaCorta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', year: 'numeric' });
+            const telBonito = c.telCli.startsWith('57') ? `+${c.telCli.slice(0,2)} ${c.telCli.slice(2,5)} ${c.telCli.slice(5,8)} ${c.telCli.slice(8)}` : c.telCli;
+            const lineaDis = VENDEDORAS_DISENADORAS.has(c.vendedora) ? `\n🎨 *Diseñadora:* ${c.vendedora}` : '';
+
+            const msgTG =
+              `💰 *VENTA CONFIRMADA* #${pdProcesado.id}\n\n` +
+              `${pdExistente ? '✅ El cliente ya pagó' : '✅ Cliente pagó directo'}\n\n` +
+              `👤 *Cliente:* ${nombreCliente}\n` +
+              `📞 ${telBonito}\n` +
+              `🛍️ *Vendedora:* ${c.vendedora}${lineaDis}\n` +
+              `📅 ${fechaCorta}\n\n` +
+              `🎨 Pedido en *Hacer diseño* — diseñador a trabajar`;
+            notificarTelegram(msgTG).catch(()=>{});
+
+            const lineaDisWA = VENDEDORAS_DISENADORAS.has(c.vendedora) ? `\n🎨 Diseñadora: ${c.vendedora}` : '';
+            const msgWA =
+              `💰 VENTA CONFIRMADA  #${pdProcesado.id}\n\n` +
+              `✅ ${pdExistente ? 'El cliente ya pagó' : 'Cliente pagó directo'}\n\n` +
+              `👤 Cliente: ${nombreCliente}\n` +
+              `📞 ${telBonito}\n` +
+              `🛍️ Vendedora: ${c.vendedora}${lineaDisWA}\n` +
+              `📅 ${fechaCorta}\n\n` +
+              `🎨 Pedido en Hacer diseño — diseñador a trabajar`;
+            notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
+
+            if (contactoChatwoot) {
+              etiquetarChatwootContacto(contactoChatwoot, 'venta-confirmada').catch(()=>{});
+            }
+
+            procesados.push({ id: pdProcesado.id, vendedora: c.vendedora, cliente: nombreCliente, telefono: c.telCli, nuevo: !pdExistente });
+          } catch (eItem) {
+            errores.push({ telCli: c.telCli, error: eItem.message });
+          }
+        }
+
+        return json(res, 200, { ok: true, total_candidatos: candidatos.length, procesados, ya_procesados_antes: skippedYaHecho, errores });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
       }
-      if (marcados.length > 0) guardarPedidos(pedidos, leerNextId());
-      return json(res, 200, { ok: true, marcados, sin_pedido_encontrado: noMatch });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
+    })();
+    return;
   }
 
   // ── GET /api/diag-stickers — últimos stickers recibidos (para verificar hashes) ──
