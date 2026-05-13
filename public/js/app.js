@@ -4042,6 +4042,15 @@ function renderTableroPrincipal() {
           else if (diasParaEntrega <= 5) { urgencia = '⏰ ' + diasParaEntrega + 'd'; urgenciaClase = 'urgente-media'; }
           else { urgencia = '📅 ' + diasParaEntrega + 'd'; urgenciaClase = ''; }
         }
+        // Botón de acción rápida según el estado actual (1 toque, sin modal)
+        const ACCIONES_RAPIDAS = {
+          'enviado-calandra': { proximo: 'llego-impresion', texto: '✅ Llegó impresión', color: '#0ea5e9' },
+          'llego-impresion':  { proximo: 'costura',         texto: '→ Enviado a costura', color: '#a855f7' },
+          'costura':          { proximo: 'listo',           texto: '✅ Listo para envío', color: '#22c55e' },
+          'listo':            { proximo: 'enviado-final',   texto: '📦 Entregado al cliente', color: '#16a34a' },
+        };
+        const accion = ACCIONES_RAPIDAS[p.estado];
+
         html += '<div class="tab-card ' + (sinDis ? 'tab-card-sin-dis' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">';
         // Línea 1: nombre del equipo/cliente (grande)
         html += '<div class="tab-card-eq">' + eq + '</div>';
@@ -4059,6 +4068,12 @@ function renderTableroPrincipal() {
           if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
           if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
           html += '</div>';
+        }
+        // Línea 5: BOTÓN DE ACCIÓN RÁPIDA (solo en producción + listo)
+        if (accion) {
+          html += '<button class="tab-card-accion" style="background:' + accion.color + ';" ' +
+                  'onclick="event.stopPropagation(); avanzarRapidoTablero(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto.replace(/'/g, "\\'") + '\')">' +
+                  accion.texto + '</button>';
         }
         html += '</div>';
       });
@@ -4202,6 +4217,38 @@ async function avanzarEtapaPedido(id) {
     return;
   }
   render();
+}
+
+// Avanza un pedido a la siguiente etapa con UN solo toque desde la card del Tablero.
+// Confirma rapido y dispara auto-archive si termina en enviado-final.
+async function avanzarRapidoTablero(id, proximoEstado, textoAccion) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const etiqueta = p.equipo || '#' + id;
+  const esCierre = proximoEstado === 'enviado-final';
+  const mensaje = esCierre
+    ? '¿Confirmar entrega de "' + etiqueta + '"?\n\nSe archiva en Notion automaticamente.'
+    : '¿' + textoAccion + ' — "' + etiqueta + '"?';
+  if (!confirm(mensaje)) return;
+  p.estado = proximoEstado;
+  p.ultimoMovimiento = new Date().toISOString();
+  guardar();
+  toast('✅ ' + textoAccion, 'success');
+  render();
+  if (esCierre) {
+    setTimeout(async () => {
+      try {
+        toast('⏳ Archivando en Notion...', 'info');
+        const r = await fetch('/api/pedidos/' + id + '/archivar', { method: 'POST' });
+        const data = await r.json();
+        if (r.ok && data.ok) {
+          eliminadosLocales.add(id);
+          await hardSyncFromServer(true);
+          toast('📁 Pedido #' + id + ' archivado en Notion', 'success');
+        }
+      } catch (e) { console.error('[auto-archivar]', e); }
+    }, 600);
+  }
 }
 
 // Archiva UN pedido a Notion (desde modal de detalle cuando esta en enviado-final)

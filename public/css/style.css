@@ -1296,6 +1296,29 @@
       flex-wrap: wrap;
       align-items: center;
     }
+    .tab-card-accion {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 11px 8px;
+      border: none;
+      border-radius: 9px;
+      color: white;
+      font-weight: 700;
+      font-size: 0.88rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .tab-card-accion:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .tab-card-accion:active {
+      transform: translateY(0);
+      filter: brightness(0.9);
+    }
     .tab-card-meta {
       display: flex;
       gap: 6px;
