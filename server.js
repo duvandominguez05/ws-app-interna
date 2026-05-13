@@ -1759,6 +1759,62 @@ http.createServer((req, res) => {
   }
 
 
+  // ── GET /api/diag-webhooks — revisa qué webhook tiene cada instancia configurado ──
+  if (req.method === 'GET' && req.url === '/api/diag-webhooks') {
+    (async () => {
+      try {
+        const INSTANCIAS = ['ws-ventas', 'ws-ney', 'ws-wendy', 'ws wendy', 'ws-paola', 'ws-duvan'];
+        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app';
+        const KEY = process.env.EVOLUTION_API_KEY || '';
+        const WEBHOOK_ESPERADO = `${req.headers.host ? 'https://' + req.headers.host : 'https://ws-app-interna-production.up.railway.app'}/api/evolution-webhook?token=ws_secret_2026`;
+        const out = [];
+        for (const inst of INSTANCIAS) {
+          try {
+            const r = await fetch(`${EVO}/webhook/find/${encodeURIComponent(inst)}`, { headers: { apikey: KEY } });
+            const data = r.ok ? await r.json() : null;
+            const url = data?.url || data?.webhook?.url || '(sin webhook)';
+            const enabled = data?.enabled !== false;
+            const events = data?.events || data?.webhook?.events || [];
+            out.push({ instancia: inst, status: r.status, url, enabled, events_count: Array.isArray(events) ? events.length : 0, url_correcta: url === WEBHOOK_ESPERADO });
+          } catch (e) {
+            out.push({ instancia: inst, error: e.message });
+          }
+        }
+        return json(res, 200, { webhook_esperado: WEBHOOK_ESPERADO, instancias: out });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    })();
+    return;
+  }
+
+  // ── POST /api/setup-webhook/:instancia — configura el webhook de una instancia ──
+  if (req.method === 'POST' && req.url.startsWith('/api/setup-webhook/')) {
+    (async () => {
+      try {
+        const inst = decodeURIComponent(req.url.split('/').pop());
+        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app';
+        const KEY = process.env.EVOLUTION_API_KEY || '';
+        const WEBHOOK_URL = `${req.headers.host ? 'https://' + req.headers.host : 'https://ws-app-interna-production.up.railway.app'}/api/evolution-webhook?token=ws_secret_2026`;
+        const body = {
+          webhook: {
+            url: WEBHOOK_URL,
+            enabled: true,
+            webhookByEvents: false,
+            webhookBase64: false,
+            events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONTACTS_UPSERT', 'CHATS_UPSERT', 'SEND_MESSAGE'],
+          },
+        };
+        const r = await fetch(`${EVO}/webhook/set/${encodeURIComponent(inst)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: KEY },
+          body: JSON.stringify(body),
+        });
+        const data = await r.text();
+        return json(res, 200, { ok: r.ok, status: r.status, instancia: inst, webhook_url: WEBHOOK_URL, respuesta: data.slice(0, 500) });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    })();
+    return;
+  }
+
   // ── POST /api/marcar-stickers-retroactivo ──
   // Recorre stickers de evolution_events de últimos 7 días que matchean el hash
   // y vinieron de nuestro WA (fromMe=true), y marca los pedidos correspondientes
