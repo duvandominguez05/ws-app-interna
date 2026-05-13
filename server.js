@@ -126,18 +126,22 @@ async function notificarTelegramDuvan(texto) {
 }
 
 // Manda mensaje al grupo de WhatsApp "Trabajo en familia" vía Evolution.
+// Usa ws-duvan por default (la de Betty/ws-ventas esta en revision).
 async function notificarWhatsappTrabajoFamilia(texto) {
   try {
     const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
     const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
-    const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
     const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
       body: JSON.stringify({ number: groupJid, text: texto }),
     });
-    if (!r.ok) console.error('[wa-grupo] respuesta:', r.status);
+    if (!r.ok) {
+      const body = await r.text().catch(()=>'');
+      console.error('[wa-grupo] respuesta:', r.status, body.slice(0,200));
+    }
   } catch (e) { console.error('[wa-grupo error]', e.message); }
 }
 
