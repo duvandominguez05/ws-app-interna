@@ -1250,40 +1250,66 @@
       border-radius: 10px;
     }
     .tab-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 7px;
-      padding: 7px 9px;
-      margin-bottom: 5px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 12px 13px;
+      margin-bottom: 9px;
       cursor: pointer;
       transition: var(--transition);
     }
     .tab-card:hover {
-      background: rgba(124,58,237,0.1);
-      border-color: rgba(124,58,237,0.3);
+      background: rgba(124,58,237,0.12);
+      border-color: rgba(124,58,237,0.35);
+      transform: translateY(-1px);
     }
     .tab-card-eq {
-      font-weight: 600;
-      font-size: 0.8rem;
+      font-weight: 700;
+      font-size: 0.98rem;
       color: var(--text);
-      line-height: 1.25;
-      margin-bottom: 2px;
+      line-height: 1.3;
+      margin-bottom: 6px;
       word-break: break-word;
+    }
+    .tab-card-tel {
+      font-size: 0.78rem;
+      color: #a3a3b8;
+      margin-bottom: 6px;
+      font-family: 'Inter', sans-serif;
+    }
+    .tab-card-personas {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-bottom: 7px;
+      line-height: 1.3;
+    }
+    .tab-card-ven { color: #c4b5fd; }
+    .tab-card-dis { color: #86efac; }
+    .tab-card-sindis { color: #fca5a5; font-weight: 600; }
+    .tab-card-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
     }
     .tab-card-meta {
       display: flex;
       gap: 6px;
       align-items: center;
-      font-size: 0.65rem;
+      font-size: 0.7rem;
       color: var(--text-muted);
       flex-wrap: wrap;
-      line-height: 1.2;
+      line-height: 1.25;
     }
     .tab-card-badge {
       background: rgba(255,255,255,0.06);
-      padding: 0 5px;
-      border-radius: 6px;
-      font-size: 0.6rem;
+      padding: 3px 8px;
+      border-radius: 7px;
+      font-size: 0.72rem;
+      font-weight: 600;
       white-space: nowrap;
     }
     .tab-card-badge.sub-calandra { background: rgba(245,158,11,0.18); color: #fcd34d; }
@@ -1308,7 +1334,7 @@
     /* Mobile: tabs deslizables horizontalmente (mejor que apilar) */
     @media (max-width: 900px) {
       .tab-principal-grid {
-        grid-template-columns: repeat(4, 85vw);
+        grid-template-columns: repeat(4, 88vw);
         overflow-x: auto;
         scroll-snap-type: x mandatory;
         -webkit-overflow-scrolling: touch;
@@ -1319,8 +1345,11 @@
         scroll-snap-align: start;
         min-height: 60vh;
       }
-      .tab-card-eq { font-size: 0.88rem; }
-      .tab-card { padding: 9px 11px; }
+      .tab-card { padding: 13px 14px; margin-bottom: 10px; }
+      .tab-card-eq { font-size: 1.02rem; }
+      .tab-card-tel { font-size: 0.85rem; }
+      .tab-card-personas { font-size: 0.82rem; }
+      .tab-card-badge { font-size: 0.78rem; padding: 4px 9px; }
     }
 
     .form-row {

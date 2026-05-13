@@ -4026,8 +4026,10 @@ function renderTableroPrincipal() {
       html += '<div class="tab-empty">—</div>';
     } else {
       c.items.forEach(({ p, badge }) => {
-        const eq = esc(p.equipo || p.telefono || 'Sin nombre');
+        const eq = esc(p.equipo || 'Sin nombre');
+        const tel = p.telefono ? esc(String(p.telefono).trim()) : '';
         const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : '';
+        const ven = p.vendedora ? esc(p.vendedora) : '';
         const sinDis = !dis && p.estado !== 'bandeja';
         // Urgencia: cuántos días faltan para fecha entrega
         let urgencia = '';
@@ -4040,15 +4042,23 @@ function renderTableroPrincipal() {
           else { urgencia = '📅 ' + diasParaEntrega + 'd'; urgenciaClase = ''; }
         }
         html += '<div class="tab-card ' + (sinDis ? 'tab-card-sin-dis' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">';
+        // Línea 1: nombre del equipo/cliente (grande)
         html += '<div class="tab-card-eq">' + eq + '</div>';
-        html += '<div class="tab-card-meta">';
-        // Mostrar SOLO el diseñador. Si no hay → "sin diseñador" en rojo. (La vendedora se ve al hacer click)
-        if (dis) html += '<span>🎨 ' + dis + '</span>';
-        else if (sinDis) html += '<span style="color:#fca5a5;">⚠️ sin diseñador</span>';
-        // Solo una insignia de urgencia/badge (la más crítica)
-        if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
-        else if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
+        // Línea 2: teléfono (si tiene)
+        if (tel) html += '<div class="tab-card-tel">📞 ' + tel + '</div>';
+        // Línea 3: vendedora + diseñador
+        html += '<div class="tab-card-personas">';
+        if (ven) html += '<span class="tab-card-ven">🛍️ ' + ven + '</span>';
+        if (dis) html += '<span class="tab-card-dis">🎨 ' + dis + '</span>';
+        else if (sinDis) html += '<span class="tab-card-sindis">⚠️ sin diseñador</span>';
         html += '</div>';
+        // Línea 4: badges (sub-estado producción + urgencia)
+        if (badge || urgencia) {
+          html += '<div class="tab-card-badges">';
+          if (badge) html += '<span class="tab-card-badge ' + badge.clase + '">' + badge.texto + '</span>';
+          if (urgencia) html += '<span class="tab-card-badge ' + urgenciaClase + '">' + urgencia + '</span>';
+          html += '</div>';
+        }
         html += '</div>';
       });
     }
@@ -4141,6 +4151,10 @@ function abrirDetallePedido(id) {
         (siguiente
           ? '<button onclick="avanzarEtapaPedido(' + p.id + ')" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:11px;border:none;border-radius:9px;font-weight:600;font-size:0.92rem;cursor:pointer;">➡️ Pasar a: ' + siguiente.label + '</button>'
           : '<div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:11px;border-radius:9px;text-align:center;font-size:0.85rem;">✅ Pedido terminado (entregado)</div>') +
+        // Botón archivar a Notion (solo cuando el pedido está entregado)
+        (p.estado === 'enviado-final'
+          ? '<button onclick="archivarUnPedidoNotion(' + p.id + ')" class="btn" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;padding:10px;border-radius:9px;font-weight:600;font-size:0.85rem;cursor:pointer;">📁 Archivar a Notion</button>'
+          : '') +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
           (p.telefono ? '<button onclick="window.open(\'https://wa.me/57' + String(p.telefono).replace(/\D/g, '') + '\', \'_blank\')" class="btn btn-sm" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">💬 WhatsApp</button>' : '<div></div>') +
           '<button onclick="openModalCompletar(' + p.id + '); document.getElementById(\'modal-detalle-pedido\').remove();" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">✏️ Editar datos</button>' +
@@ -4164,6 +4178,30 @@ async function avanzarEtapaPedido(id) {
   const modal = document.getElementById('modal-detalle-pedido');
   if (modal) modal.remove();
   render();
+}
+
+// Archiva UN pedido a Notion (desde modal de detalle cuando esta en enviado-final)
+async function archivarUnPedidoNotion(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  if (p.estado !== 'enviado-final') {
+    toast('Solo se pueden archivar pedidos entregados', 'info');
+    return;
+  }
+  if (!confirm('¿Archivar "' + (p.equipo || '#' + id) + '" a Notion?\n\nQueda en el histórico de Notion y se borra del servidor. No se puede deshacer.')) return;
+  try {
+    toast('⏳ Archivando...', 'info');
+    const r = await fetch('/api/pedidos/' + id + '/archivar', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    eliminadosLocales.add(id);
+    const modal = document.getElementById('modal-detalle-pedido');
+    if (modal) modal.remove();
+    await hardSyncFromServer(true);
+    toast('✅ Pedido #' + id + ' archivado en Notion', 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 // Elimina un pedido en CUALQUIER estado (para limpiar pedidos basura: mal escritos,
