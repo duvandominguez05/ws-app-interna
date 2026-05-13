@@ -36,11 +36,16 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
     return { ok: true, id: existnte.id, tipo: tipoNorm, vendedora: existnte.vendedora, telefono, duplicado: true };
   }
 
-  // Control de Duplicados por teléfono+mes
+  // Control de Duplicados por teléfono+mes — normaliza quitando TODO no-dígito
+  // (espacios, +, guiones, etc) y permite match aunque venga con o sin 57.
   const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
-  const telLimpio = String(telefono).replace(/\s/g, '');
+  function normTel(t) {
+    const d = String(t || '').replace(/\D/g, '');
+    return d.startsWith('57') ? d.slice(2) : d;
+  }
+  const telLimpio = normTel(telefono);
   const dupTel = pedidos.find(p => {
-    const pTel = String(p.telefono).replace(/\s/g, '');
+    const pTel = normTel(p.telefono);
     const pMes = (p.creadoEn || '').slice(-7);
     return pTel === telLimpio && pMes === mesActual && p.tipoBandeja === tipoNorm;
   });
@@ -1562,20 +1567,25 @@ http.createServer((req, res) => {
                       const pp = leerPedidos();
                       const nuevoPd = pp.find(p => p.id === resultadoApi.id);
                       if (nuevoPd) {
+                        // Si ya existía pedido del mismo cliente este mes (creado manual), avanza ese.
+                        // Si era pedido nuevo, lo deja en hacer-diseno.
                         nuevoPd.estado = 'hacer-diseno';
                         nuevoPd.tipoBandeja = 'pedido';
                         nuevoPd.ultimoMovimiento = new Date().toISOString();
                         nuevoPd.stickerVenta = stickerHash;
                         nuevoPd.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
                         if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
-                        // Auto-asignar diseñador si la vendedora también diseña
-                        if (VENDEDORAS_DISENADORAS.has(vendedora)) {
+                        // Auto-asignar diseñador si la vendedora también diseña (solo si no tenia)
+                        if (VENDEDORAS_DISENADORAS.has(vendedora) && !nuevoPd.disenadorAsignado) {
                           nuevoPd.disenadorAsignado = vendedora;
                         }
                         guardarPedidos(pp, leerNextId());
                       }
                       accionRealizada = true;
-                      console.log(`[sticker-venta] pedido NUEVO #${resultadoApi.id} en hacer-diseno (vendedora=${vendedora}, ${nombreCliente})`);
+                      const kind = resultadoApi.duplicado ? 'ACTUALIZADO (ya existía manual)' : 'NUEVO';
+                      console.log(`[sticker-venta] pedido ${kind} #${resultadoApi.id} (vendedora=${vendedora}, ${nombreCliente})`);
+                    } else {
+                      console.error(`[sticker-venta] FALLO crearVentaInterna: ${resultadoApi.error || 'error desconocido'}`);
                     }
                   }
                 }
@@ -1748,6 +1758,65 @@ http.createServer((req, res) => {
     }
   }
 
+
+  // ── POST /api/marcar-stickers-retroactivo ──
+  // Recorre stickers de evolution_events de últimos 7 días que matchean el hash
+  // y vinieron de nuestro WA (fromMe=true), y marca los pedidos correspondientes
+  // con stickerVenta. Útil para corregir el caso donde el sticker llegó pero el
+  // handler falló o no marcó por bug del dedupe.
+  if (req.method === 'POST' && req.url === '/api/marcar-stickers-retroactivo') {
+    try {
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
+      const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+      const pedidos = leerPedidos();
+      function normTel(t) {
+        const d = String(t || '').replace(/\D/g, '');
+        return d.startsWith('57') ? d.slice(2) : d;
+      }
+      const marcados = [];
+      const noMatch = [];
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha);
+        for (const payload of events) {
+          const ed = payload.data || payload;
+          if (ed?.messageType !== 'stickerMessage') continue;
+          const fromMe = ed.key?.fromMe;
+          if (fromMe !== true) continue;
+          const stk = ed.message?.stickerMessage || {};
+          const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+          if (!STICKERS_VENTA.includes(hash)) continue;
+          const remoteJid = ed.key?.remoteJid || '';
+          const telCli = normTel(remoteJid.replace('@s.whatsapp.net', ''));
+          if (!telCli) continue;
+          // Busca pedido del mismo cliente este mes que NO tenga ya stickerVenta
+          const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
+          const pd = pedidos.find(p => {
+            if (p.stickerVenta) return false;
+            if (p.estado === 'enviado-final') return false;
+            if (normTel(p.telefono) !== telCli) return false;
+            const pMes = (p.creadoEn || '').slice(-7);
+            return pMes === mesActual;
+          });
+          if (pd) {
+            pd.stickerVenta = hash;
+            pd.fechaVenta = pd.fechaVenta || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+            if (pd.estado === 'bandeja') {
+              pd.estado = 'hacer-diseno';
+              pd.tipoBandeja = 'pedido';
+              pd.ultimoMovimiento = new Date().toISOString();
+            }
+            marcados.push({ id: pd.id, equipo: pd.equipo, telefono: pd.telefono, vendedora: pd.vendedora });
+          } else {
+            noMatch.push({ fecha, telCli, instance: payload.instance });
+          }
+        }
+      }
+      if (marcados.length > 0) guardarPedidos(pedidos, leerNextId());
+      return json(res, 200, { ok: true, marcados, sin_pedido_encontrado: noMatch });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
 
   // ── GET /api/diag-stickers — últimos stickers recibidos (para verificar hashes) ──
   if (req.method === 'GET' && req.url.startsWith('/api/diag-stickers')) {
