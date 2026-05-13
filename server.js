@@ -1863,7 +1863,37 @@ http.createServer((req, res) => {
             }
             marcados.push({ id: pd.id, equipo: pd.equipo, telefono: pd.telefono, vendedora: pd.vendedora });
           } else {
-            noMatch.push({ fecha, telCli, instance: payload.instance });
+            // No hay pedido del cliente este mes — CREARLO ahora (el handler en vivo falló).
+            const vendedora = vendedoraDeInstancia(payload.instance);
+            const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+            if (VENDEDORAS_VALIDAS.includes(vendedora.toLowerCase())) {
+              // Verifica que no haya otro ya con sticker enviado (evita duplicar)
+              const yaHay = pedidos.find(p => normTel(p.telefono) === telCli && p.stickerVenta === hash);
+              if (!yaHay) {
+                const nextId = leerNextId();
+                const nuevo = {
+                  id: nextId,
+                  equipo: '',
+                  telefono: telCli.length === 10 ? telCli : telCli, // sin prefijo 57 (normTel lo quitó)
+                  vendedora: vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
+                  tipoBandeja: 'pedido',
+                  estado: 'hacer-diseno',
+                  creadoEn: new Date().toLocaleDateString('es-CO'),
+                  ultimoMovimiento: new Date().toISOString(),
+                  items: [],
+                  fechaEntrega: '',
+                  notas: '',
+                  arreglo: null,
+                  stickerVenta: hash,
+                  fechaVenta: new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }),
+                  disenadorAsignado: VENDEDORAS_DISENADORAS.has(vendedora) ? vendedora : '',
+                };
+                pedidos.push(nuevo);
+                marcados.push({ id: nuevo.id, equipo: '(creado por retro)', telefono: nuevo.telefono, vendedora: nuevo.vendedora, creado: true });
+              }
+            } else {
+              noMatch.push({ fecha, telCli, instance: payload.instance, motivo: 'vendedora no válida' });
+            }
           }
         }
       }
