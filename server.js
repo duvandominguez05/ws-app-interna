@@ -1772,6 +1772,30 @@ http.createServer((req, res) => {
   }
 
 
+  // ── GET /api/test-wa-grupo?instance=ws-duvan&text=hola ──
+  // Prueba mandar un mensaje al grupo familia desde la instancia indicada
+  // y devuelve el resultado completo de Evolution (para diagnosticar).
+  if (req.method === 'GET' && req.url.startsWith('/api/test-wa-grupo')) {
+    (async () => {
+      try {
+        const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const instance = urlObj.searchParams.get('instance') || process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+        const text = urlObj.searchParams.get('text') || '🧪 Prueba desde la app W&S';
+        const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
+        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+        const KEY = process.env.EVOLUTION_API_KEY || '';
+        const r = await fetch(`${EVO}/message/sendText/${encodeURIComponent(instance)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: KEY },
+          body: JSON.stringify({ number: groupJid, text }),
+        });
+        const body = await r.text();
+        return json(res, 200, { ok: r.ok, status: r.status, instance, groupJid, respuesta: body.slice(0, 800) });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    })();
+    return;
+  }
+
   // ── GET /api/diag-webhooks — revisa qué webhook tiene cada instancia configurado ──
   if (req.method === 'GET' && req.url === '/api/diag-webhooks') {
     (async () => {
