@@ -4051,9 +4051,17 @@ function renderTableroPrincipal() {
         };
         const accion = ACCIONES_RAPIDAS[p.estado];
 
+        const sinNombre = !p.equipo || !p.equipo.trim();
         html += '<div class="tab-card ' + (sinDis ? 'tab-card-sin-dis' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">';
-        // Línea 1: nombre del equipo/cliente (grande)
-        html += '<div class="tab-card-eq">' + eq + '</div>';
+        // Línea 1: nombre del equipo + lápiz para editar rápido
+        html += '<div class="tab-card-eq-row">';
+        if (sinNombre) {
+          html += '<button class="tab-card-eq-vacio" onclick="event.stopPropagation(); editarNombreEquipoRapido(' + p.id + ')">✏️ Ponerle nombre</button>';
+        } else {
+          html += '<div class="tab-card-eq">' + eq + '</div>';
+          html += '<button class="tab-card-eq-edit" onclick="event.stopPropagation(); editarNombreEquipoRapido(' + p.id + ')" title="Editar nombre">✏️</button>';
+        }
+        html += '</div>';
         // Línea 2: teléfono (si tiene)
         if (tel) html += '<div class="tab-card-tel">📞 ' + tel + '</div>';
         // Línea 3: vendedora + diseñador
@@ -4216,6 +4224,22 @@ async function avanzarEtapaPedido(id) {
     }, 800);
     return;
   }
+  render();
+}
+
+// Edita el nombre del equipo/pedido rápido sin abrir el modal completo.
+async function editarNombreEquipoRapido(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const actual = p.equipo || '';
+  const nuevo = prompt('Nombre del equipo o pedido:\n(Ej: "Brasil Dragón", "Bykers Colombia", etc.)', actual);
+  if (nuevo === null) return; // canceló
+  const limpio = nuevo.trim();
+  if (limpio === actual) return; // sin cambios
+  p.equipo = limpio;
+  p.ultimoMovimiento = new Date().toISOString();
+  guardar();
+  toast(limpio ? '✏️ Nombre guardado' : '🗑️ Nombre borrado', 'success');
   render();
 }
 
