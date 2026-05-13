@@ -3773,14 +3773,14 @@ function _actualizarBadgeTorre() {
 // Mapeo estado app → columna del tablero físico
 const TAB_PRINCIPAL_MAP = {
   'bandeja':           { col: 'hacer-disenos', orden: 0 },
-  'hacer-diseno':      { col: 'ventas',         orden: 0 },
-  'confirmado':        { col: 'aprobados',      orden: 0, badge: null },
-  'enviado-calandra':  { col: 'aprobados',      orden: 1, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
-  'llego-impresion':   { col: 'aprobados',      orden: 2, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
-  'calidad':           { col: 'aprobados',      orden: 3, badge: { texto: '🔍 calidad',   clase: 'sub-calidad'   } },
-  'costura':           { col: 'aprobados',      orden: 4, badge: { texto: '🪡 costura',   clase: 'sub-listo'     } },
-  'listo':             { col: 'aprobados',      orden: 5, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
-  'enviado-final':     { col: 'enviados',       orden: 0 },
+  'hacer-diseno':      { col: 'ventas',        orden: 0 },
+  'confirmado':        { col: 'aprobados',     orden: 0, badge: null },
+  'enviado-calandra':  { col: 'produccion',    orden: 0, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
+  'llego-impresion':   { col: 'produccion',    orden: 1, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
+  'calidad':           { col: 'produccion',    orden: 2, badge: { texto: '🔍 calidad',   clase: 'sub-calidad'   } },
+  'costura':           { col: 'produccion',    orden: 3, badge: { texto: '🪡 costura',   clase: 'sub-listo'     } },
+  'listo':             { col: 'produccion',    orden: 4, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
+  'enviado-final':     { col: 'enviados',      orden: 0 },
 };
 let _tabPrincipalFiltro = '';
 let _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
@@ -3972,6 +3972,7 @@ function renderTableroPrincipal() {
     'hacer-disenos': { titulo: 'HACER DISEÑOS', clase: 'tab-col-hacer-disenos', items: [] },
     'ventas':        { titulo: 'VENTAS',        clase: 'tab-col-ventas',        items: [] },
     'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
+    'produccion':    { titulo: 'PRODUCCIÓN',    clase: 'tab-col-produccion',    items: [] },
     'enviados':      { titulo: 'ENVIADOS',      clase: 'tab-col-enviados',      items: [] },
   };
   const q = _tabPrincipalFiltro;
@@ -4170,13 +4171,36 @@ async function avanzarEtapaPedido(id) {
   if (!p) return;
   const sig = siguienteEtapa(p.estado);
   if (!sig) { toast('Ya está en la última etapa', 'info'); return; }
-  if (!confirm('¿Pasar pedido a "' + sig.label + '"?')) return;
+  // Si va a enviado-final, advertir que se va a archivar a Notion automaticamente
+  const esCierre = sig.id === 'enviado-final';
+  const mensaje = esCierre
+    ? '¿Marcar "' + (p.equipo || '#' + id) + '" como ENTREGADO?\n\nSe va a archivar en Notion y borrar del servidor automaticamente.'
+    : '¿Pasar pedido a "' + sig.label + '"?';
+  if (!confirm(mensaje)) return;
   p.estado = sig.id;
   p.ultimoMovimiento = new Date().toISOString();
   guardar();
   toast('✅ Movido a ' + sig.label, 'success');
   const modal = document.getElementById('modal-detalle-pedido');
   if (modal) modal.remove();
+  // Auto-archivar en Notion si llegó al final del flujo
+  if (esCierre) {
+    setTimeout(async () => {
+      try {
+        toast('⏳ Archivando en Notion...', 'info');
+        const r = await fetch('/api/pedidos/' + id + '/archivar', { method: 'POST' });
+        const data = await r.json();
+        if (r.ok && data.ok) {
+          eliminadosLocales.add(id);
+          await hardSyncFromServer(true);
+          toast('📁 Pedido #' + id + ' archivado en Notion', 'success');
+        } else {
+          toast('⚠️ Pedido entregado, pero falló el archivado automático. Archivá manual desde el modal.', 'error');
+        }
+      } catch (e) { console.error('[auto-archivar]', e); }
+    }, 800);
+    return;
+  }
   render();
 }
 
