@@ -458,15 +458,20 @@ async function etiquetarChatwootContacto(contactoId, etiqueta) {
 }
 
 // Busca contacto en Chatwoot por teléfono. Devuelve { name, id } o null.
+// TIMEOUT de 4 segundos: si Chatwoot tarda más, devuelve null y NO bloquea
+// el webhook (que causaba que el sticker handler nunca terminara).
 async function buscarContactoChatwoot(telefono) {
   try {
     const url = process.env.CHATWOOT_URL;
     const accountId = process.env.CHATWOOT_ACCOUNT_ID;
     const apiKey = process.env.CHATWOOT_API_KEY;
     if (!url || !accountId || !apiKey) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
     const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/search?q=${encodeURIComponent(telefono)}`, {
       headers: { 'api_access_token': apiKey },
-    });
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
     if (!r.ok) return null;
     const data = await r.json();
     if (data.payload && data.payload.length > 0) {
@@ -475,7 +480,8 @@ async function buscarContactoChatwoot(telefono) {
     }
     return null;
   } catch (e) {
-    console.error('[buscarContactoChatwoot error]', e.message);
+    if (e.name === 'AbortError') console.warn('[chatwoot-search] timeout (>4s), siguiendo sin datos');
+    else console.error('[buscarContactoChatwoot error]', e.message);
     return null;
   }
 }
@@ -487,11 +493,14 @@ async function obtenerNombreContactoEvolution(remoteJid) {
     const url = (process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app');
     const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
     const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
     const r = await fetch(`${url}/chat/findContacts/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
       body: JSON.stringify({ where: { remoteJid } }),
-    });
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
     if (!r.ok) return null;
     const data = await r.json();
     if (Array.isArray(data) && data.length > 0) {
