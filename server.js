@@ -790,6 +790,39 @@ http.createServer((req, res) => {
     return json(res, 200, { pedidos: peds, nextId: leerNextId(), archivados: tomb.map(t => t.id) });
   }
 
+  // ── POST /api/pedidos/:id/avanzar ── avanza un pedido a un nuevo estado
+  // Body: { estado: 'llego-impresion' }. Si llega a enviado-final, auto-archiva en Notion.
+  if (req.method === 'POST' && req.url.match(/^\/api\/pedidos\/\d+\/avanzar$/)) {
+    const id = parseInt(req.url.split('/')[3]);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      (async () => {
+        try {
+          const { estado } = JSON.parse(body || '{}');
+          if (!estado) return json(res, 400, { error: 'falta estado' });
+          const pedidos = leerPedidos();
+          const p = pedidos.find(x => x.id === id);
+          if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+          p.estado = estado;
+          p.ultimoMovimiento = new Date().toISOString();
+          guardarPedidos(pedidos, leerNextId());
+          // Auto-archive si llegó al final
+          if (estado === 'enviado-final') {
+            try {
+              const r = await archivarYBorrarPedido(id);
+              if (r.ok) return json(res, 200, { ok: true, archivado: true, notionPageId: r.notionPageId });
+            } catch (e) { console.error('[avanzar/auto-archive]', e); }
+          }
+          return json(res, 200, { ok: true, archivado: false, estado });
+        } catch (e) {
+          return json(res, 500, { error: e.message });
+        }
+      })();
+    });
+    return;
+  }
+
   // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
   if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/') && !req.url.includes('limpiar-basura')) {
     const id = parseInt(req.url.split('/')[3]);
@@ -2786,6 +2819,15 @@ http.createServer((req, res) => {
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ── Alias para vistas simplificadas (sin extensión) ──
+  if (req.method === 'GET' && req.url === '/produccion') {
+    return fs.readFile(path.join(__dirname, 'public', 'produccion.html'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
   }
 
   // ── Archivos estáticos ──────────────────────────────────────

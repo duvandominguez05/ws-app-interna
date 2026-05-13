@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏭 Producción W&S</title>
+  <link rel="icon" type="image/png" href="/icon.png">
+  <meta name="theme-color" content="#0ea5e9">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0c12;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, rgba(14,165,233,0.15), rgba(124,58,237,0.1));
+      border: 1px solid rgba(14,165,233,0.3);
+      border-radius: 14px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+    }
+    .header .sub {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .header .refresh {
+      background: rgba(14,165,233,0.2);
+      border: 1px solid rgba(14,165,233,0.4);
+      color: #7dd3fc;
+      padding: 10px 16px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      font-weight: 600;
+      font-family: inherit;
+    }
+    .header .refresh:hover { background: rgba(14,165,233,0.3); }
+
+    .filtros {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filtro-btn {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #cbd5e1;
+      padding: 9px 16px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .filtro-btn.activo {
+      background: rgba(14,165,233,0.25);
+      border-color: rgba(14,165,233,0.6);
+      color: #7dd3fc;
+    }
+    .filtro-btn .conteo {
+      background: rgba(255,255,255,0.1);
+      padding: 1px 7px;
+      border-radius: 8px;
+      font-size: 0.74rem;
+      margin-left: 6px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 18px;
+      transition: all 0.15s;
+    }
+    .card:hover { border-color: rgba(124,58,237,0.4); }
+    .card-eq {
+      font-weight: 700;
+      font-size: 1.25rem;
+      line-height: 1.3;
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+    .card-eq-edit {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.5);
+      padding: 4px 9px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      margin-left: 8px;
+    }
+    .card-eq-vacio {
+      background: rgba(245,158,11,0.18);
+      border: 1px dashed rgba(245,158,11,0.5);
+      color: #fcd34d;
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      width: 100%;
+      cursor: pointer;
+      margin-bottom: 10px;
+      font-family: inherit;
+    }
+    .card-tel { color: #a3a3b8; font-size: 0.96rem; margin-bottom: 8px; }
+    .card-personas {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+    }
+    .card-ven { color: #c4b5fd; }
+    .card-dis { color: #86efac; }
+    .card-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .badge {
+      padding: 5px 11px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .b-calandra  { background: rgba(245,158,11,0.2); color: #fcd34d; }
+    .b-impresion { background: rgba(14,165,233,0.2); color: #7dd3fc; }
+    .b-calidad   { background: rgba(168,85,247,0.2); color: #d8b4fe; }
+    .b-costura   { background: rgba(34,197,94,0.18); color: #86efac; }
+    .b-listo     { background: rgba(34,197,94,0.25); color: #86efac; font-weight: 700; }
+    .b-vencido   { background: rgba(239,68,68,0.35); color: #fecaca; font-weight: 700; }
+    .b-urgente   { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    .b-media     { background: rgba(245,158,11,0.18); color: #fcd34d; }
+
+    .accion {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 11px;
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+      transition: all 0.15s;
+    }
+    .accion:hover { filter: brightness(1.12); transform: translateY(-1px); }
+    .accion:active { transform: translateY(0); filter: brightness(0.9); }
+    .a-cyan   { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
+    .a-purple { background: linear-gradient(135deg, #a855f7, #c084fc); }
+    .a-green  { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .a-dark   { background: linear-gradient(135deg, #16a34a, #15803d); }
+
+    .empty {
+      grid-column: 1/-1;
+      text-align: center;
+      padding: 60px 20px;
+      color: #64748b;
+      font-size: 1.1rem;
+    }
+    .empty-emoji { font-size: 3rem; margin-bottom: 12px; }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(34,197,94,0.95);
+      color: white;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-weight: 600;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: rgba(239,68,68,0.95); }
+
+    @media (max-width: 600px) {
+      body { padding: 10px; }
+      .header h1 { font-size: 1.25rem; }
+      .grid { grid-template-columns: 1fr; gap: 10px; }
+      .card { padding: 15px; }
+      .card-eq { font-size: 1.1rem; }
+      .accion { padding: 14px; font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>🏭 Producción W&S</h1>
+      <div class="sub" id="info-sync">Actualizado: —</div>
+    </div>
+    <button class="refresh" onclick="cargar()">🔄 Refrescar</button>
+  </div>
+
+  <div class="filtros" id="filtros">
+    <button class="filtro-btn activo" data-filtro="todos" onclick="setFiltro('todos')">Todos <span class="conteo" id="c-todos">0</span></button>
+    <button class="filtro-btn" data-filtro="enviado-calandra" onclick="setFiltro('enviado-calandra')">📦 Calandra <span class="conteo" id="c-calandra">0</span></button>
+    <button class="filtro-btn" data-filtro="llego-impresion" onclick="setFiltro('llego-impresion')">🖨️ Llegó <span class="conteo" id="c-llego">0</span></button>
+    <button class="filtro-btn" data-filtro="costura" onclick="setFiltro('costura')">🪡 Costura <span class="conteo" id="c-costura">0</span></button>
+    <button class="filtro-btn" data-filtro="listo" onclick="setFiltro('listo')">✅ Listo <span class="conteo" id="c-listo">0</span></button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let pedidos = [];
+    let filtroActivo = 'todos';
+
+    const ESTADOS_PRODUCCION = ['enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo'];
+
+    const ACCIONES = {
+      'enviado-calandra': { proximo: 'llego-impresion', texto: '✅ Llegó la impresión', clase: 'a-cyan' },
+      'llego-impresion':  { proximo: 'costura',          texto: '→ Enviar a costura',   clase: 'a-purple' },
+      'calidad':          { proximo: 'costura',          texto: '→ Enviar a costura',   clase: 'a-purple' },
+      'costura':          { proximo: 'listo',            texto: '✅ Listo para envío',   clase: 'a-green' },
+      'listo':            { proximo: 'enviado-final',    texto: '📦 Entregado al cliente', clase: 'a-dark' },
+    };
+
+    const BADGES = {
+      'enviado-calandra': { texto: '📦 calandra',  clase: 'b-calandra' },
+      'llego-impresion':  { texto: '🖨️ impresión', clase: 'b-impresion' },
+      'calidad':          { texto: '🔍 calidad',   clase: 'b-calidad' },
+      'costura':          { texto: '🪡 costura',   clase: 'b-costura' },
+      'listo':            { texto: '✅ listo',     clase: 'b-listo' },
+    };
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    function toast(msg, tipo) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (tipo === 'error' ? ' error' : '');
+      setTimeout(() => t.className = 'toast', 2500);
+    }
+
+    function setFiltro(f) {
+      filtroActivo = f;
+      document.querySelectorAll('.filtro-btn').forEach(b => b.classList.toggle('activo', b.dataset.filtro === f));
+      render();
+    }
+
+    function urgencia(p) {
+      if (!p.fechaEntrega) return null;
+      const d = Math.ceil((new Date(p.fechaEntrega).getTime() - Date.now()) / 86400000);
+      if (d < 0) return { texto: '🚨 VENCIDO ' + Math.abs(d) + 'd', clase: 'b-vencido' };
+      if (d <= 2) return { texto: '🔥 ' + d + 'd', clase: 'b-urgente' };
+      if (d <= 5) return { texto: '⏰ ' + d + 'd', clase: 'b-media' };
+      return null;
+    }
+
+    function render() {
+      const grid = document.getElementById('grid');
+      // Filtrar pedidos en estados de producción
+      const enProduccion = pedidos.filter(p => ESTADOS_PRODUCCION.includes(p.estado));
+
+      // Conteos
+      const conteos = { todos: enProduccion.length, 'enviado-calandra': 0, 'llego-impresion': 0, costura: 0, listo: 0 };
+      enProduccion.forEach(p => {
+        if (conteos[p.estado] !== undefined) conteos[p.estado]++;
+      });
+      document.getElementById('c-todos').textContent = conteos.todos;
+      document.getElementById('c-calandra').textContent = conteos['enviado-calandra'];
+      document.getElementById('c-llego').textContent = conteos['llego-impresion'];
+      document.getElementById('c-costura').textContent = conteos.costura;
+      document.getElementById('c-listo').textContent = conteos.listo;
+
+      // Filtrar
+      const lista = filtroActivo === 'todos' ? enProduccion : enProduccion.filter(p => p.estado === filtroActivo);
+
+      // Ordenar: vencidos primero, después por fecha entrega más cercana
+      lista.sort((a, b) => {
+        const fa = a.fechaEntrega ? new Date(a.fechaEntrega).getTime() : Infinity;
+        const fb = b.fechaEntrega ? new Date(b.fechaEntrega).getTime() : Infinity;
+        return fa - fb;
+      });
+
+      if (lista.length === 0) {
+        grid.innerHTML = '<div class="empty"><div class="empty-emoji">🎉</div>No hay pedidos pendientes en producción</div>';
+        return;
+      }
+
+      let html = '';
+      for (const p of lista) {
+        const accion = ACCIONES[p.estado];
+        const badge = BADGES[p.estado];
+        const urg = urgencia(p);
+        const sinNombre = !p.equipo || !p.equipo.trim();
+
+        html += '<div class="card">';
+        if (sinNombre) {
+          html += '<button class="card-eq-vacio" onclick="editarNombre(' + p.id + ')">✏️ Ponerle nombre al pedido</button>';
+        } else {
+          html += '<div class="card-eq">' + esc(p.equipo) + '<button class="card-eq-edit" onclick="editarNombre(' + p.id + ')" title="Editar">✏️</button></div>';
+        }
+        if (p.telefono) html += '<div class="card-tel">📞 ' + esc(p.telefono) + '</div>';
+        html += '<div class="card-personas">';
+        if (p.vendedora) html += '<span class="card-ven">🛍️ ' + esc(p.vendedora) + '</span>';
+        if (p.disenadorAsignado) html += '<span class="card-dis">🎨 ' + esc(p.disenadorAsignado) + '</span>';
+        html += '</div>';
+        html += '<div class="card-badges">';
+        if (badge) html += '<span class="badge ' + badge.clase + '">' + badge.texto + '</span>';
+        if (urg) html += '<span class="badge ' + urg.clase + '">' + urg.texto + '</span>';
+        html += '</div>';
+        if (accion) {
+          html += '<button class="accion ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto.replace(/'/g, "\\'") + '\')">' + accion.texto + '</button>';
+        }
+        html += '</div>';
+      }
+      grid.innerHTML = html;
+    }
+
+    async function cargar() {
+      try {
+        const r = await fetch('/api/pedidos');
+        const data = await r.json();
+        pedidos = Array.isArray(data) ? data : (data.pedidos || []);
+        document.getElementById('info-sync').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-CO');
+        render();
+      } catch (e) {
+        toast('Error al cargar pedidos', 'error');
+      }
+    }
+
+    async function avanzar(id, proximo, texto) {
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return;
+      const nombre = p.equipo || '#' + id;
+      const esCierre = proximo === 'enviado-final';
+      const msg = esCierre
+        ? '¿Confirmar entrega de "' + nombre + '"?\n\nSe archiva automáticamente.'
+        : '¿' + texto + ' — "' + nombre + '"?';
+      if (!confirm(msg)) return;
+      try {
+        const r = await fetch('/api/pedidos/' + id + '/avanzar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: proximo }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+        toast(data.archivado ? '📁 Archivado en Notion' : '✅ ' + texto);
+        cargar();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    }
+
+    async function editarNombre(id) {
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return;
+      const nuevo = prompt('Nombre del equipo o pedido:', p.equipo || '');
+      if (nuevo === null) return;
+      try {
+        const r = await fetch('/api/pedidos/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ equipo: nuevo.trim() }),
+        });
+        if (!r.ok) {
+          // Fallback: usar el endpoint genérico de pedidos completos
+          p.equipo = nuevo.trim();
+          await fetch('/api/pedidos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pedidos: [p], nextId: id + 1, eliminados: [] }),
+          });
+        }
+        toast('✏️ Nombre guardado');
+        cargar();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    }
+
+    // Carga inicial + polling cada 7s
+    cargar();
+    setInterval(cargar, 7000);
+  </script>
+</body>
+</html>
