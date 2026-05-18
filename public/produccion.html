@@ -3,408 +3,599 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🏭 Producción W&S</title>
+  <title>Produccion W&S</title>
   <link rel="icon" type="image/png" href="/icon.png">
   <meta name="theme-color" content="#0ea5e9">
   <link rel="manifest" href="/manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #070a10;
+      --panel: #101722;
+      --line: rgba(255,255,255,0.08);
+      --muted: #93a4b8;
+      --text: #eef5ff;
+      --cyan: #0ea5e9;
+      --green: #22c55e;
+      --purple: #a855f7;
+      --orange: #f59e0b;
+      --red: #ef4444;
+    }
     body {
-      font-family: 'Inter', sans-serif;
-      background: #0a0c12;
-      color: #e2e8f0;
+      font-family: Inter, system-ui, sans-serif;
+      background: radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 34%), var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      padding: 16px;
+      padding: 12px;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(7,10,16,0.92);
+      backdrop-filter: blur(12px);
+      padding-bottom: 10px;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 18px;
-      background: linear-gradient(135deg, rgba(14,165,233,0.15), rgba(124,58,237,0.1));
-      border: 1px solid rgba(14,165,233,0.3);
-      border-radius: 14px;
-      margin-bottom: 16px;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid rgba(14,165,233,0.28);
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(14,165,233,0.16), rgba(168,85,247,0.10));
     }
-    .header h1 {
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.6rem;
+    h1 {
+      font-family: Outfit, sans-serif;
+      font-size: clamp(1.35rem, 6vw, 2.1rem);
+      line-height: 1;
+    }
+    .sub { color: var(--muted); font-size: 0.78rem; margin-top: 5px; }
+    .refresh {
+      border: 1px solid rgba(14,165,233,0.45);
+      background: rgba(14,165,233,0.18);
+      color: #7dd3fc;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .role-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .role-link {
+      text-decoration: none;
+      color: var(--text);
+      text-align: center;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      font-size: 0.78rem;
       font-weight: 800;
     }
-    .header .sub {
-      font-size: 0.78rem;
-      color: #94a3b8;
-      margin-top: 2px;
+    .role-link.active { background: rgba(14,165,233,0.18); border-color: rgba(14,165,233,0.42); color: #7dd3fc; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
     }
-    .header .refresh {
-      background: rgba(14,165,233,0.2);
-      border: 1px solid rgba(14,165,233,0.4);
-      color: #7dd3fc;
-      padding: 10px 16px;
-      border-radius: 9px;
-      cursor: pointer;
-      font-size: 0.92rem;
-      font-weight: 600;
-      font-family: inherit;
+    .summary-card {
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(255,255,255,0.04);
+      padding: 11px;
     }
-    .header .refresh:hover { background: rgba(14,165,233,0.3); }
-
-    .filtros {
+    .summary-card strong { display: block; font-family: Outfit, sans-serif; font-size: 1.5rem; line-height: 1; }
+    .summary-card span { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .6px; }
+    .filters {
       display: flex;
       gap: 8px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
     }
-    .filtro-btn {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
+    .filters::-webkit-scrollbar { display: none; }
+    .filter {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
       color: #cbd5e1;
-      padding: 9px 16px;
-      border-radius: 9px;
+      padding: 10px 13px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.83rem;
+      font-weight: 800;
       cursor: pointer;
-      font-size: 0.88rem;
-      font-weight: 600;
-      font-family: inherit;
-      transition: all 0.15s;
     }
-    .filtro-btn.activo {
-      background: rgba(14,165,233,0.25);
-      border-color: rgba(14,165,233,0.6);
-      color: #7dd3fc;
+    .filter.active { background: rgba(14,165,233,0.22); border-color: rgba(14,165,233,0.58); color: #7dd3fc; }
+    .count { opacity: .8; margin-left: 4px; }
+    .worklist { display: grid; gap: 10px; padding-bottom: 84px; }
+    .task-card {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--cyan);
+      border-radius: 16px;
+      background: rgba(16,23,34,0.92);
+      padding: 14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.22);
     }
-    .filtro-btn .conteo {
-      background: rgba(255,255,255,0.1);
-      padding: 1px 7px;
-      border-radius: 8px;
-      font-size: 0.74rem;
-      margin-left: 6px;
+    .task-card.overdue { border-left-color: var(--red); }
+    .task-card.today { border-left-color: var(--orange); }
+    .task-card.stale { border-left-color: var(--purple); }
+    .task-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 8px;
     }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-      gap: 14px;
-    }
-
-    .card {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px;
-      padding: 18px;
-      transition: all 0.15s;
-    }
-    .card:hover { border-color: rgba(124,58,237,0.4); }
-    .card-eq {
-      font-weight: 700;
-      font-size: 1.25rem;
-      line-height: 1.3;
-      margin-bottom: 10px;
+    .task-title {
+      font-family: Outfit, sans-serif;
+      font-size: 1.18rem;
+      line-height: 1.15;
       word-break: break-word;
     }
-    .card-eq-edit {
-      background: transparent;
-      border: 1px solid rgba(255,255,255,0.15);
-      color: rgba(255,255,255,0.5);
-      padding: 4px 9px;
-      border-radius: 7px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      margin-left: 8px;
-    }
-    .card-eq-vacio {
-      background: rgba(245,158,11,0.18);
-      border: 1px dashed rgba(245,158,11,0.5);
-      color: #fcd34d;
-      padding: 14px 18px;
-      border-radius: 10px;
-      font-size: 1rem;
-      font-weight: 600;
-      width: 100%;
-      cursor: pointer;
-      margin-bottom: 10px;
-      font-family: inherit;
-    }
-    .card-tel { color: #a3a3b8; font-size: 0.96rem; margin-bottom: 8px; }
-    .card-personas {
+    .task-id { color: var(--muted); font-size: .75rem; font-weight: 800; white-space: nowrap; }
+    .meta {
       display: flex;
-      gap: 14px;
       flex-wrap: wrap;
-      font-size: 0.95rem;
-      margin-bottom: 12px;
+      gap: 7px;
+      margin: 9px 0 12px;
     }
-    .card-ven { color: #c4b5fd; }
-    .card-dis { color: #86efac; }
-    .card-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-    .badge {
-      padding: 5px 11px;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      font-weight: 600;
+    .pill {
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      color: #dbeafe;
+      font-size: .75rem;
+      font-weight: 800;
     }
-    .b-calandra  { background: rgba(245,158,11,0.2); color: #fcd34d; }
-    .b-impresion { background: rgba(14,165,233,0.2); color: #7dd3fc; }
-    .b-calidad   { background: rgba(168,85,247,0.2); color: #d8b4fe; }
-    .b-costura   { background: rgba(34,197,94,0.18); color: #86efac; }
-    .b-listo     { background: rgba(34,197,94,0.25); color: #86efac; font-weight: 700; }
-    .b-vencido   { background: rgba(239,68,68,0.35); color: #fecaca; font-weight: 700; }
-    .b-urgente   { background: rgba(239,68,68,0.2); color: #fca5a5; }
-    .b-media     { background: rgba(245,158,11,0.18); color: #fcd34d; }
-
-    .accion {
-      display: block;
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 11px;
+    .pill.red { background: rgba(239,68,68,0.18); color: #fecaca; }
+    .pill.orange { background: rgba(245,158,11,0.18); color: #fde68a; }
+    .pill.green { background: rgba(34,197,94,0.16); color: #bbf7d0; }
+    .pill.purple { background: rgba(168,85,247,0.18); color: #e9d5ff; }
+    .actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .primary-action, .secondary-action {
+      border: 0;
+      border-radius: 13px;
       color: white;
-      font-weight: 700;
-      font-size: 1.1rem;
-      font-family: inherit;
+      padding: 14px 12px;
+      font: inherit;
+      font-weight: 900;
       cursor: pointer;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-      transition: all 0.15s;
     }
-    .accion:hover { filter: brightness(1.12); transform: translateY(-1px); }
-    .accion:active { transform: translateY(0); filter: brightness(0.9); }
-    .a-cyan   { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
-    .a-purple { background: linear-gradient(135deg, #a855f7, #c084fc); }
-    .a-green  { background: linear-gradient(135deg, #22c55e, #16a34a); }
-    .a-dark   { background: linear-gradient(135deg, #16a34a, #15803d); }
-
+    .secondary-action {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      color: #dbeafe;
+      min-width: 48px;
+    }
+    .a-cyan { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
+    .a-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+    .a-green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    .a-dark { background: linear-gradient(135deg, #15803d, #166534); }
+    .a-red { background: linear-gradient(135deg, #ef4444, #b91c1c); }
     .empty {
-      grid-column: 1/-1;
       text-align: center;
-      padding: 60px 20px;
-      color: #64748b;
-      font-size: 1.1rem;
+      color: var(--muted);
+      padding: 52px 14px;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.03);
     }
-    .empty-emoji { font-size: 3rem; margin-bottom: 12px; }
-
     .toast {
       position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(34,197,94,0.95);
+      left: 12px;
+      right: 12px;
+      bottom: 18px;
+      z-index: 40;
+      background: rgba(34,197,94,0.96);
       color: white;
-      padding: 14px 22px;
-      border-radius: 10px;
-      font-weight: 600;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-      z-index: 9999;
+      padding: 14px 16px;
+      border-radius: 14px;
+      text-align: center;
+      font-weight: 900;
       opacity: 0;
-      transition: opacity 0.2s;
+      transform: translateY(18px);
+      transition: .18s ease;
     }
-    .toast.show { opacity: 1; }
-    .toast.error { background: rgba(239,68,68,0.95); }
-
-    @media (max-width: 600px) {
-      body { padding: 10px; }
-      .header h1 { font-size: 1.25rem; }
-      .grid { grid-template-columns: 1fr; gap: 10px; }
-      .card { padding: 15px; }
-      .card-eq { font-size: 1.1rem; }
-      .accion { padding: 14px; font-size: 1rem; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: rgba(239,68,68,0.96); }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      background: rgba(0,0,0,0.68);
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .modal.open { display: block; }
+    .sheet {
+      max-width: 620px;
+      margin: 5vh auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #101722;
+      padding: 16px;
+    }
+    .sheet-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .close {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .detail-grid { display: grid; gap: 8px; margin: 12px 0; }
+    .detail-row {
+      display: grid;
+      grid-template-columns: 105px 1fr;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      color: #dbeafe;
+      font-size: .9rem;
+    }
+    .detail-row span { color: var(--muted); font-weight: 800; }
+    .items { display: grid; gap: 6px; }
+    .item { padding: 9px 10px; border-radius: 11px; background: rgba(255,255,255,0.04); }
+    textarea {
+      width: 100%;
+      min-height: 86px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+      margin-top: 8px;
+    }
+    .sheet-actions { display: grid; gap: 8px; margin-top: 12px; }
+    @media (min-width: 760px) {
+      body { padding: 18px; }
+      .worklist { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+      .summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .role-row { grid-template-columns: repeat(4, 150px); }
+      .topbar { position: static; }
+    }
+    @media (max-width: 420px) {
+      .role-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .actions { grid-template-columns: 1fr; }
+      .secondary-action { width: 100%; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div>
-      <h1>🏭 Producción W&S</h1>
-      <div class="sub" id="info-sync">Actualizado: —</div>
+  <div class="topbar">
+    <div class="header">
+      <div>
+        <h1>Produccion W&S</h1>
+        <div class="sub" id="info-sync">Actualizado: -</div>
+      </div>
+      <button class="refresh" onclick="cargar()">Refrescar</button>
     </div>
-    <button class="refresh" onclick="cargar()">🔄 Refrescar</button>
+    <nav class="role-row">
+      <a class="role-link" href="/#/movil">Areas</a>
+      <a class="role-link" href="/#/ventas">Ventas</a>
+      <a class="role-link" href="/#/diseno">Diseno</a>
+      <a class="role-link active" href="/produccion.html">Produccion</a>
+    </nav>
+    <div class="summary">
+      <div class="summary-card"><strong id="s-urgentes">0</strong><span>Urgentes</span></div>
+      <div class="summary-card"><strong id="s-hoy">0</strong><span>Hoy</span></div>
+      <div class="summary-card"><strong id="s-stale">0</strong><span>Sin mov.</span></div>
+    </div>
+    <div class="filters" id="filters"></div>
   </div>
 
-  <div class="filtros" id="filtros">
-    <button class="filtro-btn activo" data-filtro="todos" onclick="setFiltro('todos')">Todos <span class="conteo" id="c-todos">0</span></button>
-    <button class="filtro-btn" data-filtro="enviado-calandra" onclick="setFiltro('enviado-calandra')">📦 Calandra <span class="conteo" id="c-calandra">0</span></button>
-    <button class="filtro-btn" data-filtro="llego-impresion" onclick="setFiltro('llego-impresion')">🖨️ Llegó <span class="conteo" id="c-llego">0</span></button>
-    <button class="filtro-btn" data-filtro="costura" onclick="setFiltro('costura')">🪡 Costura <span class="conteo" id="c-costura">0</span></button>
-    <button class="filtro-btn" data-filtro="listo" onclick="setFiltro('listo')">✅ Listo <span class="conteo" id="c-listo">0</span></button>
-  </div>
+  <main class="worklist" id="worklist"></main>
 
-  <div class="grid" id="grid"></div>
+  <div class="modal" id="modal" onclick="cerrarDetalle(event)">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-head">
+        <div>
+          <div class="task-id" id="d-id"></div>
+          <h2 class="task-title" id="d-title"></h2>
+        </div>
+        <button class="close" onclick="cerrarDetalle()">X</button>
+      </div>
+      <div class="meta" id="d-pills"></div>
+      <div class="detail-grid" id="d-detail"></div>
+      <div>
+        <strong>Prendas</strong>
+        <div class="items" id="d-items"></div>
+      </div>
+      <div style="margin-top:14px;">
+        <strong>Reportar arreglo</strong>
+        <textarea id="arreglo-text" placeholder="Ej: falta una manga talla M, revisar numero 10..."></textarea>
+      </div>
+      <div class="sheet-actions" id="d-actions"></div>
+    </div>
+  </div>
 
   <div class="toast" id="toast"></div>
 
   <script>
     let pedidos = [];
     let filtroActivo = 'todos';
+    let pedidoDetalle = null;
 
-    const ESTADOS_PRODUCCION = ['enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo'];
-
-    const ACCIONES = {
-      'enviado-calandra': { proximo: 'llego-impresion', texto: '✅ Llegó la impresión', clase: 'a-cyan' },
-      'llego-impresion':  { proximo: 'costura',          texto: '→ Enviar a costura',   clase: 'a-purple' },
-      'calidad':          { proximo: 'costura',          texto: '→ Enviar a costura',   clase: 'a-purple' },
-      'costura':          { proximo: 'listo',            texto: '✅ Listo para envío',   clase: 'a-green' },
-      'listo':            { proximo: 'enviado-final',    texto: '📦 Entregado al cliente', clase: 'a-dark' },
+    const ESTADOS = ['enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo'];
+    const FILTROS = [
+      ['todos', 'Todo'],
+      ['enviado-calandra', 'Calandra'],
+      ['llego-impresion', 'Llego'],
+      ['calidad', 'Calidad'],
+      ['costura', 'Costura'],
+      ['listo', 'Listo']
+    ];
+    const LABELS = {
+      'enviado-calandra': 'Calandra',
+      'llego-impresion': 'Llego impresion',
+      'calidad': 'Calidad',
+      'costura': 'Costura',
+      'listo': 'Listo'
     };
-
-    const BADGES = {
-      'enviado-calandra': { texto: '📦 calandra',  clase: 'b-calandra' },
-      'llego-impresion':  { texto: '🖨️ impresión', clase: 'b-impresion' },
-      'calidad':          { texto: '🔍 calidad',   clase: 'b-calidad' },
-      'costura':          { texto: '🪡 costura',   clase: 'b-costura' },
-      'listo':            { texto: '✅ listo',     clase: 'b-listo' },
+    const ACCIONES = {
+      'enviado-calandra': { proximo: 'llego-impresion', texto: 'Llego impresion', clase: 'a-cyan' },
+      'llego-impresion': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
+      'calidad': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
+      'costura': { proximo: 'listo', texto: 'Marcar listo', clase: 'a-green' },
+      'listo': { proximo: 'enviado-final', texto: 'Entregado', clase: 'a-dark' }
     };
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     }
-
     function toast(msg, tipo) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.className = 'toast show' + (tipo === 'error' ? ' error' : '');
-      setTimeout(() => t.className = 'toast', 2500);
+      setTimeout(() => t.className = 'toast', 2600);
     }
-
-    function setFiltro(f) {
-      filtroActivo = f;
-      document.querySelectorAll('.filtro-btn').forEach(b => b.classList.toggle('activo', b.dataset.filtro === f));
-      render();
-    }
-
-    function urgencia(p) {
+    function parseDate(p) {
       if (!p.fechaEntrega) return null;
-      const d = Math.ceil((new Date(p.fechaEntrega).getTime() - Date.now()) / 86400000);
-      if (d < 0) return { texto: '🚨 VENCIDO ' + Math.abs(d) + 'd', clase: 'b-vencido' };
-      if (d <= 2) return { texto: '🔥 ' + d + 'd', clase: 'b-urgente' };
-      if (d <= 5) return { texto: '⏰ ' + d + 'd', clase: 'b-media' };
+      const d = new Date(p.fechaEntrega + 'T00:00:00');
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    function diasEntrega(p) {
+      const d = parseDate(p);
+      if (!d) return null;
+      const hoy = new Date();
+      hoy.setHours(0,0,0,0);
+      return Math.round((d - hoy) / 86400000);
+    }
+    function horasSinMovimiento(p) {
+      const raw = p.ultimoMovimiento || p.creadoEn;
+      const t = raw ? new Date(raw).getTime() : 0;
+      return t ? (Date.now() - t) / 3600000 : 999;
+    }
+    function prioridad(p) {
+      const d = diasEntrega(p);
+      const stale = horasSinMovimiento(p);
+      if (d !== null && d < 0) return 0;
+      if (d === 0) return 1;
+      if (d !== null && d <= 2) return 2;
+      if (stale >= 48) return 3;
+      return 4;
+    }
+    function estadoUrgencia(p) {
+      const d = diasEntrega(p);
+      if (d !== null && d < 0) return { texto: 'Vencido ' + Math.abs(d) + 'd', cls: 'red', card: 'overdue' };
+      if (d === 0) return { texto: 'Entrega hoy', cls: 'orange', card: 'today' };
+      if (d !== null && d <= 2) return { texto: d + 'd para entrega', cls: 'orange', card: 'today' };
+      if (horasSinMovimiento(p) >= 48) return { texto: 'Sin movimiento', cls: 'purple', card: 'stale' };
       return null;
     }
-
+    function itemsPedido(p) {
+      return Array.isArray(p.items) ? p.items : [];
+    }
+    function cantidadPedido(p) {
+      const items = itemsPedido(p);
+      if (!items.length) return '';
+      return items.length + ' prenda' + (items.length === 1 ? '' : 's');
+    }
+    function renderFiltros() {
+      const cont = document.getElementById('filters');
+      const enProd = pedidos.filter(p => ESTADOS.includes(p.estado));
+      cont.innerHTML = FILTROS.map(([key, label]) => {
+        const total = key === 'todos' ? enProd.length : enProd.filter(p => p.estado === key).length;
+        return '<button class="filter ' + (filtroActivo === key ? 'active' : '') + '" onclick="setFiltro(\'' + key + '\')">' + label + '<span class="count">' + total + '</span></button>';
+      }).join('');
+    }
+    function renderSummary() {
+      const enProd = pedidos.filter(p => ESTADOS.includes(p.estado));
+      document.getElementById('s-urgentes').textContent = enProd.filter(p => {
+        const d = diasEntrega(p);
+        return d !== null && d <= 2;
+      }).length;
+      document.getElementById('s-hoy').textContent = enProd.filter(p => diasEntrega(p) === 0).length;
+      document.getElementById('s-stale').textContent = enProd.filter(p => horasSinMovimiento(p) >= 48).length;
+    }
+    function setFiltro(f) {
+      filtroActivo = f;
+      render();
+    }
     function render() {
-      const grid = document.getElementById('grid');
-      // Filtrar pedidos en estados de producción
-      const enProduccion = pedidos.filter(p => ESTADOS_PRODUCCION.includes(p.estado));
-
-      // Conteos
-      const conteos = { todos: enProduccion.length, 'enviado-calandra': 0, 'llego-impresion': 0, costura: 0, listo: 0 };
-      enProduccion.forEach(p => {
-        if (conteos[p.estado] !== undefined) conteos[p.estado]++;
-      });
-      document.getElementById('c-todos').textContent = conteos.todos;
-      document.getElementById('c-calandra').textContent = conteos['enviado-calandra'];
-      document.getElementById('c-llego').textContent = conteos['llego-impresion'];
-      document.getElementById('c-costura').textContent = conteos.costura;
-      document.getElementById('c-listo').textContent = conteos.listo;
-
-      // Filtrar
-      const lista = filtroActivo === 'todos' ? enProduccion : enProduccion.filter(p => p.estado === filtroActivo);
-
-      // Ordenar: vencidos primero, después por fecha entrega más cercana
+      renderFiltros();
+      renderSummary();
+      const cont = document.getElementById('worklist');
+      let lista = pedidos.filter(p => ESTADOS.includes(p.estado));
+      if (filtroActivo !== 'todos') lista = lista.filter(p => p.estado === filtroActivo);
       lista.sort((a, b) => {
-        const fa = a.fechaEntrega ? new Date(a.fechaEntrega).getTime() : Infinity;
-        const fb = b.fechaEntrega ? new Date(b.fechaEntrega).getTime() : Infinity;
+        const pa = prioridad(a), pb = prioridad(b);
+        if (pa !== pb) return pa - pb;
+        const fa = parseDate(a)?.getTime() ?? Infinity;
+        const fb = parseDate(b)?.getTime() ?? Infinity;
         return fa - fb;
       });
-
-      if (lista.length === 0) {
-        grid.innerHTML = '<div class="empty"><div class="empty-emoji">🎉</div>No hay pedidos pendientes en producción</div>';
+      if (!lista.length) {
+        cont.innerHTML = '<div class="empty"><h2>Todo limpio</h2><p>No hay pedidos en este filtro.</p></div>';
         return;
       }
-
-      let html = '';
-      for (const p of lista) {
-        const accion = ACCIONES[p.estado];
-        const badge = BADGES[p.estado];
-        const urg = urgencia(p);
-        const sinNombre = !p.equipo || !p.equipo.trim();
-
-        html += '<div class="card">';
-        if (sinNombre) {
-          html += '<button class="card-eq-vacio" onclick="editarNombre(' + p.id + ')">✏️ Ponerle nombre al pedido</button>';
-        } else {
-          html += '<div class="card-eq">' + esc(p.equipo) + '<button class="card-eq-edit" onclick="editarNombre(' + p.id + ')" title="Editar">✏️</button></div>';
-        }
-        if (p.telefono) html += '<div class="card-tel">📞 ' + esc(p.telefono) + '</div>';
-        html += '<div class="card-personas">';
-        if (p.vendedora) html += '<span class="card-ven">🛍️ ' + esc(p.vendedora) + '</span>';
-        if (p.disenadorAsignado) html += '<span class="card-dis">🎨 ' + esc(p.disenadorAsignado) + '</span>';
-        html += '</div>';
-        html += '<div class="card-badges">';
-        if (badge) html += '<span class="badge ' + badge.clase + '">' + badge.texto + '</span>';
-        if (urg) html += '<span class="badge ' + urg.clase + '">' + urg.texto + '</span>';
-        html += '</div>';
-        if (accion) {
-          html += '<button class="accion ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto.replace(/'/g, "\\'") + '\')">' + accion.texto + '</button>';
-        }
-        html += '</div>';
-      }
-      grid.innerHTML = html;
+      cont.innerHTML = lista.map(cardHtml).join('');
     }
-
+    function cardHtml(p) {
+      const accion = ACCIONES[p.estado];
+      const urg = estadoUrgencia(p);
+      const pills = [
+        '<span class="pill green">' + esc(LABELS[p.estado] || p.estado) + '</span>',
+        urg ? '<span class="pill ' + urg.cls + '">' + esc(urg.texto) + '</span>' : '',
+        p.fechaEntrega ? '<span class="pill">Fecha ' + esc(p.fechaEntrega) + '</span>' : '',
+        cantidadPedido(p) ? '<span class="pill">' + esc(cantidadPedido(p)) + '</span>' : ''
+      ].filter(Boolean).join('');
+      return '<article class="task-card ' + (urg ? urg.card : '') + '">' +
+        '<div class="task-head">' +
+          '<div class="task-title">' + esc(p.equipo || p.telefono || 'Pedido sin nombre') + '</div>' +
+          '<div class="task-id">#' + p.id + '</div>' +
+        '</div>' +
+        '<div class="meta">' + pills + '</div>' +
+        '<div class="meta">' +
+          (p.vendedora ? '<span class="pill">Venta: ' + esc(p.vendedora) + '</span>' : '') +
+          (p.disenadorAsignado ? '<span class="pill">Diseno: ' + esc(p.disenadorAsignado) + '</span>' : '') +
+        '</div>' +
+        '<div class="actions">' +
+          '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')">' + accion.texto + '</button>' +
+          '<button class="secondary-action" onclick="abrirDetalle(' + p.id + ')">Ver</button>' +
+        '</div>' +
+      '</article>';
+    }
     async function cargar() {
       try {
         const r = await fetch('/api/pedidos');
         const data = await r.json();
         pedidos = Array.isArray(data) ? data : (data.pedidos || []);
-        document.getElementById('info-sync').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-CO');
+        document.getElementById('info-sync').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
         render();
       } catch (e) {
         toast('Error al cargar pedidos', 'error');
       }
     }
-
     async function avanzar(id, proximo, texto) {
       const p = pedidos.find(x => x.id === id);
       if (!p) return;
       const nombre = p.equipo || '#' + id;
-      const esCierre = proximo === 'enviado-final';
-      const msg = esCierre
-        ? '¿Confirmar entrega de "' + nombre + '"?\n\nSe archiva automáticamente.'
-        : '¿' + texto + ' — "' + nombre + '"?';
+      const msg = proximo === 'enviado-final' ? 'Confirmar entrega de ' + nombre + '?' : texto + ' - ' + nombre + '?';
       if (!confirm(msg)) return;
       try {
         const r = await fetch('/api/pedidos/' + id + '/avanzar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ estado: proximo }),
+          body: JSON.stringify({ estado: proximo })
         });
         const data = await r.json();
         if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
-        toast(data.archivado ? '📁 Archivado en Notion' : '✅ ' + texto);
+        toast(data.archivado ? 'Archivado en Notion' : texto);
+        cerrarDetalle();
         cargar();
       } catch (e) {
         toast('Error: ' + e.message, 'error');
       }
     }
-
+    async function patchPedido(id, cambios) {
+      const r = await fetch('/api/pedidos/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cambios)
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
+      return data.pedido;
+    }
     async function editarNombre(id) {
       const p = pedidos.find(x => x.id === id);
       if (!p) return;
       const nuevo = prompt('Nombre del equipo o pedido:', p.equipo || '');
       if (nuevo === null) return;
       try {
-        const r = await fetch('/api/pedidos/' + id, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ equipo: nuevo.trim() }),
-        });
-        if (!r.ok) {
-          // Fallback: usar el endpoint genérico de pedidos completos
-          p.equipo = nuevo.trim();
-          await fetch('/api/pedidos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pedidos: [p], nextId: id + 1, eliminados: [] }),
-          });
-        }
-        toast('✏️ Nombre guardado');
+        await patchPedido(id, { equipo: nuevo.trim() });
+        toast('Nombre guardado');
         cargar();
       } catch (e) {
         toast('Error: ' + e.message, 'error');
       }
     }
-
-    // Carga inicial + polling cada 7s
+    function abrirDetalle(id) {
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return;
+      pedidoDetalle = p;
+      const urg = estadoUrgencia(p);
+      const accion = ACCIONES[p.estado];
+      document.getElementById('d-id').textContent = 'Pedido #' + p.id;
+      document.getElementById('d-title').textContent = p.equipo || p.telefono || 'Pedido sin nombre';
+      document.getElementById('d-pills').innerHTML = [
+        '<span class="pill green">' + esc(LABELS[p.estado] || p.estado) + '</span>',
+        urg ? '<span class="pill ' + urg.cls + '">' + esc(urg.texto) + '</span>' : ''
+      ].filter(Boolean).join('');
+      document.getElementById('d-detail').innerHTML = [
+        ['Telefono', p.telefono || '-'],
+        ['Vendedora', p.vendedora || '-'],
+        ['Disenador', p.disenadorAsignado || '-'],
+        ['Entrega', p.fechaEntrega || '-'],
+        ['Notas', p.notas || '-'],
+        ['Ult. mov.', p.ultimoMovimiento ? new Date(p.ultimoMovimiento).toLocaleString('es-CO') : '-']
+      ].map(([a,b]) => '<div class="detail-row"><span>' + esc(a) + '</span><div>' + esc(b) + '</div></div>').join('');
+      const items = itemsPedido(p);
+      document.getElementById('d-items').innerHTML = items.length
+        ? items.map(i => '<div class="item">' + esc([i.prenda, i.tela, i.cantidad ? 'x' + i.cantidad : ''].filter(Boolean).join(' - ')) + '</div>').join('')
+        : '<div class="item">Sin prendas registradas</div>';
+      document.getElementById('arreglo-text').value = '';
+      document.getElementById('d-actions').innerHTML =
+        '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')">' + accion.texto + '</button>' +
+        '<button class="primary-action a-red" onclick="reportarArreglo()">Reportar arreglo</button>' +
+        '<button class="secondary-action" onclick="editarNombre(' + p.id + ')">Editar nombre</button>';
+      document.getElementById('modal').classList.add('open');
+    }
+    function cerrarDetalle(ev) {
+      if (ev && ev.target.id !== 'modal') return;
+      document.getElementById('modal').classList.remove('open');
+      pedidoDetalle = null;
+    }
+    async function reportarArreglo() {
+      if (!pedidoDetalle) return;
+      const faltante = document.getElementById('arreglo-text').value.trim();
+      if (!faltante) {
+        toast('Escribe que falta o que se debe arreglar', 'error');
+        return;
+      }
+      try {
+        const r = await fetch('/api/arreglos/agregar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pedidoId: pedidoDetalle.id,
+            equipo: pedidoDetalle.equipo || pedidoDetalle.telefono || ('#' + pedidoDetalle.id),
+            faltante,
+            disenador: pedidoDetalle.disenadorAsignado || 'Sin asignar'
+          })
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo reportar');
+        await patchPedido(pedidoDetalle.id, { arreglo: faltante, estado: 'calidad' });
+        toast('Arreglo reportado');
+        cerrarDetalle();
+        cargar();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    }
     cargar();
     setInterval(cargar, 7000);
   </script>

@@ -141,6 +141,7 @@ function guardar() {
    NAVEGACIÓN
 ════════════════════════════════════════════════════════════════ */
 const HEADER_INFO = {
+  'mobile-role-hub':   { icon: '📱', title: 'Areas moviles' },
   'vista-general': { icon: '📊', title: 'Vista general' },
   'torre':         { icon: '🗼', title: 'Torre de Control' },
   'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
@@ -204,6 +205,21 @@ function closeSidebar() {
 /* ════════════════════════════════════════════════════════════════
    RENDER PRINCIPAL
 ════════════════════════════════════════════════════════════════ */
+function abrirRolMovil(rol) {
+  if (rol === 'produccion') {
+    location.href = '/produccion.html';
+    return;
+  }
+  if (rol === 'admin') {
+    document.body.classList.remove('modo-miniapp');
+    showSection('tablero-principal', null);
+    return;
+  }
+  const destino = rol === 'ventas' ? 'bandeja' : rol === 'diseno' ? 'diseno' : 'satelites';
+  modoMiniApp(destino);
+  showSection(destino, null);
+}
+
 function render() {
   const safe = (nombre, fn) => { try { fn(); } catch (e) { console.error('[render]', nombre, e); } };
   safe('metricas', renderMetricas);
@@ -509,10 +525,15 @@ function renderBadges() {
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
   const prod     = pedidos.filter(p => ['llego-impresion','calidad','costura','listo'].includes(p.estado)).length;
   const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  document.getElementById('badge-general').textContent = total;
-  document.getElementById('badge-bandeja').textContent = bandeja;
-  document.getElementById('badge-diseno').textContent  = diseno;
-  document.getElementById('badge-prod').textContent    = prod;
+  const setBadge = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+  setBadge('badge-general', total);
+  setBadge('badge-bandeja', bandeja);
+  setBadge('badge-diseno', diseno);
+  setBadge('badge-prod', prod);
+  setBadge('badge-produccion', prod);
 }
 
 /* ─── Tabla recientes ────────────────────────────────────────── */
@@ -3605,20 +3626,28 @@ window.addEventListener('DOMContentLoaded', () => {
   if (selDis) selDis.value = _tabPrincipalDisFiltro || 'todos';
   const hash = window.location.hash;
   if(hash === '#/ventas') {
+    modoMiniApp('bandeja');
     showSection('bandeja', document.querySelector('[onclick*="bandeja"]'));
   } else if(hash === '#/diseno') {
+    modoMiniApp('diseno');
     showSection('diseno', document.querySelector('[onclick*="diseno"]'));
   } else if(hash === '#/produccion') {
+    modoMiniApp('produccion');
     showSection('produccion', document.querySelector('[onclick*="produccion"]'));
   } else if(hash === '#/satelites') {
+    modoMiniApp('satelites');
     showSection('satelites', document.querySelector('[onclick*="satelites"]'));
+  } else if(hash === '#/movil') {
+    showSection('mobile-role-hub', null);
   } else if(hash === '#/tv') {
     activarModoTV();
   } else if(hash === '#tablero-foto') {
     showSection('tablero-foto', document.querySelector('[onclick*="tablero-foto"]'));
     if (typeof renderTableroFoto === 'function') renderTableroFoto();
+  } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+    showSection('mobile-role-hub', null);
   }
-  // Por defecto muestra el Tablero principal (active en HTML)
+  // Por defecto en PC muestra el Tablero principal (active en HTML)
 });
 
 /* ════════════════════════════════════════════════════════════════
@@ -3782,8 +3811,8 @@ const TAB_PRINCIPAL_MAP = {
   'listo':             { col: 'produccion',    orden: 4, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
   'enviado-final':     { col: 'enviados',      orden: 0 },
 };
-let _tabPrincipalFiltro = '';
-let _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
+var _tabPrincipalFiltro = '';
+var _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
 
 function filtrarTableroPrincipal(q) {
   _tabPrincipalFiltro = String(q || '').trim().toLowerCase();

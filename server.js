@@ -824,6 +824,35 @@ http.createServer((req, res) => {
   }
 
   // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
+  // -- PATCH /api/pedidos/:id -- actualiza campos puntuales de un pedido.
+  // Usado por mini-vistas moviles para editar sin resincronizar todo el tablero.
+  if (req.method === 'PATCH' && req.url.match(/^\/api\/pedidos\/\d+$/)) {
+    const id = parseInt(req.url.split('/')[3]);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const cambios = JSON.parse(body || '{}');
+        const permitidos = new Set([
+          'equipo', 'telefono', 'vendedora', 'disenadorAsignado', 'fechaEntrega',
+          'notas', 'estado', 'satelite', 'arreglo'
+        ]);
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        for (const [k, v] of Object.entries(cambios)) {
+          if (permitidos.has(k)) p[k] = v;
+        }
+        p.ultimoMovimiento = new Date().toISOString();
+        guardarPedidos(pedidos, leerNextId());
+        return json(res, 200, { ok: true, pedido: p });
+      } catch (e) {
+        return json(res, 400, { error: 'JSON invalido: ' + e.message });
+      }
+    });
+    return;
+  }
+
   if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/') && !req.url.includes('limpiar-basura')) {
     const id = parseInt(req.url.split('/')[3]);
     const pedidos = leerPedidos();
@@ -2708,6 +2737,41 @@ http.createServer((req, res) => {
   // ── GET /api/arreglos ────────────────────────────────────────
   if (req.method === 'GET' && req.url === '/api/arreglos') {
     return json(res, 200, { arreglos: db.leerArreglos() });
+  }
+
+  // ── POST /api/arreglos/agregar — añade UN arreglo (para mini-app produccion) ─
+  if (req.method === 'POST' && req.url === '/api/arreglos/agregar') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { equipo, faltante, disenador, pedidoId } = JSON.parse(body);
+        if (!equipo || !faltante) return json(res, 400, { error: 'Faltan equipo o faltante' });
+        const actuales = db.leerArreglos();
+        const nuevo = {
+          id: Date.now(),
+          equipo: String(equipo).trim(),
+          faltante: String(faltante).trim(),
+          disenador: disenador || 'Sin asignar',
+          pedidoId: pedidoId || null,
+          enviado: false,
+          resuelto: false,
+          fecha: new Date().toLocaleDateString('es-CO'),
+          origen: 'mini-app-produccion',
+        };
+        actuales.unshift(nuevo);
+        db.guardarArreglos(actuales);
+        // Notificar a Telegram para que el dueño se entere
+        const tel = '⚠️ *ARREGLO NUEVO desde Producción*\n\n' +
+          `👕 *Equipo:* ${nuevo.equipo}\n` +
+          `📝 *Falta:* ${nuevo.faltante}\n` +
+          `🎨 *Asignado a:* ${nuevo.disenador}` +
+          (pedidoId ? `\n📦 *Pedido:* #${pedidoId}` : '');
+        notificarTelegramDuvan(tel).catch(()=>{});
+        return json(res, 200, { ok: true, id: nuevo.id });
+      } catch (e) { return json(res, 400, { error: e.message }); }
+    });
+    return;
   }
 
   // ── POST /api/arreglos — reemplaza lista completa ────────────
