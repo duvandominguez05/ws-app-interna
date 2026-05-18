@@ -55,6 +55,42 @@
       line-height: 1;
     }
     .sub { color: var(--muted); font-size: 0.78rem; margin-top: 5px; }
+    .guide {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .guide-step {
+      border: 1px solid rgba(14,165,233,0.22);
+      border-radius: 14px;
+      background: rgba(14,165,233,0.08);
+      padding: 10px;
+      min-height: 70px;
+    }
+    .guide-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: #0ea5e9;
+      color: white;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+    .guide-step strong {
+      display: block;
+      font-size: .82rem;
+      line-height: 1.15;
+    }
+    .guide-step span {
+      display: block;
+      color: var(--muted);
+      font-size: .72rem;
+      margin-top: 3px;
+      line-height: 1.25;
+    }
     .refresh {
       border: 1px solid rgba(14,165,233,0.45);
       background: rgba(14,165,233,0.18);
@@ -164,21 +200,54 @@
     .pill.orange { background: rgba(245,158,11,0.18); color: #fde68a; }
     .pill.green { background: rgba(34,197,94,0.16); color: #bbf7d0; }
     .pill.purple { background: rgba(168,85,247,0.18); color: #e9d5ff; }
+    .next-box {
+      border: 1px solid rgba(14,165,233,0.25);
+      border-radius: 14px;
+      background: rgba(14,165,233,0.08);
+      padding: 10px;
+      margin: 10px 0 12px;
+    }
+    .next-label {
+      color: #7dd3fc;
+      font-size: .72rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 4px;
+    }
+    .next-text {
+      font-family: Outfit, sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.1;
+    }
     .actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     .primary-action, .secondary-action {
       border: 0;
       border-radius: 13px;
       color: white;
-      padding: 14px 12px;
+      padding: 16px 12px;
       font: inherit;
       font-weight: 900;
       cursor: pointer;
+    }
+    .primary-action {
+      min-height: 58px;
+      font-size: 1rem;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+    }
+    .primary-action small {
+      display: block;
+      font-size: .72rem;
+      opacity: .9;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
     }
     .secondary-action {
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
       color: #dbeafe;
-      min-width: 48px;
+      min-width: 86px;
     }
     .a-cyan { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
     .a-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
@@ -277,6 +346,8 @@
     @media (max-width: 420px) {
       .role-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .guide { grid-template-columns: 1fr; }
+      .guide-step { min-height: auto; }
       .actions { grid-template-columns: 1fr; }
       .secondary-action { width: 100%; }
     }
@@ -291,6 +362,11 @@
       </div>
       <button class="refresh" onclick="cargar()">Refrescar</button>
     </div>
+    <section class="guide" aria-label="Como usar">
+      <div class="guide-step"><div class="guide-num">1</div><strong>Escoge donde estas</strong><span>Usa los botones de filtro.</span></div>
+      <div class="guide-step"><div class="guide-num">2</div><strong>Busca el pedido</strong><span>Los urgentes salen primero.</span></div>
+      <div class="guide-step"><div class="guide-num">3</div><strong>Toca el boton grande</strong><span>Asi avanza el trabajo.</span></div>
+    </section>
     <nav class="role-row">
       <a class="role-link" href="/#/movil">Areas</a>
       <a class="role-link" href="/#/ventas">Ventas</a>
@@ -471,9 +547,13 @@
           (p.vendedora ? '<span class="pill">Venta: ' + esc(p.vendedora) + '</span>' : '') +
           (p.disenadorAsignado ? '<span class="pill">Diseno: ' + esc(p.disenadorAsignado) + '</span>' : '') +
         '</div>' +
+        '<div class="next-box">' +
+          '<div class="next-label">Siguiente paso</div>' +
+          '<div class="next-text">' + esc(accion.texto) + '</div>' +
+        '</div>' +
         '<div class="actions">' +
-          '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')">' + accion.texto + '</button>' +
-          '<button class="secondary-action" onclick="abrirDetalle(' + p.id + ')">Ver</button>' +
+          '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')"><small>Tocar aqui</small>' + esc(accion.texto) + '</button>' +
+          '<button class="secondary-action" onclick="abrirDetalle(' + p.id + ')">Detalles</button>' +
         '</div>' +
       '</article>';
     }
@@ -558,8 +638,8 @@
         : '<div class="item">Sin prendas registradas</div>';
       document.getElementById('arreglo-text').value = '';
       document.getElementById('d-actions').innerHTML =
-        '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')">' + accion.texto + '</button>' +
-        '<button class="primary-action a-red" onclick="reportarArreglo()">Reportar arreglo</button>' +
+        '<button class="primary-action ' + accion.clase + '" onclick="avanzar(' + p.id + ', \'' + accion.proximo + '\', \'' + accion.texto + '\')"><small>Tocar aqui</small>' + accion.texto + '</button>' +
+        '<button class="primary-action a-red" onclick="reportarArreglo()"><small>Si hay problema</small>Reportar arreglo</button>' +
         '<button class="secondary-action" onclick="editarNombre(' + p.id + ')">Editar nombre</button>';
       document.getElementById('modal').classList.add('open');
     }
