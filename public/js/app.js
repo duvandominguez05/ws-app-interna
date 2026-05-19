@@ -91,6 +91,7 @@ const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
 let miniCosturaPersona = localStorage.getItem('ws_mini_costura_persona') || 'todas';
+let miniCosturaVistaPersonal = false;
 // Estado de sincronización
 let _syncEstado = 'cargando'; // 'cargando' | 'ok' | 'error'
 let _syncUltimoTs = 0;
@@ -232,6 +233,13 @@ function renderMobileQuickAccess() {
   const cont = document.getElementById('mobile-quick-access');
   if (!cont) return;
   const rol = localStorage.getItem('ws_mobile_last_role');
+  if (rol && rol.startsWith('costura-')) {
+    const costurera = costureraDesdeSlug(rol.replace('costura-', ''));
+    if (costurera) {
+      cont.innerHTML = `<button class="mobile-quick-card" onclick="abrirCosturera('${costurera}')"><small>Acceso rapido</small><strong>Entrar como ${costurera}</strong></button>`;
+      return;
+    }
+  }
   const labels = {
     ventas: 'Ventas',
     diseno: 'Diseno',
@@ -364,6 +372,33 @@ function renderMiniDiseno() {
   `);
 }
 
+function slugCosturera(nombre) {
+  return String(nombre || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function costureraDesdeSlug(slug) {
+  const limpio = slugCosturera(slug);
+  return SATELITES.find(s => slugCosturera(s) === limpio) || '';
+}
+
+function abrirCosturera(nombre) {
+  const costurera = costureraDesdeSlug(nombre) || nombre;
+  if (!costurera) return;
+  miniCosturaPersona = costurera;
+  miniCosturaVistaPersonal = true;
+  localStorage.setItem('ws_mini_costura_persona', costurera);
+  localStorage.setItem('ws_mobile_last_role', `costura-${slugCosturera(costurera)}`);
+  window.location.hash = `#/costura/${slugCosturera(costurera)}`;
+  modoMiniApp('satelites');
+  showSection('satelites', null);
+  renderMiniCostura();
+}
+
 function renderMiniCostura() {
   const paraAsignar = pedidos.filter(p => p.estado === 'costura' && !p.satelite);
   const trabajandoBase = pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite));
@@ -373,6 +408,30 @@ function renderMiniCostura() {
   const revision = pedidos.filter(p => p.estado === 'calidad');
   const listos = pedidos.filter(p => p.estado === 'listo');
   const opciones = SATELITES.map(s => `<button class="mini-filter ${miniCosturaPersona === s ? 'active' : ''}" onclick="setMiniCosturaPersona('${s}')">${s}</button>`).join('');
+  if (miniCosturaVistaPersonal && miniCosturaPersona !== 'todas') {
+    const urgentes = trabajando.filter(p => p.fechaEntrega && new Date(p.fechaEntrega + 'T00:00:00').getTime() <= Date.now() + 2 * 86400000);
+    const links = SATELITES.map(s => `<button class="mini-filter ${miniCosturaPersona === s ? 'active' : ''}" onclick="abrirCosturera('${s}')">${s}</button>`).join('');
+    const cards = trabajando.map(p => miniCard(p, {
+      clase: 'good',
+      next: 'Cuando termines este pedido',
+      body: `<div class="mini-card-meta"><span class="mini-chip">Asignado a: ${esc(miniCosturaPersona)}</span></div>`,
+      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="recibirSatelitePedido(${p.id})"><small>Tocar aqui</small>Ya termine</button></div>`
+    }));
+    miniEnsure('satelites', `
+      <div class="mini-role-top costurera-simple">
+        <div class="mini-role-title"><h1>${esc(miniCosturaPersona)}</h1><p>Estos son tus pedidos de costura. Cuando termines uno, toca el boton grande.</p></div>
+        <div class="mini-role-stats">${miniStats([[trabajando.length, 'Mis pedidos'], [urgentes.length, 'Urgentes'], ['1 toque', 'Para terminar']])}</div>
+        <div class="mini-filters">${links}</div>
+      </div>
+      <div class="mini-card-list">${cards.length ? cards.join('') : '<div class="mini-empty">No tienes pedidos asignados ahora.</div>'}</div>
+    `);
+    return;
+  }
+  const linksCostureras = SATELITES.map(s => `
+    <button class="mini-person-link" onclick="abrirCosturera('${s}')">
+      <small>Link</small><strong>${s}</strong>
+    </button>
+  `).join('');
   const cards = [
     ...paraAsignar.map(p => miniCard(p, {
       clase: 'warn',
@@ -402,6 +461,7 @@ function renderMiniCostura() {
     <div class="mini-role-top">
       <div class="mini-role-title"><h1>Costura</h1><p>Escoge costurera, entrega el pedido y marca cuando vuelva terminado.</p></div>
       <div class="mini-role-stats">${miniStats([[paraAsignar.length, 'Por asignar'], [trabajandoBase.length, 'En costura'], [revision.length, 'Revision']])}</div>
+      <div class="mini-person-links">${linksCostureras}</div>
       <div class="mini-filters">
         <button class="mini-filter ${miniCosturaPersona === 'todas' ? 'active' : ''}" onclick="setMiniCosturaPersona('todas')">Todas</button>
         ${opciones}
@@ -413,6 +473,7 @@ function renderMiniCostura() {
 
 function setMiniCosturaPersona(nombre) {
   miniCosturaPersona = nombre || 'todas';
+  miniCosturaVistaPersonal = false;
   localStorage.setItem('ws_mini_costura_persona', miniCosturaPersona);
   renderMiniCostura();
 }
@@ -3982,8 +4043,22 @@ window.addEventListener('DOMContentLoaded', () => {
     showSection('produccion', document.querySelector('[onclick*="produccion"]'));
   } else if(hash === '#/satelites') {
     localStorage.setItem('ws_mobile_last_role', 'satelites');
+    miniCosturaVistaPersonal = false;
+    miniCosturaPersona = 'todas';
     modoMiniApp('satelites');
     showSection('satelites', document.querySelector('[onclick*="satelites"]'));
+  } else if(hash.startsWith('#/costura/')) {
+    const costurera = costureraDesdeSlug(hash.split('/').pop());
+    if (costurera) {
+      miniCosturaPersona = costurera;
+      miniCosturaVistaPersonal = true;
+      localStorage.setItem('ws_mini_costura_persona', costurera);
+      localStorage.setItem('ws_mobile_last_role', `costura-${slugCosturera(costurera)}`);
+      modoMiniApp('satelites');
+      showSection('satelites', null);
+    } else {
+      showSection('mobile-role-hub', null);
+    }
   } else if(hash === '#/movil') {
     showSection('mobile-role-hub', null);
   } else if(hash === '#/tv') {
