@@ -400,7 +400,7 @@ function abrirCosturera(nombre) {
 }
 
 function renderMiniCostura() {
-  const paraAsignar = pedidos.filter(p => p.estado === 'costura' && !p.satelite);
+  const paraAsignar = pedidos.filter(p => (p.estado === 'corte' || p.estado === 'costura') && !p.satelite);
   const trabajandoBase = pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite));
   const trabajando = miniCosturaPersona === 'todas'
     ? trabajandoBase
@@ -435,10 +435,10 @@ function renderMiniCostura() {
   const cards = [
     ...paraAsignar.map(p => miniCard(p, {
       clase: 'warn',
-      next: 'Escoger quien lo va a coser',
+      next: p.estado === 'corte' ? 'Corte listo: escoger costurera' : 'Escoger quien lo va a coser',
       body: `<select class="mini-select" id="mini-sat-${p.id}"><option value="">Escoger costurera</option>${SATELITES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>`,
       actions: `<div class="mini-actions">
-        <button class="mini-btn purple" onclick="asignarSatelitePedidoMini(${p.id})"><small>Tocar aqui</small>Enviar a costura</button>
+        <button class="mini-btn purple" onclick="asignarSatelitePedidoMini(${p.id})"><small>Tocar aqui</small>Asignar a costura</button>
       </div>`
     })),
     ...trabajando.map(p => miniCard(p, {

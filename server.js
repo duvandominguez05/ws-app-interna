@@ -220,7 +220,7 @@ function resumenRolesOperativos() {
     },
     costura: {
       link: 'https://ws-app-interna-production.up.railway.app/#/satelites',
-      paraCostura: pedidos.filter(p => p.estado === 'costura' && !p.satelite).length,
+      paraCostura: pedidos.filter(p => (p.estado === 'corte' || p.estado === 'costura') && !p.satelite).length,
       trabajando: pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite)).length,
       revision: pedidos.filter(p => p.estado === 'calidad').length,
       satelites: db.leerSatelites().length,
