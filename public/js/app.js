@@ -103,8 +103,7 @@ const WORKERS = [
   { nombre: 'Wendy', roles: ['ventas', 'diseno'] },
   { nombre: 'Paola', roles: ['ventas', 'diseno'] },
   { nombre: 'Betty', roles: ['ventas', 'produccion'] },
-  { nombre: 'Camilo', roles: ['admin', 'diseno'] },
-  { nombre: 'Duvan', roles: ['admin', 'diseno'] },
+  { nombre: 'Camilo / Duvan', aliases: ['Camilo', 'Duvan'], roles: ['admin', 'diseno'] },
   { nombre: 'Graciela', roles: ['admin'] },
   { nombre: 'Lidermeyer', roles: ['produccion'] },
   { nombre: 'Marcela', roles: ['costura-personal'] },
@@ -401,7 +400,7 @@ function renderMiniDiseno() {
   const asignados = pendientes.filter(p => p.disenadorAsignado);
   const confirmados = pedidos.filter(p => p.estado === 'confirmado');
   const calandra = pedidos.filter(p => p.estado === 'enviado-calandra');
-  const DISENADORES = ['Camilo', 'Duvan', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo / Duvan', 'Wendy', 'Ney', 'Paola'];
   const cards = [
     ...sinAsignar.map(p => miniCard(p, {
       clase: 'warn',
@@ -1242,7 +1241,7 @@ function renderKanban(estado) {
 }
 
 function renderKanbanCardDiseno(p) {
-  const DISENADORES = ['Camilo', 'Duvan', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo / Duvan', 'Wendy', 'Ney', 'Paola'];
   const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
   const disenadorTxt = p.disenadorAsignado || '';
 
@@ -4304,10 +4303,14 @@ var _tabPrincipalFiltro = '';
 var _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
 
 function workerCarga(activos, nombre) {
-  const n = String(nombre || '').toLowerCase();
-  const venta = activos.filter(p => String(p.vendedora || '').toLowerCase().includes(n)).length;
-  const diseno = activos.filter(p => String(p.disenadorAsignado || '').toLowerCase().includes(n)).length;
-  const costura = activos.filter(p => String(p.satelite || '').toLowerCase().includes(n)).length;
+  const worker = WORKERS.find(w => w.nombre === nombre);
+  const aliases = (worker && worker.aliases ? worker.aliases : [nombre])
+    .map(x => String(x || '').toLowerCase());
+  const matches = value => aliases.some(a => String(value || '').toLowerCase().includes(a));
+  const n = aliases[0] || '';
+  const venta = activos.filter(p => matches(p.vendedora)).length;
+  const diseno = activos.filter(p => matches(p.disenadorAsignado)).length;
+  const costura = activos.filter(p => matches(p.satelite)).length;
   let produccion = 0;
   if (['betty', 'lidermeyer'].includes(n)) {
     produccion = activos.filter(p => ['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad'].includes(p.estado)).length;
