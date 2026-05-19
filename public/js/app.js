@@ -103,7 +103,7 @@ const WORKERS = [
   { nombre: 'Wendy', roles: ['ventas', 'diseno'] },
   { nombre: 'Paola', roles: ['ventas', 'diseno'] },
   { nombre: 'Betty', roles: ['ventas', 'produccion'] },
-  { nombre: 'Camilo / Duvan', aliases: ['Camilo', 'Duvan'], roles: ['admin', 'diseno'] },
+  { nombre: 'Camilo', roles: ['admin', 'diseno'] },
   { nombre: 'Graciela', roles: ['admin'] },
   { nombre: 'Lidermeyer', roles: ['produccion'] },
   { nombre: 'Marcela', roles: ['costura-personal'] },
@@ -400,7 +400,7 @@ function renderMiniDiseno() {
   const asignados = pendientes.filter(p => p.disenadorAsignado);
   const confirmados = pedidos.filter(p => p.estado === 'confirmado');
   const calandra = pedidos.filter(p => p.estado === 'enviado-calandra');
-  const DISENADORES = ['Camilo / Duvan', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
   const cards = [
     ...sinAsignar.map(p => miniCard(p, {
       clase: 'warn',
@@ -1241,7 +1241,7 @@ function renderKanban(estado) {
 }
 
 function renderKanbanCardDiseno(p) {
-  const DISENADORES = ['Camilo / Duvan', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
   const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
   const disenadorTxt = p.disenadorAsignado || '';
 
