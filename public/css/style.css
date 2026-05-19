@@ -2240,12 +2240,59 @@
 .mobile-role-icon { font-size: 1.7rem; }
 .mobile-role-card.produccion { border-color: rgba(14,165,233,0.35); background: rgba(14,165,233,0.10); }
 .mobile-role-card.admin { grid-column: 1 / -1; }
+.mobile-staff-panel {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.035);
+  padding: 12px;
+  margin: 12px 0;
+}
+.mobile-staff-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+.mobile-staff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.mobile-staff-card {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  background: rgba(15,23,42,0.72);
+  padding: 10px;
+}
+.mobile-staff-card strong {
+  display: block;
+  font-family: 'Outfit', sans-serif;
+  font-size: .98rem;
+  margin-bottom: 6px;
+}
+.mobile-staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mobile-staff-actions button {
+  flex: 1 1 auto;
+  min-height: 34px;
+  border: 1px solid rgba(14,165,233,0.35);
+  border-radius: 999px;
+  background: rgba(14,165,233,0.12);
+  color: #bae6fd;
+  font: inherit;
+  font-size: .68rem;
+  font-weight: 900;
+  cursor: pointer;
+}
 @media (min-width: 769px) {
   #mobile-role-hub { display: none !important; }
 }
 @media (max-width: 480px) {
   .mobile-role-grid { grid-template-columns: 1fr; }
   .mobile-role-card.admin { grid-column: auto; }
+  .mobile-staff-grid { grid-template-columns: 1fr; }
 }
 
 /* ─── MODOS DE VISTA (TV Y MINI-APP) ──────────────────────────────── */

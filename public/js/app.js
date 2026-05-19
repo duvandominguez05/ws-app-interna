@@ -98,6 +98,27 @@ let _syncUltimoTs = 0;
 
 // Rol del usuario actual
 let userRol = localStorage.getItem('ws_rol') || 'admin';
+const WORKERS = [
+  { nombre: 'Ney', roles: ['ventas', 'diseno'] },
+  { nombre: 'Wendy', roles: ['ventas', 'diseno'] },
+  { nombre: 'Paola', roles: ['ventas', 'diseno'] },
+  { nombre: 'Betty', roles: ['ventas', 'produccion'] },
+  { nombre: 'Camilo', roles: ['admin', 'diseno'] },
+  { nombre: 'Duvan', roles: ['admin', 'diseno'] },
+  { nombre: 'Graciela', roles: ['admin'] },
+  { nombre: 'Lidermeyer', roles: ['produccion'] },
+  { nombre: 'Marcela', roles: ['costura-personal'] },
+  { nombre: 'Cristina', roles: ['costura-personal'] },
+  { nombre: 'Wilson', roles: ['costura-personal'] },
+  { nombre: 'Yamile', roles: ['costura-personal'] },
+];
+const ROLE_LABELS = {
+  ventas: 'Ventas',
+  diseno: 'Diseno',
+  produccion: 'Produccion/Corte',
+  admin: 'Admin',
+  'costura-personal': 'Mis pedidos',
+};
 function cambiarRol() {
   const sel = document.getElementById('role-selector');
   if(sel) {
@@ -229,6 +250,28 @@ function abrirRolMovil(rol) {
   showSection(destino, null);
 }
 
+function abrirWorkerRole(nombre, rol) {
+  localStorage.setItem('ws_worker_actual', nombre || '');
+  if (rol === 'costura-personal') {
+    abrirCosturera(nombre);
+    return;
+  }
+  if (rol === 'admin') {
+    localStorage.setItem('ws_rol', 'admin');
+    userRol = 'admin';
+  } else if (rol === 'diseno') {
+    localStorage.setItem('ws_rol', 'diseno');
+    userRol = 'diseno';
+  } else if (rol === 'ventas') {
+    localStorage.setItem('ws_rol', 'ventas');
+    userRol = 'ventas';
+  } else if (rol === 'produccion') {
+    localStorage.setItem('ws_rol', 'produccion');
+    userRol = 'produccion';
+  }
+  abrirRolMovil(rol);
+}
+
 function renderMobileQuickAccess() {
   const cont = document.getElementById('mobile-quick-access');
   if (!cont) return;
@@ -252,6 +295,26 @@ function renderMobileQuickAccess() {
     return;
   }
   cont.innerHTML = `<button class="mobile-quick-card" onclick="abrirRolMovil('${rol}')"><small>Acceso rapido</small><strong>Entrar a ${labels[rol]}</strong></button>`;
+}
+
+function renderStaffAccess() {
+  const cont = document.getElementById('mobile-staff-access');
+  if (!cont) return;
+  cont.innerHTML = `
+    <div class="mobile-staff-panel">
+      <div class="mobile-staff-title">Entrar por trabajador</div>
+      <div class="mobile-staff-grid">
+        ${WORKERS.map(w => `
+          <div class="mobile-staff-card">
+            <strong>${esc(w.nombre)}</strong>
+            <div class="mobile-staff-actions">
+              ${w.roles.map(r => `<button onclick="abrirWorkerRole('${esc(w.nombre)}','${r}')">${ROLE_LABELS[r] || r}</button>`).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function miniEnsure(sectionId, html) {
@@ -298,6 +361,7 @@ function miniCard(p, options = {}) {
 function renderMiniRoleViews() {
   renderInstallCard();
   renderMobileQuickAccess();
+  renderStaffAccess();
   renderMiniVentas();
   renderMiniDiseno();
   renderMiniCostura();
@@ -337,7 +401,7 @@ function renderMiniDiseno() {
   const asignados = pendientes.filter(p => p.disenadorAsignado);
   const confirmados = pedidos.filter(p => p.estado === 'confirmado');
   const calandra = pedidos.filter(p => p.estado === 'enviado-calandra');
-  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Duvan', 'Wendy', 'Ney', 'Paola'];
   const cards = [
     ...sinAsignar.map(p => miniCard(p, {
       clase: 'warn',
@@ -1178,7 +1242,7 @@ function renderKanban(estado) {
 }
 
 function renderKanbanCardDiseno(p) {
-  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Duvan', 'Wendy', 'Ney', 'Paola'];
   const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
   const disenadorTxt = p.disenadorAsignado || '';
 
@@ -4239,6 +4303,44 @@ const TAB_PRINCIPAL_MAP = {
 var _tabPrincipalFiltro = '';
 var _tabPrincipalDisFiltro = localStorage.getItem('ws_tab_dis_filtro') || 'todos';
 
+function workerCarga(activos, nombre) {
+  const n = String(nombre || '').toLowerCase();
+  const venta = activos.filter(p => String(p.vendedora || '').toLowerCase().includes(n)).length;
+  const diseno = activos.filter(p => String(p.disenadorAsignado || '').toLowerCase().includes(n)).length;
+  const costura = activos.filter(p => String(p.satelite || '').toLowerCase().includes(n)).length;
+  let produccion = 0;
+  if (['betty', 'lidermeyer'].includes(n)) {
+    produccion = activos.filter(p => ['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad'].includes(p.estado)).length;
+  }
+  const admin = ['graciela', 'camilo', 'duvan'].includes(n)
+    ? activos.filter(p => p.estado !== 'enviado-final').length
+    : 0;
+  return { venta, diseno, costura, produccion, admin, total: venta + diseno + costura + produccion + admin };
+}
+
+function renderWorkerMonitor(activos) {
+  return `
+    <div class="torre-section">
+      <div class="torre-section-title">Equipo y responsabilidades</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+        ${WORKERS.map(w => {
+          const c = workerCarga(activos, w.nombre);
+          const partes = [];
+          if (w.roles.includes('ventas')) partes.push(`Ventas ${c.venta}`);
+          if (w.roles.includes('diseno')) partes.push(`Diseno ${c.diseno}`);
+          if (w.roles.includes('produccion')) partes.push(`Produccion ${c.produccion}`);
+          if (w.roles.includes('costura-personal')) partes.push(`Costura ${c.costura}`);
+          if (w.roles.includes('admin')) partes.push(`Admin ${c.admin}`);
+          return `<div style="background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px;">
+            <div style="font-family:Outfit,sans-serif;font-weight:800;margin-bottom:6px;">${esc(w.nombre)}</div>
+            <div style="font-size:.72rem;color:var(--text-muted);line-height:1.55;">${partes.join(' · ') || 'Sin carga'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function filtrarTableroPrincipal(q) {
   _tabPrincipalFiltro = String(q || '').trim().toLowerCase();
   renderTableroPrincipal();
@@ -4337,6 +4439,8 @@ function renderTorreUnificada() {
   html += kpiCard('✅', listos, 'Listos', '#86efac');
   html += kpiCard('📦', entregadosHoy, 'Entregados hoy', '#f9a8d4');
   html += '</div>';
+
+  html += renderWorkerMonitor(activos);
 
   // Alertas
   html += '<div class="torre-section">';
