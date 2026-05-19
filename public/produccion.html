@@ -29,73 +29,75 @@
       background: radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 34%), var(--bg);
       color: var(--text);
       min-height: 100vh;
-      padding: 12px;
+      padding: 10px;
     }
     .topbar {
-      position: sticky;
-      top: 0;
+      position: static;
       z-index: 10;
       background: rgba(7,10,16,0.92);
       backdrop-filter: blur(12px);
-      padding-bottom: 10px;
+      padding-bottom: 7px;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      padding: 14px;
+      padding: 10px 12px;
       border: 1px solid rgba(14,165,233,0.28);
       border-radius: 16px;
       background: linear-gradient(135deg, rgba(14,165,233,0.16), rgba(168,85,247,0.10));
     }
     h1 {
       font-family: Outfit, sans-serif;
-      font-size: clamp(1.35rem, 6vw, 2.1rem);
+      font-size: clamp(1.2rem, 5vw, 1.7rem);
       line-height: 1;
     }
-    .sub { color: var(--muted); font-size: 0.78rem; margin-top: 5px; }
+    .sub { color: var(--muted); font-size: 0.72rem; margin-top: 3px; }
     .guide {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin: 10px 0;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      margin: 7px 0;
+      scrollbar-width: none;
     }
+    .guide::-webkit-scrollbar { display: none; }
     .guide-step {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       border: 1px solid rgba(14,165,233,0.22);
-      border-radius: 14px;
+      border-radius: 999px;
       background: rgba(14,165,233,0.08);
-      padding: 10px;
-      min-height: 70px;
+      padding: 7px 10px 7px 7px;
+      min-height: 34px;
     }
     .guide-num {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 999px;
       display: inline-grid;
       place-items: center;
       background: #0ea5e9;
       color: white;
       font-weight: 900;
-      margin-bottom: 6px;
+      font-size: .78rem;
     }
     .guide-step strong {
       display: block;
-      font-size: .82rem;
+      font-size: .74rem;
       line-height: 1.15;
+      white-space: nowrap;
     }
     .guide-step span {
-      display: block;
-      color: var(--muted);
-      font-size: .72rem;
-      margin-top: 3px;
-      line-height: 1.25;
+      display: none;
     }
     .refresh {
       border: 1px solid rgba(14,165,233,0.45);
       background: rgba(14,165,233,0.18);
       color: #7dd3fc;
-      padding: 10px 12px;
+      padding: 9px 11px;
       border-radius: 12px;
       font: inherit;
       font-weight: 800;
@@ -126,34 +128,35 @@
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      margin: 10px 0;
+      margin: 7px 0;
     }
     .role-link {
       text-decoration: none;
       color: var(--text);
       text-align: center;
-      padding: 10px 8px;
+      padding: 8px 7px;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 10px;
       background: rgba(255,255,255,0.04);
-      font-size: 0.78rem;
+      font-size: 0.74rem;
       font-weight: 800;
     }
     .role-link.active { background: rgba(14,165,233,0.18); border-color: rgba(14,165,233,0.42); color: #7dd3fc; }
     .summary {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 6px;
+      margin-bottom: 7px;
     }
     .summary-card {
       border: 1px solid var(--line);
-      border-radius: 13px;
+      border-radius: 11px;
       background: rgba(255,255,255,0.04);
-      padding: 11px;
+      padding: 8px;
+      min-height: 52px;
     }
-    .summary-card strong { display: block; font-family: Outfit, sans-serif; font-size: 1.5rem; line-height: 1; }
-    .summary-card span { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .6px; }
+    .summary-card strong { display: block; font-family: Outfit, sans-serif; font-size: 1.15rem; line-height: 1; }
+    .summary-card span { color: var(--muted); font-size: 0.62rem; text-transform: uppercase; letter-spacing: .5px; line-height: 1.1; }
     .filters {
       display: flex;
       gap: 8px;
@@ -167,22 +170,22 @@
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.05);
       color: #cbd5e1;
-      padding: 10px 13px;
+      padding: 8px 11px;
       border-radius: 999px;
       font: inherit;
-      font-size: 0.83rem;
+      font-size: 0.78rem;
       font-weight: 800;
       cursor: pointer;
     }
     .filter.active { background: rgba(14,165,233,0.22); border-color: rgba(14,165,233,0.58); color: #7dd3fc; }
     .count { opacity: .8; margin-left: 4px; }
-    .worklist { display: grid; gap: 10px; padding-bottom: 84px; }
+    .worklist { display: grid; gap: 9px; padding-bottom: 96px; }
     .task-card {
       border: 1px solid var(--line);
       border-left: 4px solid var(--cyan);
       border-radius: 16px;
       background: rgba(16,23,34,0.92);
-      padding: 14px;
+      padding: 12px;
       box-shadow: 0 12px 30px rgba(0,0,0,0.22);
     }
     .task-card.overdue { border-left-color: var(--red); }
@@ -197,7 +200,7 @@
     }
     .task-title {
       font-family: Outfit, sans-serif;
-      font-size: 1.18rem;
+      font-size: 1.04rem;
       line-height: 1.15;
       word-break: break-word;
     }
@@ -205,15 +208,15 @@
     .meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 7px;
-      margin: 9px 0 12px;
+      gap: 6px;
+      margin: 7px 0 9px;
     }
     .pill {
-      padding: 5px 9px;
+      padding: 4px 8px;
       border-radius: 999px;
       background: rgba(255,255,255,0.06);
       color: #dbeafe;
-      font-size: .75rem;
+      font-size: .7rem;
       font-weight: 800;
     }
     .pill.red { background: rgba(239,68,68,0.18); color: #fecaca; }
@@ -361,13 +364,10 @@
       .worklist { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
       .summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
       .role-row { grid-template-columns: repeat(4, 150px); }
-      .topbar { position: static; }
     }
     @media (max-width: 420px) {
       .role-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .guide { grid-template-columns: 1fr; }
-      .guide-step { min-height: auto; }
+      .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .actions { grid-template-columns: 1fr; }
       .secondary-action { width: 100%; }
     }
