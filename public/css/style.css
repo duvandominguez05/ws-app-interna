@@ -2197,7 +2197,193 @@
 /* ─── MODOS DE VISTA (TV Y MINI-APP) ──────────────────────────────── */
 body.modo-miniapp .sidebar { display: none !important; }
 body.modo-miniapp .main-header { display: none !important; }
-body.modo-miniapp .section-content { height: 100vh; overflow-y: auto; padding-top: 16px; }
+body.modo-miniapp .section-content { height: 100vh; overflow-y: auto; padding: 16px; }
+body.modo-miniapp #bandeja > :not(.mini-role-screen),
+body.modo-miniapp #diseno > :not(.mini-role-screen),
+body.modo-miniapp #satelites > :not(.mini-role-screen) {
+  display: none !important;
+}
+
+.mini-role-screen {
+  display: none;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-bottom: 96px;
+}
+body.modo-miniapp .mini-role-screen { display: block; }
+.mini-role-top {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: rgba(10,12,18,0.94);
+  backdrop-filter: blur(14px);
+  padding-bottom: 12px;
+}
+.mini-role-title {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(255,255,255,0.05);
+}
+.mini-role-title h1 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.9rem;
+  line-height: 1;
+  margin: 0 0 6px;
+}
+.mini-role-title p {
+  color: var(--text-muted);
+  font-size: .9rem;
+  line-height: 1.35;
+  margin: 0;
+}
+.mini-role-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.mini-stat {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.04);
+  padding: 10px;
+}
+.mini-stat strong {
+  display: block;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+.mini-stat span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: .72rem;
+  font-weight: 800;
+}
+.mini-card-list { display: grid; gap: 10px; }
+.mini-card {
+  border: 1px solid rgba(255,255,255,0.09);
+  border-left: 5px solid #38bdf8;
+  border-radius: 16px;
+  background: rgba(18,24,36,0.94);
+  padding: 14px;
+}
+.mini-card.warn { border-left-color: #f59e0b; }
+.mini-card.danger { border-left-color: #ef4444; }
+.mini-card.good { border-left-color: #22c55e; }
+.mini-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+.mini-card-name {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.15rem;
+  line-height: 1.1;
+  word-break: break-word;
+}
+.mini-card-id {
+  color: var(--text-muted);
+  font-size: .78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.mini-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0 12px;
+}
+.mini-chip {
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: #dbeafe;
+  padding: 6px 10px;
+  font-size: .76rem;
+  font-weight: 800;
+}
+.mini-next {
+  border-radius: 13px;
+  background: rgba(14,165,233,0.08);
+  border: 1px solid rgba(14,165,233,0.22);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.mini-next span {
+  display: block;
+  color: #7dd3fc;
+  font-size: .7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 3px;
+}
+.mini-next strong {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+}
+.mini-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.mini-actions.two { grid-template-columns: 1fr 1fr; }
+.mini-btn {
+  min-height: 56px;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 12px;
+  color: white;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  background: linear-gradient(135deg,#0ea5e9,#06b6d4);
+}
+.mini-btn small {
+  display: block;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  opacity: .9;
+  margin-bottom: 2px;
+}
+.mini-btn.green { background: linear-gradient(135deg,#22c55e,#16a34a); }
+.mini-btn.purple { background: linear-gradient(135deg,#a855f7,#7c3aed); }
+.mini-btn.orange { background: linear-gradient(135deg,#f59e0b,#ea580c); }
+.mini-btn.gray {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #dbeafe;
+}
+.mini-select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(168,85,247,0.35);
+  border-radius: 12px;
+  background: #171326;
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.mini-empty {
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 42px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+}
+@media (max-width: 420px) {
+  .mini-role-stats,
+  .mini-actions.two {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Botón flotante para salir de miniapp */
 .btn-salir-miniapp {

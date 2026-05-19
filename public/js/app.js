@@ -220,6 +220,167 @@ function abrirRolMovil(rol) {
   showSection(destino, null);
 }
 
+function miniEnsure(sectionId, html) {
+  const section = document.getElementById(sectionId);
+  if (!section) return null;
+  let screen = section.querySelector('.mini-role-screen');
+  if (!screen) {
+    screen = document.createElement('div');
+    screen.className = 'mini-role-screen';
+    section.prepend(screen);
+  }
+  screen.innerHTML = html;
+  return screen;
+}
+
+function miniStats(items) {
+  return items.map(([num, label]) => `
+    <div class="mini-stat"><strong>${num}</strong><span>${esc(label)}</span></div>
+  `).join('');
+}
+
+function miniCard(p, options = {}) {
+  const nombre = esc(p.equipo || p.telefono || 'Pedido sin nombre');
+  const meta = [
+    p.fechaEntrega ? `Entrega: ${fmtFecha(p.fechaEntrega)}` : '',
+    p.vendedora ? `Venta: ${p.vendedora}` : '',
+    p.disenadorAsignado ? `Diseno: ${p.disenadorAsignado}` : '',
+    ESTADO_LABELS[p.estado] || p.estado || ''
+  ].filter(Boolean).map(x => `<span class="mini-chip">${esc(x)}</span>`).join('');
+  return `
+    <article class="mini-card ${options.clase || ''}">
+      <div class="mini-card-head">
+        <div class="mini-card-name">${nombre}</div>
+        <div class="mini-card-id">#${p.id}</div>
+      </div>
+      <div class="mini-card-meta">${meta}</div>
+      ${options.next ? `<div class="mini-next"><span>Siguiente paso</span><strong>${esc(options.next)}</strong></div>` : ''}
+      ${options.body || ''}
+      ${options.actions || ''}
+    </article>
+  `;
+}
+
+function renderMiniRoleViews() {
+  renderMiniVentas();
+  renderMiniDiseno();
+  renderMiniCostura();
+}
+
+function renderMiniVentas() {
+  const cotizaciones = pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja');
+  const activos = pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final');
+  const listos = activos.filter(p => p.estado === 'listo');
+  const hoy = activos.filter(p => p.fechaEntrega && fmtFecha(p.fechaEntrega) === fmtFecha(new Date().toISOString().slice(0, 10)));
+  const cards = [
+    ...cotizaciones.map(p => miniCard(p, {
+      clase: 'warn',
+      next: 'Completar datos del pedido',
+      actions: `<div class="mini-actions"><button class="mini-btn orange" onclick="openModalCompletar(${p.id})"><small>Tocar aqui</small>Completar pedido</button></div>`
+    })),
+    ...activos.slice(0, 30).map(p => miniCard(p, {
+      next: 'Responder al cliente con el estado',
+      actions: `<div class="mini-actions two">
+        <button class="mini-btn" onclick="copiarEstadoCliente(${p.id})"><small>Tocar aqui</small>Copiar estado</button>
+        <button class="mini-btn gray" onclick="irAlPedido(${p.id})">Ver pedido</button>
+      </div>`
+    }))
+  ];
+  miniEnsure('bandeja', `
+    <div class="mini-role-top">
+      <div class="mini-role-title"><h1>Ventas</h1><p>Primero completa cotizaciones. Despues responde rapido al cliente con el estado del pedido.</p></div>
+      <div class="mini-role-stats">${miniStats([[cotizaciones.length, 'Por completar'], [activos.length, 'Pedidos activos'], [listos.length, 'Listos']])}</div>
+    </div>
+    <div class="mini-card-list">${cards.length ? cards.join('') : '<div class="mini-empty">No hay trabajo pendiente para ventas.</div>'}</div>
+  `);
+}
+
+function renderMiniDiseno() {
+  const pendientes = pedidos.filter(p => p.estado === 'hacer-diseno');
+  const sinAsignar = pendientes.filter(p => !p.disenadorAsignado);
+  const asignados = pendientes.filter(p => p.disenadorAsignado);
+  const confirmados = pedidos.filter(p => p.estado === 'confirmado');
+  const calandra = pedidos.filter(p => p.estado === 'enviado-calandra');
+  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const cards = [
+    ...sinAsignar.map(p => miniCard(p, {
+      clase: 'warn',
+      next: 'Asignar a un disenador',
+      body: `<select class="mini-select" id="mini-dis-${p.id}"><option value="">Escoger disenador</option>${DISENADORES.map(d => `<option value="${d}">${d}</option>`).join('')}</select>`,
+      actions: `<div class="mini-actions"><button class="mini-btn purple" onclick="tomarPedidoDisenoMini(${p.id})"><small>Tocar aqui</small>Asignar diseno</button></div>`
+    })),
+    ...asignados.map(p => miniCard(p, {
+      next: 'Cuando el diseno este aprobado',
+      actions: `<div class="mini-actions two">
+        <button class="mini-btn green" onclick="marcarDisenoListo(${p.id})"><small>Tocar aqui</small>Diseno listo</button>
+        <button class="mini-btn gray" onclick="liberarPedidoDiseno(${p.id})">Cambiar</button>
+      </div>`
+    })),
+    ...confirmados.map(p => miniCard(p, {
+      clase: 'good',
+      next: 'Enviar archivo a calandra',
+      actions: `<div class="mini-actions"><button class="mini-btn" onclick="avanzar(${p.id})"><small>Tocar aqui</small>Enviar a calandra</button></div>`
+    })),
+    ...calandra.map(p => miniCard(p, {
+      clase: 'good',
+      next: 'Esperar impresion',
+      actions: `<div class="mini-actions"><button class="mini-btn gray" onclick="irAlPedido(${p.id})">Ver pedido</button></div>`
+    }))
+  ];
+  miniEnsure('diseno', `
+    <div class="mini-role-top">
+      <div class="mini-role-title"><h1>Diseno</h1><p>Asigna pedidos, marca diseno listo y manda a calandra. Lo urgente aparece arriba.</p></div>
+      <div class="mini-role-stats">${miniStats([[sinAsignar.length, 'Sin asignar'], [asignados.length, 'En diseno'], [confirmados.length, 'Para calandra']])}</div>
+    </div>
+    <div class="mini-card-list">${cards.length ? cards.join('') : '<div class="mini-empty">No hay trabajo pendiente para diseno.</div>'}</div>
+  `);
+}
+
+function renderMiniCostura() {
+  const paraEnviar = pedidos.filter(p => p.estado === 'costura');
+  const listos = pedidos.filter(p => p.estado === 'listo');
+  const cards = [
+    ...paraEnviar.map(p => miniCard(p, {
+      next: 'Enviar a costura o marcar listo',
+      actions: `<div class="mini-actions two">
+        <button class="mini-btn purple" onclick="abrirFormSat('entrega'); showSection('satelites', null)"><small>Tocar aqui</small>Enviar satelite</button>
+        <button class="mini-btn green" onclick="avanzar(${p.id})">Marcar listo</button>
+      </div>`
+    })),
+    ...listos.map(p => miniCard(p, {
+      clase: 'good',
+      next: 'Entregar al cliente',
+      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="avanzar(${p.id})"><small>Tocar aqui</small>Entregado</button></div>`
+    }))
+  ];
+  miniEnsure('satelites', `
+    <div class="mini-role-top">
+      <div class="mini-role-title"><h1>Costura</h1><p>Usa esta vista para enviar a satelite, recibir y cerrar pedidos listos.</p></div>
+      <div class="mini-role-stats">${miniStats([[paraEnviar.length, 'Para costura'], [listos.length, 'Listos'], [satMovimientos.length || 0, 'Movimientos']])}</div>
+    </div>
+    <div class="mini-card-list">${cards.length ? cards.join('') : '<div class="mini-empty">No hay trabajo pendiente de costura.</div>'}</div>
+  `);
+}
+
+function tomarPedidoDisenoMini(id) {
+  const sel = document.getElementById(`mini-dis-${id}`);
+  const original = document.getElementById(`sel-dis-${id}`);
+  if (original && sel) original.value = sel.value;
+  tomarPedidoDiseno(id);
+}
+
+function copiarEstadoCliente(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  const estado = ESTADO_LABELS[p.estado] || p.estado || 'en proceso';
+  const fecha = p.fechaEntrega ? ` Entrega estimada: ${fmtFecha(p.fechaEntrega)}.` : '';
+  const msg = `Hola, tu pedido ${p.equipo || '#' + id} va en estado: ${estado}.${fecha}`;
+  navigator.clipboard?.writeText(msg).then(
+    () => toast('Estado copiado para enviar al cliente', 'ok'),
+    () => prompt('Copia este mensaje:', msg)
+  );
+}
+
 function render() {
   const safe = (nombre, fn) => { try { fn(); } catch (e) { console.error('[render]', nombre, e); } };
   safe('metricas', renderMetricas);
@@ -235,6 +396,7 @@ function render() {
   safe('arreglos', renderArreglos);
   safe('calandra', renderCalandra);
   safe('satelites', renderSatelites);
+  safe('mini-roles', renderMiniRoleViews);
   if (document.body.classList.contains('modo-tv')) safe('tv-lista', renderTVLista);
 }
 
@@ -3589,7 +3751,12 @@ function salirDeModos() {
   if (tvRefreshInterval) { clearInterval(tvRefreshInterval); tvRefreshInterval = null; }
   document.body.classList.remove('modo-miniapp');
   document.body.classList.remove('modo-tv');
-  showSection('vista-general', document.querySelector('[onclick*="vista-general"]'));
+  if (window.innerWidth <= 768) {
+    window.location.hash = '#/movil';
+    showSection('mobile-role-hub', null);
+  } else {
+    showSection('tablero-principal', document.querySelector('[onclick*="tablero-principal"]'));
+  }
   const btn = document.getElementById('btn-salir-miniapp');
   if (btn) btn.style.display = 'none';
   if (document.fullscreenElement) {
