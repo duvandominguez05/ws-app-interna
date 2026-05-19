@@ -102,6 +102,26 @@
       cursor: pointer;
       white-space: nowrap;
     }
+    .install-card {
+      display: none;
+      border: 1px solid rgba(249,115,22,0.34);
+      border-radius: 14px;
+      background: rgba(249,115,22,0.10);
+      padding: 12px;
+      margin: 10px 0;
+    }
+    .install-card strong { display: block; font-size: .92rem; margin-bottom: 3px; }
+    .install-card p { color: var(--muted); font-size: .78rem; line-height: 1.35; margin-bottom: 9px; }
+    .install-card button {
+      width: 100%;
+      min-height: 46px;
+      border: 0;
+      border-radius: 12px;
+      background: linear-gradient(135deg,#f97316,#ea580c);
+      color: white;
+      font: inherit;
+      font-weight: 900;
+    }
     .role-row {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -362,6 +382,11 @@
       </div>
       <button class="refresh" onclick="cargar()">Refrescar</button>
     </div>
+    <div class="install-card" id="install-card">
+      <strong>Instalar W&S Produccion</strong>
+      <p>Deja esta pantalla como app en el celular de produccion.</p>
+      <button onclick="instalarApp()">Instalar ahora</button>
+    </div>
     <section class="guide" aria-label="Como usar">
       <div class="guide-step"><div class="guide-num">1</div><strong>Escoge donde estas</strong><span>Usa los botones de filtro.</span></div>
       <div class="guide-step"><div class="guide-num">2</div><strong>Busca el pedido</strong><span>Los urgentes salen primero.</span></div>
@@ -412,6 +437,7 @@
     let pedidos = [];
     let filtroActivo = 'todos';
     let pedidoDetalle = null;
+    let installPrompt = null;
 
     const ESTADOS = ['enviado-calandra', 'llego-impresion', 'corte', 'calidad', 'costura', 'listo'];
     const FILTROS = [
@@ -442,6 +468,32 @@
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+    function iniciarPWA() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
+      window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        installPrompt = e;
+        const card = document.getElementById('install-card');
+        if (card) card.style.display = 'block';
+      });
+      window.addEventListener('appinstalled', () => {
+        const card = document.getElementById('install-card');
+        if (card) card.style.display = 'none';
+        installPrompt = null;
+      });
+    }
+    async function instalarApp() {
+      if (!installPrompt) {
+        alert('Para instalar: abre Chrome, toca los 3 puntos y elige Agregar a pantalla principal.');
+        return;
+      }
+      installPrompt.prompt();
+      await installPrompt.userChoice.catch(() => null);
+      installPrompt = null;
+      document.getElementById('install-card').style.display = 'none';
     }
     function toast(msg, tipo) {
       const t = document.getElementById('toast');
@@ -679,6 +731,7 @@
         toast('Error: ' + e.message, 'error');
       }
     }
+    iniciarPWA();
     cargar();
     setInterval(cargar, 7000);
   </script>

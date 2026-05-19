@@ -284,6 +284,7 @@ function miniCard(p, options = {}) {
 }
 
 function renderMiniRoleViews() {
+  renderInstallCard();
   renderMobileQuickAccess();
   renderMiniVentas();
   renderMiniDiseno();
@@ -794,6 +795,52 @@ function renderTablaRecientes() {
 
 /* ─── Bandeja ────────────────────────────────────────────────── */
 let busquedaActual = '';
+let wsInstallPrompt = null;
+
+function registrarPWA() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(e => console.warn('[pwa] sw', e.message));
+  }
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    wsInstallPrompt = e;
+    renderInstallCard();
+  });
+  window.addEventListener('appinstalled', () => {
+    wsInstallPrompt = null;
+    localStorage.setItem('ws_pwa_installed', '1');
+    renderInstallCard();
+  });
+}
+
+function renderInstallCard() {
+  const cont = document.getElementById('mobile-install-card');
+  if (!cont) return;
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (standalone || localStorage.getItem('ws_pwa_installed') === '1') {
+    cont.innerHTML = '';
+    return;
+  }
+  const canInstall = !!wsInstallPrompt;
+  cont.innerHTML = `
+    <div class="mobile-install-card">
+      <strong>Instalar como app</strong>
+      <p>${canInstall ? 'Deja W&S en la pantalla principal del celular.' : 'En Chrome toca los 3 puntos y elige Agregar a pantalla principal.'}</p>
+      <button onclick="instalarAppWys()">${canInstall ? 'Instalar ahora' : 'Ver instrucciones'}</button>
+    </div>
+  `;
+}
+
+async function instalarAppWys() {
+  if (!wsInstallPrompt) {
+    alert('Para instalar: abre el menu de Chrome (3 puntos) y toca "Agregar a pantalla principal" o "Instalar app".');
+    return;
+  }
+  wsInstallPrompt.prompt();
+  await wsInstallPrompt.userChoice.catch(() => null);
+  wsInstallPrompt = null;
+  renderInstallCard();
+}
 
 function buscarPedidos(q) {
   busquedaActual = q.toLowerCase().trim();
@@ -3806,6 +3853,7 @@ function modoMiniApp(seccion) {
 
 // Al inicio de la aplicación verificamos si hay algún Hash
 window.addEventListener('DOMContentLoaded', () => {
+  registrarPWA();
   // Renderizar inmediatamente el Tablero principal y la Torre con lo que haya en localStorage
   if (typeof renderTableroPrincipal === 'function') {
     try { renderTableroPrincipal(); } catch (e) { console.error('[tab-principal init]', e); }

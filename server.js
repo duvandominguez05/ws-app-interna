@@ -176,6 +176,87 @@ async function notificarWAVendedora(vendedora, texto) {
 // ── DETECTOR DE COMPROBANTES DE PAGO con Gemini Flash ──
 // Cuando el cliente manda una imagen, la pasamos a Gemini para que decida si es comprobante.
 // Si lo es, guardamos un registro para el resumen de las 8 PM.
+function resumenRolesOperativos() {
+  const pedidos = leerPedidos();
+  const activos = pedidos.filter(p => p.estado !== 'enviado-final');
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const diasEntrega = p => {
+    if (!p.fechaEntrega) return null;
+    const d = new Date(p.fechaEntrega + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return null;
+    return Math.round((d - hoy) / 86400000);
+  };
+  const horasSinMovimiento = p => {
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t ? (Date.now() - t) / 3600000 : 999;
+  };
+  const vencidos = activos.filter(p => {
+    const d = diasEntrega(p);
+    return d !== null && d < 0;
+  });
+  const hoyEntrega = activos.filter(p => diasEntrega(p) === 0);
+  const sinDisenador = activos.filter(p => p.estado !== 'bandeja' && !p.disenadorAsignado);
+  const sinMovimiento = activos.filter(p => horasSinMovimiento(p) >= 48);
+  return {
+    total: activos.length,
+    ventas: {
+      link: 'https://ws-app-interna-production.up.railway.app/#/ventas',
+      cotizaciones: pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja').length,
+      pedidosActivos: pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final').length,
+    },
+    diseno: {
+      link: 'https://ws-app-interna-production.up.railway.app/#/diseno',
+      sinAsignar: pedidos.filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado).length,
+      enDiseno: pedidos.filter(p => p.estado === 'hacer-diseno' && p.disenadorAsignado).length,
+      paraCalandra: pedidos.filter(p => p.estado === 'confirmado').length,
+    },
+    produccion: {
+      link: 'https://ws-app-interna-production.up.railway.app/produccion.html',
+      trabajo: pedidos.filter(p => ['enviado-calandra','llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length,
+      vencidos: vencidos.length,
+      hoy: hoyEntrega.length,
+      sinMovimiento: sinMovimiento.length,
+    },
+    costura: {
+      link: 'https://ws-app-interna-production.up.railway.app/#/satelites',
+      paraCostura: pedidos.filter(p => p.estado === 'costura').length,
+      listos: pedidos.filter(p => p.estado === 'listo').length,
+      satelites: db.leerSatelites().length,
+    },
+    admin: {
+      link: 'https://ws-app-interna-production.up.railway.app',
+      vencidos: vencidos.length,
+      hoy: hoyEntrega.length,
+      sinDisenador: sinDisenador.length,
+      sinMovimiento: sinMovimiento.length,
+    }
+  };
+}
+
+function textoRecordatorioRoles(resumen) {
+  return [
+    '📲 *W&S Textil — revisar app interna*',
+    '',
+    `*Admin:* ${resumen.admin.vencidos} vencidos · ${resumen.admin.hoy} entregas hoy · ${resumen.admin.sinDisenador} sin diseñador`,
+    resumen.admin.link,
+    '',
+    `*Ventas:* ${resumen.ventas.cotizaciones} cotizaciones · ${resumen.ventas.pedidosActivos} pedidos activos`,
+    resumen.ventas.link,
+    '',
+    `*Diseño:* ${resumen.diseno.sinAsignar} sin asignar · ${resumen.diseno.enDiseno} en diseño · ${resumen.diseno.paraCalandra} para calandra`,
+    resumen.diseno.link,
+    '',
+    `*Producción:* ${resumen.produccion.trabajo} en trabajo · ${resumen.produccion.hoy} para hoy · ${resumen.produccion.vencidos} vencidos`,
+    resumen.produccion.link,
+    '',
+    `*Costura:* ${resumen.costura.paraCostura} para costura · ${resumen.costura.listos} listos`,
+    resumen.costura.link,
+    '',
+    'Instalen el link como app en la pantalla principal del celular.'
+  ].join('\n');
+}
+
 async function analizarImagenConGemini(base64Img, mimeType) {
   global._geminiUltimoError = null;
   global._geminiUltimaRespuesta = null;
@@ -2886,6 +2967,22 @@ http.createServer((req, res) => {
   }
 
   // ── Alias para vistas simplificadas (sin extensión) ──
+  if (req.method === 'GET' && req.url.startsWith('/api/recordatorios/roles')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const resumen = resumenRolesOperativos();
+      const texto = textoRecordatorioRoles(resumen);
+      const enviar = u.searchParams.get('send') === '1';
+      if (enviar) {
+        notificarWhatsappTrabajoFamilia(texto).catch(e => console.error('[recordatorios roles wa]', e.message));
+        notificarTelegramDuvan(texto).catch(e => console.error('[recordatorios roles tg]', e.message));
+      }
+      return json(res, 200, { ok: true, enviado: enviar, resumen, texto });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
+
   if (req.method === 'GET' && req.url === '/produccion') {
     return fs.readFile(path.join(__dirname, 'public', 'produccion.html'), (err, data) => {
       if (err) { res.writeHead(404); return res.end('not found'); }
