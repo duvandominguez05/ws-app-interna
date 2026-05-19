@@ -439,30 +439,30 @@
     let pedidoDetalle = null;
     let installPrompt = null;
 
-    const ESTADOS = ['enviado-calandra', 'llego-impresion', 'corte', 'calidad', 'costura', 'listo'];
+    const ESTADOS = ['enviado-calandra', 'llego-impresion', 'corte', 'costura', 'calidad', 'listo'];
     const FILTROS = [
       ['todos', 'Todo'],
       ['enviado-calandra', 'Calandra'],
       ['llego-impresion', 'Llego'],
       ['corte', 'Corte'],
-      ['calidad', 'Calidad'],
       ['costura', 'Costura'],
+      ['calidad', 'Revision'],
       ['listo', 'Listo']
     ];
     const LABELS = {
       'enviado-calandra': 'Calandra',
       'llego-impresion': 'Llego impresion',
       'corte': 'Corte',
-      'calidad': 'Calidad',
       'costura': 'Costura',
+      'calidad': 'Revision final',
       'listo': 'Listo'
     };
     const ACCIONES = {
       'enviado-calandra': { proximo: 'llego-impresion', texto: 'Llego impresion', clase: 'a-cyan' },
-      'llego-impresion': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
-      'corte': { proximo: 'calidad', texto: 'Pasar a calidad', clase: 'a-purple' },
-      'calidad': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
-      'costura': { proximo: 'listo', texto: 'Marcar listo', clase: 'a-green' },
+      'llego-impresion': { proximo: 'corte', texto: 'Pasar a corte', clase: 'a-purple' },
+      'corte': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
+      'costura': { proximo: 'calidad', texto: 'Pasar a revision', clase: 'a-green' },
+      'calidad': { proximo: 'listo', texto: 'Revision OK', clase: 'a-green' },
       'listo': { proximo: 'enviado-final', texto: 'Entregado', clase: 'a-dark' }
     };
 

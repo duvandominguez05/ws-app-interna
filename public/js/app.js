@@ -9,10 +9,11 @@ const SIGUIENTE = {
   'hacer-diseno':     'confirmado',
   'confirmado':       'enviado-calandra',
   'enviado-calandra': 'llego-impresion',
-  'llego-impresion':  'calidad',
-  'corte':            'calidad',
-  'calidad':          'costura',
-  'costura':          'listo',
+  'llego-impresion':  'corte',
+  'corte':            'costura',
+  'costura':          'calidad',
+  'en-satelite':      'calidad',
+  'calidad':          'listo',
   'listo':            'enviado-final',
 };
 
@@ -25,7 +26,8 @@ const ESTADO_LABELS = {
   'enviado-calandra':  'En calandra',
   'llego-impresion':   'Llegó impresión',
   'corte':             'Corte',
-  'calidad':           'Control Calidad',
+  'en-satelite':       'En costura',
+  'calidad':           'Revision final',
   'costura':           'Costura',
   'listo':             'Listo',
   'enviado-final':     'Enviado',
@@ -38,6 +40,7 @@ const ESTADO_BADGE = {
   'enviado-calandra':  'badge-diseno',
   'llego-impresion':   'badge-produccion',
   'corte':             'badge-produccion',
+  'en-satelite':       'badge-produccion',
   'calidad':           'badge-calidad',
   'costura':           'badge-produccion',
   'listo':             'badge-listo',
@@ -87,6 +90,7 @@ let calandraAncho     = parseFloat(localStorage.getItem('ws_calandra_ancho') || 
 const SATELITES = ['Marcela', 'Yamile', 'Wilson', 'Cristina'];
 let satMovimientos = JSON.parse(localStorage.getItem('ws_satelites') || '[]');
 let satTipoActual  = 'entrega';
+let miniCosturaPersona = localStorage.getItem('ws_mini_costura_persona') || 'todas';
 // Estado de sincronización
 let _syncEstado = 'cargando'; // 'cargando' | 'ok' | 'error'
 let _syncUltimoTs = 0;
@@ -361,15 +365,32 @@ function renderMiniDiseno() {
 }
 
 function renderMiniCostura() {
-  const paraEnviar = pedidos.filter(p => p.estado === 'costura');
+  const paraAsignar = pedidos.filter(p => p.estado === 'costura' && !p.satelite);
+  const trabajandoBase = pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite));
+  const trabajando = miniCosturaPersona === 'todas'
+    ? trabajandoBase
+    : trabajandoBase.filter(p => p.satelite === miniCosturaPersona);
+  const revision = pedidos.filter(p => p.estado === 'calidad');
   const listos = pedidos.filter(p => p.estado === 'listo');
+  const opciones = SATELITES.map(s => `<button class="mini-filter ${miniCosturaPersona === s ? 'active' : ''}" onclick="setMiniCosturaPersona('${s}')">${s}</button>`).join('');
   const cards = [
-    ...paraEnviar.map(p => miniCard(p, {
-      next: 'Enviar a costura o marcar listo',
-      actions: `<div class="mini-actions two">
-        <button class="mini-btn purple" onclick="abrirFormSat('entrega'); showSection('satelites', null)"><small>Tocar aqui</small>Enviar satelite</button>
-        <button class="mini-btn green" onclick="avanzar(${p.id})">Marcar listo</button>
+    ...paraAsignar.map(p => miniCard(p, {
+      clase: 'warn',
+      next: 'Escoger quien lo va a coser',
+      body: `<select class="mini-select" id="mini-sat-${p.id}"><option value="">Escoger costurera</option>${SATELITES.map(s => `<option value="${s}">${s}</option>`).join('')}</select>`,
+      actions: `<div class="mini-actions">
+        <button class="mini-btn purple" onclick="asignarSatelitePedidoMini(${p.id})"><small>Tocar aqui</small>Enviar a costura</button>
       </div>`
+    })),
+    ...trabajando.map(p => miniCard(p, {
+      next: 'Cuando la costurera termine',
+      body: `<div class="mini-card-meta"><span class="mini-chip">Costurera: ${esc(p.satelite || 'Sin nombre')}</span></div>`,
+      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="recibirSatelitePedido(${p.id})"><small>Tocar aqui</small>Recibi terminado</button></div>`
+    })),
+    ...revision.map(p => miniCard(p, {
+      clase: 'good',
+      next: 'Revision final antes de entregar',
+      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="avanzar(${p.id})"><small>Tocar aqui</small>Revision OK</button></div>`
     })),
     ...listos.map(p => miniCard(p, {
       clase: 'good',
@@ -379,11 +400,28 @@ function renderMiniCostura() {
   ];
   miniEnsure('satelites', `
     <div class="mini-role-top">
-      <div class="mini-role-title"><h1>Costura</h1><p>Usa esta vista para enviar a satelite, recibir y cerrar pedidos listos.</p></div>
-      <div class="mini-role-stats">${miniStats([[paraEnviar.length, 'Para costura'], [listos.length, 'Listos'], [satMovimientos.length || 0, 'Movimientos']])}</div>
+      <div class="mini-role-title"><h1>Costura</h1><p>Escoge costurera, entrega el pedido y marca cuando vuelva terminado.</p></div>
+      <div class="mini-role-stats">${miniStats([[paraAsignar.length, 'Por asignar'], [trabajandoBase.length, 'En costura'], [revision.length, 'Revision']])}</div>
+      <div class="mini-filters">
+        <button class="mini-filter ${miniCosturaPersona === 'todas' ? 'active' : ''}" onclick="setMiniCosturaPersona('todas')">Todas</button>
+        ${opciones}
+      </div>
     </div>
     <div class="mini-card-list">${cards.length ? cards.join('') : '<div class="mini-empty">No hay trabajo pendiente de costura.</div>'}</div>
   `);
+}
+
+function setMiniCosturaPersona(nombre) {
+  miniCosturaPersona = nombre || 'todas';
+  localStorage.setItem('ws_mini_costura_persona', miniCosturaPersona);
+  renderMiniCostura();
+}
+
+function asignarSatelitePedidoMini(id) {
+  const sel = document.getElementById(`mini-sat-${id}`);
+  const nombre = sel ? sel.value : '';
+  if (!nombre) { toast('Escoge una costurera', 'error'); return; }
+  asignarSatelitePedido(id, nombre);
 }
 
 function tomarPedidoDisenoMini(id) {
@@ -414,7 +452,7 @@ function render() {
   if (typeof renderTableroPrincipal === 'function') safe('tablero-principal', renderTableroPrincipal);
   if (typeof renderTorreUnificada === 'function') safe('torre-unificada', renderTorreUnificada);
   safe('bandeja', renderBandeja);
-  ['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']
+  ['hacer-diseno','confirmado','enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final']
     .forEach(estado => safe('kanban-' + estado, () => renderKanban(estado)));
   safe('wt', cargarWT);
   safe('arreglos', renderArreglos);
@@ -427,7 +465,7 @@ function render() {
 /* ─── Métricas ────────────────────────────────────────────────── */
 function renderMetricas() {
   const total     = pedidos.filter(p => p.estado !== 'enviado-final').length;
-  const enProd    = pedidos.filter(p => ['llego-impresion','calidad','costura'].includes(p.estado)).length;
+  const enProd    = pedidos.filter(p => ['llego-impresion','corte','costura','en-satelite','calidad'].includes(p.estado)).length;
   const listos    = pedidos.filter(p => p.estado === 'listo').length;
   const enDiseno  = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
 
@@ -501,8 +539,10 @@ function renderDashboard() {
     { key: 'confirmado',       label: 'Confirmado',            color: '#fb923c' },
     { key: 'enviado-calandra', label: 'Enviado calandra',      color: '#06b6d4' },
     { key: 'llego-impresion',  label: 'Llegó impresión',       color: '#38bdf8' },
-    { key: 'calidad',          label: 'Control calidad',       color: '#fbbf24' },
+    { key: 'corte',            label: 'Corte',                 color: '#f97316' },
     { key: 'costura',          label: 'Costura',               color: '#f472b6' },
+    { key: 'en-satelite',      label: 'En costura',            color: '#a855f7' },
+    { key: 'calidad',          label: 'Revision final',        color: '#fbbf24' },
     { key: 'listo',            label: 'Listo p/entregar',      color: '#4ade80' },
   ];
   const contPipe = document.getElementById('dash-pipeline');
@@ -653,6 +693,7 @@ function renderMiDia(container) {
   }
   else if (userRol === 'produccion') {
     const porCortar = activos.filter(p => p.estado === 'llego-impresion');
+    const enCorte = activos.filter(p => p.estado === 'corte');
     const enCalidad = activos.filter(p => p.estado === 'calidad');
     
     tareas.push(`
@@ -661,43 +702,72 @@ function renderMiDia(container) {
         ${porCortar.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
-            <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Calidad →</button>
+            <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Corte →</button>
           </div>
         `).join('')}
         ${porCortar.length === 0 ? '<div class="dash-empty">No hay tela pendiente por cortar.</div>' : ''}
       </div>
     `);
+
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #a855f7;">
+        <div class="dash-panel-title">Corte terminado / Pasar a Costura (${enCorte.length})</div>
+        ${enCorte.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Costura →</button>
+          </div>
+        `).join('')}
+        ${enCorte.length === 0 ? '<div class="dash-empty">No hay pedidos cortados pendientes.</div>' : ''}
+      </div>
+    `);
     
     tareas.push(`
       <div class="dash-panel" style="border-left: 4px solid #fbbf24;">
-        <div class="dash-panel-title">🔍 Control de Calidad (${enCalidad.length})</div>
+        <div class="dash-panel-title">Revision Final (${enCalidad.length})</div>
         ${enCalidad.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
-            <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Aprobar Costura →</button>
+            <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Revision OK →</button>
           </div>
         `).join('')}
-        ${enCalidad.length === 0 ? '<div class="dash-empty">No hay pedidos en calidad.</div>' : ''}
+        ${enCalidad.length === 0 ? '<div class="dash-empty">No hay pedidos en revision final.</div>' : ''}
       </div>
     `);
   }
   else if (userRol === 'costura') {
-    const enCostura = activos.filter(p => p.estado === 'costura');
+    const enCostura = activos.filter(p => p.estado === 'costura' && !p.satelite);
+    const trabajando = activos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite));
     
     tareas.push(`
       <div class="dash-panel" style="border-left: 4px solid #f472b6;">
-        <div class="dash-panel-title">🧵 Pedidos Listos para Satélite (${enCostura.length})</div>
-        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Estos pedidos ya pasaron calidad y deben enviarse a un satélite.</div>
+        <div class="dash-panel-title">Pedidos para repartir en costura (${enCostura.length})</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Elige la persona de costura y entregale el pedido.</div>
         ${enCostura.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
             <div style="display:flex; gap:6px;">
                <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega'); document.getElementById('sat-equipo').value='${esc(p.equipo||p.telefono)}'">📦 Entregar</button>
-               <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Marcar Listo ✓</button>
             </div>
           </div>
         `).join('')}
         ${enCostura.length === 0 ? '<div class="dash-empty">No hay pedidos pendientes de costura.</div>' : ''}
+      </div>
+    `);
+
+    tareas.push(`
+      <div class="dash-panel" style="border-left: 4px solid #a855f7;">
+        <div class="dash-panel-title">En manos de costura (${trabajando.length})</div>
+        ${trabajando.map(p => `
+          <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">Costurera: ${esc(p.satelite || 'Sin asignar')}</div>
+            </div>
+            <button class="btn btn-success btn-sm" onclick="recibirSatelitePedido(${p.id}); setTimeout(render,100)">Recibi terminado</button>
+          </div>
+        `).join('')}
+        ${trabajando.length === 0 ? '<div class="dash-empty">Nadie tiene pedidos en costura ahora.</div>' : ''}
       </div>
     `);
   }
@@ -709,7 +779,7 @@ function renderMiDia(container) {
 function renderBadges() {
   const bandeja  = pedidos.filter(p => p.estado === 'bandeja').length;
   const diseno   = pedidos.filter(p => ['hacer-diseno','confirmado','enviado-calandra'].includes(p.estado)).length;
-  const prod     = pedidos.filter(p => ['llego-impresion','calidad','costura','listo'].includes(p.estado)).length;
+  const prod     = pedidos.filter(p => ['llego-impresion','corte','costura','en-satelite','calidad','listo'].includes(p.estado)).length;
   const total    = pedidos.filter(p => p.estado !== 'enviado-final').length;
   const setBadge = (id, value) => {
     const el = document.getElementById(id);
@@ -729,9 +799,11 @@ const TL_ETAPAS = [
   { key: 'confirmado',       label: 'Confirmado' },
   { key: 'enviado-calandra', label: 'Calandra'   },
   { key: 'llego-impresion',  label: 'Impresión'  },
-  { key: 'calidad',          label: 'Calidad'    },
+  { key: 'corte',            label: 'Corte'      },
   { key: 'arreglo',          label: 'Arreglo'    },
   { key: 'costura',          label: 'Costura'    },
+  { key: 'en-satelite',      label: 'En costura' },
+  { key: 'calidad',          label: 'Revision'   },
   { key: 'listo',            label: 'Listo'      },
 ];
 
@@ -900,6 +972,7 @@ const ETAPA_COLOR = {
   'enviado-calandra':  '#f97316',
   'llego-impresion':   '#f97316',
   'corte':             '#f59e0b',
+  'en-satelite':       '#a855f7',
   'calidad':           '#ef4444',
   'costura':           '#10b981',
   'listo':             '#10b981',
@@ -914,8 +987,9 @@ function irAlPedido(id) {
     'enviado-calandra':  'diseno',
     'llego-impresion':   'produccion',
     'corte':             'produccion',
+    'costura':           'satelites',
+    'en-satelite':       'satelites',
     'calidad':           'produccion',
-    'costura':           'produccion',
     'listo':             'envios',
     'enviado-final':     'envios',
   };
@@ -1275,13 +1349,27 @@ function renderKanbanCard(p) {
 }
 
 function getBotonLabel(estado) {
+  const flujoReal = {
+    'hacer-diseno': 'Confirmado',
+    'confirmado': 'A calandra',
+    'enviado-calandra': 'Llego impresion',
+    'llego-impresion': 'A corte',
+    'corte': 'A costura',
+    'costura': 'A revision',
+    'en-satelite': 'A revision',
+    'calidad': 'Listo',
+    'listo': 'Enviar',
+  };
+  if (flujoReal[estado]) return flujoReal[estado];
   const labels = {
     'hacer-diseno':     '✓ Confirmado',
     'confirmado':       '→ Calandra',
     'enviado-calandra': '→ Llegó impresión',
-    'llego-impresion':  '→ Calidad',
-    'calidad':          '→ Costura',
-    'costura':          '→ Listo',
+    'llego-impresion':  '→ Corte',
+    'corte':            '→ Costura',
+    'costura':          '→ Revision',
+    'en-satelite':      '→ Revision',
+    'calidad':          '→ Listo',
     'listo':            '→ Enviar',
   };
   return labels[estado] || '→ Siguiente';
@@ -1322,7 +1410,7 @@ function avanzar(id) {
   } else if (sig === 'enviado-calandra') {
     crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> enviado a <strong>calandra</strong>`, 'info', id);
   } else if (sig === 'llego-impresion') {
-    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llegó impresión — pasa a <strong>calidad</strong>`, 'info', id);
+    crearNotif(icono, `<strong>#${id} ${esc(nombre)}</strong> llego impresion, pasa a <strong>corte</strong>`, 'info', id);
   } else if (sig === 'enviado-final') {
     crearNotif('🚀', `<strong>#${id} ${esc(nombre)}</strong> <strong>enviado al cliente</strong> — pedido completado`, 'success', id);
   } else {
@@ -1528,14 +1616,29 @@ function avanzarDesdeBandeja(id) {
 }
 
 function getBandejaBotonLabel(estado) {
+  const flujoReal = {
+    'bandeja': 'Iniciar diseno',
+    'hacer-diseno': 'Diseno listo',
+    'confirmado': 'Enviar a calandra',
+    'enviado-calandra': 'Llego impresion',
+    'llego-impresion': 'Pasar a corte',
+    'corte': 'Pasar a costura',
+    'costura': 'Pasar a revision',
+    'en-satelite': 'Pasar a revision',
+    'calidad': 'Revision OK',
+    'listo': 'Entregar / Enviar',
+  };
+  if (flujoReal[estado]) return flujoReal[estado];
   const labels = {
     'bandeja':           '→ Iniciar diseño',
     'hacer-diseno':      '→ Diseño listo',
     'confirmado':        '→ Enviar a calandra',
     'enviado-calandra':  '→ Llegó impresión',
-    'llego-impresion':   '→ Calidad',
-    'calidad':           '→ Costura',
-    'costura':           '→ Listo',
+    'llego-impresion':   '→ Corte',
+    'corte':             '→ Costura',
+    'costura':           '→ Revision',
+    'en-satelite':       '→ Revision',
+    'calidad':           '→ Listo',
     'listo':             '→ Entregar / Enviar',
   };
   return labels[estado] || '→ Siguiente';
@@ -2648,7 +2751,7 @@ function recibirSatelitePedido(id) {
   if(!p || !p.satelite) return;
   const satelite = p.satelite;
   delete p.satelite;
-  p.estado = 'listo'; // Si ya volvió del satélite, asumo que está listo o pasa a revisión
+  p.estado = 'calidad';
   
   // Auto-registrar recepción
   const cant = p.cantidades ? p.cantidades.reduce((a,b)=>a+b.c,0) : 1;
@@ -2662,7 +2765,7 @@ function recibirSatelitePedido(id) {
   guardarSat_store();
   guardar();
   render();
-  toast(`Pedido #${id} recibido de ${satelite}. Marcado como LISTO.`, 'success');
+  toast(`Pedido #${id} recibido de ${satelite}. Pasa a revision final.`, 'success');
 }
 
 
@@ -3959,8 +4062,9 @@ function renderTorreControl() {
     confirmado: activos.filter(p => p.estado === 'confirmado').length,
     calandra: activos.filter(p => p.estado === 'enviado-calandra').length,
     impresion: activos.filter(p => p.estado === 'llego-impresion').length,
+    corte: activos.filter(p => p.estado === 'corte').length,
     calidad: activos.filter(p => p.estado === 'calidad').length,
-    costura: activos.filter(p => p.estado === 'costura').length,
+    costura: activos.filter(p => ['costura','en-satelite'].includes(p.estado)).length,
     listo: activos.filter(p => p.estado === 'listo').length,
   };
 
@@ -3969,7 +4073,7 @@ function renderTorreControl() {
   todos.forEach(p => {
     const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
     if (t < haceSemana) return;
-    if (!['hacer-diseno', 'confirmado', 'enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo', 'enviado-final'].includes(p.estado)) return;
+    if (!['hacer-diseno', 'confirmado', 'enviado-calandra', 'llego-impresion', 'corte', 'costura', 'en-satelite', 'calidad', 'listo', 'enviado-final'].includes(p.estado)) return;
     const v = p.vendedora || 'Sin asignar';
     ventasSemana[v] = (ventasSemana[v] || 0) + 1;
   });
@@ -3983,7 +4087,7 @@ function renderTorreControl() {
   html += _kpiCard('Hacer Diseño', cnt.hacerDiseno, '#fb923c', 'Esperando arte');
   html += _kpiCard('Confirmado', cnt.confirmado, '#a78bfa', 'Esperando PDF+WT');
   html += _kpiCard('Calandra', cnt.calandra, '#67e8f9', 'En impresión');
-  html += _kpiCard('Producción', cnt.impresion + cnt.calidad + cnt.costura, '#34d399', 'Cortando/cosiendo');
+  html += _kpiCard('Producción', cnt.impresion + cnt.corte + cnt.costura + cnt.calidad, '#34d399', 'Corte/costura/revision');
   html += _kpiCard('Listos', cnt.listo, '#22c55e', 'Para entregar');
   html += '</div>';
 
@@ -4051,9 +4155,10 @@ const TAB_PRINCIPAL_MAP = {
   'enviado-calandra':  { col: 'produccion',    orden: 0, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
   'llego-impresion':   { col: 'produccion',    orden: 1, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
   'corte':             { col: 'produccion',    orden: 2, badge: { texto: '✂️ corte',     clase: 'sub-calidad'   } },
-  'calidad':           { col: 'produccion',    orden: 2, badge: { texto: '🔍 calidad',   clase: 'sub-calidad'   } },
   'costura':           { col: 'produccion',    orden: 3, badge: { texto: '🪡 costura',   clase: 'sub-listo'     } },
-  'listo':             { col: 'produccion',    orden: 4, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
+  'en-satelite':       { col: 'produccion',    orden: 4, badge: { texto: '🪡 en costura', clase: 'sub-listo'     } },
+  'calidad':           { col: 'produccion',    orden: 5, badge: { texto: '🔍 revision',  clase: 'sub-calidad'   } },
+  'listo':             { col: 'produccion',    orden: 6, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
   'enviado-final':     { col: 'enviados',      orden: 0 },
 };
 var _tabPrincipalFiltro = '';
@@ -4091,7 +4196,7 @@ function renderTorreUnificada() {
 
   // KPIs por estado
   const enDiseno = activos.filter(p => ['bandeja', 'hacer-diseno'].includes(p.estado)).length;
-  const enProduccion = activos.filter(p => ['confirmado', 'enviado-calandra', 'llego-impresion'].includes(p.estado)).length;
+  const enProduccion = activos.filter(p => ['confirmado', 'enviado-calandra', 'llego-impresion', 'corte', 'costura', 'en-satelite', 'calidad'].includes(p.estado)).length;
   const listos = activos.filter(p => p.estado === 'listo').length;
   const entregadosHoy = activos.filter(p => {
     if (p.estado !== 'enviado-final') return false;
@@ -4128,7 +4233,7 @@ function renderTorreUnificada() {
     hd: activos.filter(p => p.estado === 'bandeja').length,
     v: activos.filter(p => p.estado === 'hacer-diseno').length,
     a: activos.filter(p => p.estado === 'confirmado').length,
-    e: activos.filter(p => ['enviado-calandra', 'llego-impresion', 'listo', 'enviado-final'].includes(p.estado)).length,
+    e: activos.filter(p => ['enviado-calandra', 'llego-impresion', 'corte', 'costura', 'en-satelite', 'calidad', 'listo', 'enviado-final'].includes(p.estado)).length,
   };
 
   // Ranking vendedoras (ventas este mes — pedidos creados en hacer-diseno o más allá)
@@ -4319,8 +4424,11 @@ function renderTableroPrincipal() {
         // Botón de acción rápida según el estado actual (1 toque, sin modal)
         const ACCIONES_RAPIDAS = {
           'enviado-calandra': { proximo: 'llego-impresion', texto: '✅ Llegó impresión', color: '#0ea5e9' },
-          'llego-impresion':  { proximo: 'costura',         texto: '→ Enviado a costura', color: '#a855f7' },
-          'costura':          { proximo: 'listo',           texto: '✅ Listo para envío', color: '#22c55e' },
+          'llego-impresion':  { proximo: 'corte',           texto: '→ Pasar a corte', color: '#f97316' },
+          'corte':            { proximo: 'costura',         texto: '→ Pasar a costura', color: '#a855f7' },
+          'costura':          { proximo: 'calidad',         texto: '→ Pasar a revision', color: '#eab308' },
+          'en-satelite':      { proximo: 'calidad',         texto: '→ Recibido / revision', color: '#eab308' },
+          'calidad':          { proximo: 'listo',           texto: '✅ Revision OK', color: '#22c55e' },
           'listo':            { proximo: 'enviado-final',   texto: '📦 Entregado al cliente', color: '#16a34a' },
         };
         const accion = ACCIONES_RAPIDAS[p.estado];
@@ -4379,6 +4487,10 @@ const ETAPAS_FLUJO = [
   { id: 'confirmado',       label: 'Aprobado (Diseño OK)' },
   { id: 'enviado-calandra', label: 'Enviado a calandra' },
   { id: 'llego-impresion',  label: 'Llegó impresión' },
+  { id: 'corte',            label: 'Corte' },
+  { id: 'costura',          label: 'Costura' },
+  { id: 'en-satelite',      label: 'En costura' },
+  { id: 'calidad',          label: 'Revision final' },
   { id: 'listo',            label: 'Listo' },
   { id: 'enviado-final',    label: 'Entregado al cliente' },
 ];

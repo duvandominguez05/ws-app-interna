@@ -213,15 +213,16 @@ function resumenRolesOperativos() {
     },
     produccion: {
       link: 'https://ws-app-interna-production.up.railway.app/produccion.html',
-      trabajo: pedidos.filter(p => ['enviado-calandra','llego-impresion','corte','calidad','costura','listo'].includes(p.estado)).length,
+      trabajo: pedidos.filter(p => ['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo'].includes(p.estado)).length,
       vencidos: vencidos.length,
       hoy: hoyEntrega.length,
       sinMovimiento: sinMovimiento.length,
     },
     costura: {
       link: 'https://ws-app-interna-production.up.railway.app/#/satelites',
-      paraCostura: pedidos.filter(p => p.estado === 'costura').length,
-      listos: pedidos.filter(p => p.estado === 'listo').length,
+      paraCostura: pedidos.filter(p => p.estado === 'costura' && !p.satelite).length,
+      trabajando: pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite)).length,
+      revision: pedidos.filter(p => p.estado === 'calidad').length,
       satelites: db.leerSatelites().length,
     },
     admin: {
@@ -250,7 +251,7 @@ function textoRecordatorioRoles(resumen) {
     `*Producción:* ${resumen.produccion.trabajo} en trabajo · ${resumen.produccion.hoy} para hoy · ${resumen.produccion.vencidos} vencidos`,
     resumen.produccion.link,
     '',
-    `*Costura:* ${resumen.costura.paraCostura} para costura · ${resumen.costura.listos} listos`,
+    `*Costura:* ${resumen.costura.paraCostura} por asignar · ${resumen.costura.trabajando} en manos de costura · ${resumen.costura.revision} en revision`,
     resumen.costura.link,
     '',
     'Instalen el link como app en la pantalla principal del celular.'
@@ -753,7 +754,7 @@ async function archivarYBorrarPedido(pedidoId) {
 
 const ESTADOS_VALIDOS = [
   'bandeja','hacer-diseno','confirmado','enviado-calandra',
-  'llego-impresion','corte','calidad','costura','en-satelite','listo','enviado-final'
+  'llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'
 ];
 
 // ── Matching de nombres de archivo a equipos ───────────────────
@@ -799,20 +800,20 @@ function buscarPedidoPorArchivo(pedidos, archivo, equipoHint) {
   if (!refLimpio) return null;
   // 1) Coincidencia con alias guardado (más fuerte: aprendido manualmente)
   let pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
     const aliases = Array.isArray(p.archivosAlias) ? p.archivosAlias : [];
     return aliases.some(a => a === refLimpio || a.includes(refLimpio) || refLimpio.includes(a));
   });
   if (pd) return pd;
   // 2) Coincidencia con equipo
   pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
     return nombresCoinciden(p.equipo, ref);
   });
   if (pd) return pd;
   // 3) Coincidencia con cliente (a veces el archivo se llama como el cliente, no como el equipo)
   pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final'].includes(p.estado)) return false;
+    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
     return p.cliente && nombresCoinciden(p.cliente, ref);
   });
   return pd || null;
@@ -993,7 +994,7 @@ http.createServer((req, res) => {
         // Pre-calcular: telefonos de clientes con pedido ACTIVO en producción
         // (si ya tienen pedido en curso, un nuevo comprobante es el saldo final, NO venta nueva)
         const pedidosActivos = leerPedidos();
-        const ESTADOS_EN_CURSO = new Set(['hacer-diseno','confirmado','enviado-calandra','llego-impresion','calidad','costura','listo']);
+        const ESTADOS_EN_CURSO = new Set(['hacer-diseno','confirmado','enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo']);
         const telsEnCurso = new Set(
           pedidosActivos
             .filter(p => ESTADOS_EN_CURSO.has(p.estado))
@@ -1515,8 +1516,9 @@ http.createServer((req, res) => {
               '🎨': { accion: 'diseno-confirmado', tipoBandeja: 'pedido', estadoFinal: 'confirmado', requierePedidoEnHacerDiseno: true },
               // === Cierre de flujo de taller ===
               '📦': { accion: 'llego-impresion', avancePedido: { de: 'enviado-calandra', a: 'llego-impresion' } },
-              '🪡': { accion: 'costura-lista', avancePedido: { de: 'llego-impresion', a: 'listo' } },
-              '🧵': { accion: 'costura-lista', avancePedido: { de: 'llego-impresion', a: 'listo' } },
+              '✂️': { accion: 'corte-listo', avancePedido: { de: 'llego-impresion', a: 'corte' } },
+              '🪡': { accion: 'costura-lista', avancePedido: { de: 'costura', a: 'calidad' } },
+              '🧵': { accion: 'costura-lista', avancePedido: { de: 'en-satelite', a: 'calidad' } },
               '✅': { accion: 'entregado', avancePedido: { de: 'listo', a: 'enviado-final' } },
             };
             const config = MAPA_REACCIONES[emoji];
@@ -2563,7 +2565,7 @@ http.createServer((req, res) => {
 
       // Cargar pedidos solo si hay candidatos
       const pedidosCur = leerPedidos();
-      const ESTADOS_CERRADOS = new Set(['enviado-calandra','llego-impresion','calidad','costura','listo','enviado-final']);
+      const ESTADOS_CERRADOS = new Set(['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final']);
       const pedidosActivos = pedidosCur.filter(p => !ESTADOS_CERRADOS.has(p.estado));
 
       // Build de claves planas (Set de strings) para lookup O(1) aprox
