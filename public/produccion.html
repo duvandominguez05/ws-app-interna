@@ -413,11 +413,12 @@
     let filtroActivo = 'todos';
     let pedidoDetalle = null;
 
-    const ESTADOS = ['enviado-calandra', 'llego-impresion', 'calidad', 'costura', 'listo'];
+    const ESTADOS = ['enviado-calandra', 'llego-impresion', 'corte', 'calidad', 'costura', 'listo'];
     const FILTROS = [
       ['todos', 'Todo'],
       ['enviado-calandra', 'Calandra'],
       ['llego-impresion', 'Llego'],
+      ['corte', 'Corte'],
       ['calidad', 'Calidad'],
       ['costura', 'Costura'],
       ['listo', 'Listo']
@@ -425,6 +426,7 @@
     const LABELS = {
       'enviado-calandra': 'Calandra',
       'llego-impresion': 'Llego impresion',
+      'corte': 'Corte',
       'calidad': 'Calidad',
       'costura': 'Costura',
       'listo': 'Listo'
@@ -432,6 +434,7 @@
     const ACCIONES = {
       'enviado-calandra': { proximo: 'llego-impresion', texto: 'Llego impresion', clase: 'a-cyan' },
       'llego-impresion': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
+      'corte': { proximo: 'calidad', texto: 'Pasar a calidad', clase: 'a-purple' },
       'calidad': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
       'costura': { proximo: 'listo', texto: 'Marcar listo', clase: 'a-green' },
       'listo': { proximo: 'enviado-final', texto: 'Entregado', clase: 'a-dark' }

@@ -2157,6 +2157,32 @@
   line-height: 1.45;
   margin-bottom: 22px;
 }
+.mobile-quick-card {
+  width: 100%;
+  border: 1px solid rgba(34,197,94,0.35);
+  border-radius: 16px;
+  background: rgba(34,197,94,0.10);
+  color: var(--text);
+  padding: 16px;
+  margin-bottom: 12px;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.mobile-quick-card small {
+  display: block;
+  color: #bbf7d0;
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 4px;
+}
+.mobile-quick-card strong {
+  display: block;
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+}
 .mobile-role-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2389,7 +2415,8 @@ body.modo-miniapp .mini-role-screen { display: block; }
 .btn-salir-miniapp {
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  left: 16px;
+  right: auto;
   background: var(--red);
   color: white;
   padding: 12px 24px;
@@ -2397,7 +2424,7 @@ body.modo-miniapp .mini-role-screen { display: block; }
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
   cursor: pointer;
-  z-index: 9999;
+  z-index: 10020;
   box-shadow: 0 4px 15px rgba(244,63,94,0.4);
   border: none;
   font-size: 1rem;

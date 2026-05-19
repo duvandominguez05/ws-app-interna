@@ -10,6 +10,7 @@ const SIGUIENTE = {
   'confirmado':       'enviado-calandra',
   'enviado-calandra': 'llego-impresion',
   'llego-impresion':  'calidad',
+  'corte':            'calidad',
   'calidad':          'costura',
   'costura':          'listo',
   'listo':            'enviado-final',
@@ -23,6 +24,7 @@ const ESTADO_LABELS = {
   'confirmado':        'Confirmado',
   'enviado-calandra':  'En calandra',
   'llego-impresion':   'Llegó impresión',
+  'corte':             'Corte',
   'calidad':           'Control Calidad',
   'costura':           'Costura',
   'listo':             'Listo',
@@ -35,6 +37,7 @@ const ESTADO_BADGE = {
   'confirmado':        'badge-diseno',
   'enviado-calandra':  'badge-diseno',
   'llego-impresion':   'badge-produccion',
+  'corte':             'badge-produccion',
   'calidad':           'badge-calidad',
   'costura':           'badge-produccion',
   'listo':             'badge-listo',
@@ -206,6 +209,7 @@ function closeSidebar() {
    RENDER PRINCIPAL
 ════════════════════════════════════════════════════════════════ */
 function abrirRolMovil(rol) {
+  localStorage.setItem('ws_mobile_last_role', rol);
   if (rol === 'produccion') {
     location.href = '/produccion.html';
     return;
@@ -218,6 +222,24 @@ function abrirRolMovil(rol) {
   const destino = rol === 'ventas' ? 'bandeja' : rol === 'diseno' ? 'diseno' : 'satelites';
   modoMiniApp(destino);
   showSection(destino, null);
+}
+
+function renderMobileQuickAccess() {
+  const cont = document.getElementById('mobile-quick-access');
+  if (!cont) return;
+  const rol = localStorage.getItem('ws_mobile_last_role');
+  const labels = {
+    ventas: 'Ventas',
+    diseno: 'Diseno',
+    produccion: 'Produccion',
+    satelites: 'Costura',
+    admin: 'Admin'
+  };
+  if (!rol || !labels[rol]) {
+    cont.innerHTML = '';
+    return;
+  }
+  cont.innerHTML = `<button class="mobile-quick-card" onclick="abrirRolMovil('${rol}')"><small>Acceso rapido</small><strong>Entrar a ${labels[rol]}</strong></button>`;
 }
 
 function miniEnsure(sectionId, html) {
@@ -262,6 +284,7 @@ function miniCard(p, options = {}) {
 }
 
 function renderMiniRoleViews() {
+  renderMobileQuickAccess();
   renderMiniVentas();
   renderMiniDiseno();
   renderMiniCostura();
@@ -829,6 +852,7 @@ const ETAPA_COLOR = {
   'confirmado':        '#06b6d4',
   'enviado-calandra':  '#f97316',
   'llego-impresion':   '#f97316',
+  'corte':             '#f59e0b',
   'calidad':           '#ef4444',
   'costura':           '#10b981',
   'listo':             '#10b981',
@@ -842,6 +866,7 @@ function irAlPedido(id) {
     'confirmado':        'diseno',
     'enviado-calandra':  'diseno',
     'llego-impresion':   'produccion',
+    'corte':             'produccion',
     'calidad':           'produccion',
     'costura':           'produccion',
     'listo':             'envios',
@@ -3793,15 +3818,19 @@ window.addEventListener('DOMContentLoaded', () => {
   if (selDis) selDis.value = _tabPrincipalDisFiltro || 'todos';
   const hash = window.location.hash;
   if(hash === '#/ventas') {
+    localStorage.setItem('ws_mobile_last_role', 'ventas');
     modoMiniApp('bandeja');
     showSection('bandeja', document.querySelector('[onclick*="bandeja"]'));
   } else if(hash === '#/diseno') {
+    localStorage.setItem('ws_mobile_last_role', 'diseno');
     modoMiniApp('diseno');
     showSection('diseno', document.querySelector('[onclick*="diseno"]'));
   } else if(hash === '#/produccion') {
+    localStorage.setItem('ws_mobile_last_role', 'produccion');
     modoMiniApp('produccion');
     showSection('produccion', document.querySelector('[onclick*="produccion"]'));
   } else if(hash === '#/satelites') {
+    localStorage.setItem('ws_mobile_last_role', 'satelites');
     modoMiniApp('satelites');
     showSection('satelites', document.querySelector('[onclick*="satelites"]'));
   } else if(hash === '#/movil') {
@@ -3973,6 +4002,7 @@ const TAB_PRINCIPAL_MAP = {
   'confirmado':        { col: 'aprobados',     orden: 0, badge: null },
   'enviado-calandra':  { col: 'produccion',    orden: 0, badge: { texto: '📦 calandra',  clase: 'sub-calandra'  } },
   'llego-impresion':   { col: 'produccion',    orden: 1, badge: { texto: '🖨️ impresión', clase: 'sub-impresion' } },
+  'corte':             { col: 'produccion',    orden: 2, badge: { texto: '✂️ corte',     clase: 'sub-calidad'   } },
   'calidad':           { col: 'produccion',    orden: 2, badge: { texto: '🔍 calidad',   clase: 'sub-calidad'   } },
   'costura':           { col: 'produccion',    orden: 3, badge: { texto: '🪡 costura',   clase: 'sub-listo'     } },
   'listo':             { col: 'produccion',    orden: 4, badge: { texto: '✅ listo',     clase: 'sub-listo'     } },
