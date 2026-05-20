@@ -926,6 +926,104 @@ http.createServer((req, res) => {
     return;
   }
 
+  // ── POST /api/pedidos/:id/foto-costura ──
+  // Recibe { fotoBase64: "data:image/jpeg;base64,..." } desde la app de la
+  // costurera al pulsar "Terminé". Guarda la foto en disco, registra en
+  // historial con la persona del header X-Ws-Persona, y avanza el estado a
+  // 'calidad' automáticamente. La foto queda referenciada en p.fotosCostura.
+  if (req.method === 'POST' && req.url.match(/^\/api\/pedidos\/\d+\/foto-costura$/)) {
+    const id = parseInt(req.url.split('/')[3]);
+    const persona = leerPersonaRequest(req);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { fotoBase64 } = JSON.parse(body || '{}');
+        if (!fotoBase64 || typeof fotoBase64 !== 'string') {
+          return json(res, 400, { error: 'falta fotoBase64' });
+        }
+        const m = fotoBase64.match(/^data:(image\/(jpeg|jpg|png|webp));base64,(.+)$/);
+        if (!m) return json(res, 400, { error: 'fotoBase64 invalido (debe ser data URL image/*)' });
+        const ext = m[2] === 'jpg' ? 'jpg' : m[2];
+        const datos = Buffer.from(m[3], 'base64');
+        // Límite generoso para fotos de celular (8 MB)
+        if (datos.length > 8 * 1024 * 1024) {
+          return json(res, 413, { error: 'foto demasiado grande (max 8 MB)' });
+        }
+
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+
+        // Guardar foto en disco
+        const dirFotos = path.join(__dirname, 'data', 'fotos-costura');
+        try { fs.mkdirSync(dirFotos, { recursive: true }); } catch (e) {}
+        const ts = Date.now();
+        const slug = persona ? persona.slug : 'sin-persona';
+        const nombreArchivo = `${id}_${slug}_${ts}.${ext}`;
+        const rutaFoto = path.join(dirFotos, nombreArchivo);
+        fs.writeFileSync(rutaFoto, datos);
+
+        // Actualizar pedido
+        const estadoAnterior = p.estado;
+        const sateliteAnterior = p.satelite || (persona ? persona.nombre : null);
+        p.estado = 'calidad';
+        delete p.satelite;
+        p.ultimoMovimiento = new Date().toISOString();
+        p.fotosCostura = p.fotosCostura || [];
+        p.fotosCostura.push({
+          archivo: nombreArchivo,
+          url: `/data/fotos-costura/${nombreArchivo}`,
+          por: persona ? persona.slug : null,
+          satelite: sateliteAnterior,
+          fecha: p.ultimoMovimiento,
+        });
+        if (persona) {
+          p.ultimoMovimientoPor = persona.slug;
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: p.ultimoMovimiento,
+            por: persona.slug,
+            accion: 'termine-costura',
+            de: estadoAnterior,
+            a: 'calidad',
+            foto: nombreArchivo,
+          });
+        }
+        guardarPedidos(pedidos, leerNextId());
+
+        console.log(`[foto-costura] #${id} terminado por ${slug} (${datos.length} bytes)`);
+        return json(res, 200, {
+          ok: true,
+          estado: 'calidad',
+          foto: { archivo: nombreArchivo, url: `/data/fotos-costura/${nombreArchivo}` },
+        });
+      } catch (e) {
+        console.error('[foto-costura] error', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── GET /data/fotos-costura/:archivo ── servir foto de costura ──
+  if (req.method === 'GET' && req.url.startsWith('/data/fotos-costura/')) {
+    const archivo = req.url.split('/').pop().split('?')[0];
+    // Validar nombre (solo caracteres seguros: letras, números, guion, punto)
+    if (!/^[\w.\-]+$/.test(archivo)) {
+      res.writeHead(400); return res.end('nombre invalido');
+    }
+    const ruta = path.join(__dirname, 'data', 'fotos-costura', archivo);
+    return fs.readFile(ruta, (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      const ext = path.extname(archivo).toLowerCase();
+      const ct = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      cors(res);
+      res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
+      res.end(data);
+    });
+  }
+
   // ── DELETE /api/pedidos/:id — borra un pedido del servidor ──
   // -- PATCH /api/pedidos/:id -- actualiza campos puntuales de un pedido.
   // Usado por mini-vistas moviles para editar sin resincronizar todo el tablero.

@@ -520,7 +520,7 @@ function renderMiniCostura() {
       clase: 'good',
       next: 'Cuando termines este pedido',
       body: `<div class="mini-card-meta"><span class="mini-chip">Asignado a: ${esc(miniCosturaPersona)}</span></div>`,
-      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="recibirSatelitePedido(${p.id})"><small>Tocar aqui</small>Ya termine</button></div>`
+      actions: `<div class="mini-actions"><button class="mini-btn green" onclick="terminarPedidoCosturaConFoto(${p.id})"><small>Toma una foto del pedido cosido</small>📸 Terminé</button></div>`
     }));
     miniEnsure('satelites', `
       <div class="mini-role-top costurera-simple">
@@ -2910,6 +2910,82 @@ function asignarSatelitePedido(id, satelite) {
   guardar();
   render();
   toast(`Pedido #${id} enviado a ${satelite}`, 'success');
+}
+
+// Flujo costurera personal: foto obligatoria al terminar.
+// Abre la cámara del celular (capture="environment"), comprime la foto y
+// la sube a /api/pedidos/:id/foto-costura. El backend avanza a 'calidad'
+// y registra en historial quién terminó (vía X-Ws-Persona).
+function terminarPedidoCosturaConFoto(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  let input = document.getElementById('input-foto-costura');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.id = 'input-foto-costura';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+  }
+  input.dataset.pedidoId = String(id);
+  input.value = '';
+  input.onchange = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      toast('Procesando foto...', 'info');
+      const fotoBase64 = await _comprimirImagenAFile(file, 1600, 0.78);
+      const r = await fetch(`/api/pedidos/${id}/foto-costura`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fotoBase64 }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo subir la foto');
+      // Refrescar pedidos del servidor para que la vista se actualice
+      try {
+        const rp = await fetch('/api/pedidos');
+        const dp = await rp.json();
+        pedidos = dp.pedidos || dp;
+      } catch (e) {}
+      try { guardar(); } catch (e) {}
+      try { render(); } catch (e) {}
+      renderMiniCostura();
+      toast(`✅ Pedido #${id} terminado. Pasa a revisión.`, 'success');
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  };
+  input.click();
+}
+
+// Reduce la imagen a maxLado px y JPEG calidad q. Devuelve data URL base64.
+function _comprimirImagenAFile(file, maxLado, q) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (Math.max(w, h) > maxLado) {
+          const escala = maxLado / Math.max(w, h);
+          w = Math.round(w * escala);
+          h = Math.round(h * escala);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', q || 0.78));
+      };
+      img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function recibirSatelitePedido(id) {
