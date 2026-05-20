@@ -4,6 +4,7 @@ const path = require('path');
 const { webcrypto } = require('crypto');
 if (!global.crypto) global.crypto = webcrypto;
 const db   = require('./db');
+const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -81,8 +82,15 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Ws-Persona');
+}
+
+// Lee de los headers la persona que está usando la app (slug).
+// Devuelve un objeto persona del roster o null si no se reconoce.
+function leerPersonaRequest(req) {
+  const slug = req.headers['x-ws-persona'];
+  return getPersona(slug);
 }
 
 function json(res, code, obj) {
@@ -876,6 +884,7 @@ http.createServer((req, res) => {
   // Body: { estado: 'llego-impresion' }. Si llega a enviado-final, auto-archiva en Notion.
   if (req.method === 'POST' && req.url.match(/^\/api\/pedidos\/\d+\/avanzar$/)) {
     const id = parseInt(req.url.split('/')[3]);
+    const persona = leerPersonaRequest(req);
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
@@ -886,8 +895,20 @@ http.createServer((req, res) => {
           const pedidos = leerPedidos();
           const p = pedidos.find(x => x.id === id);
           if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+          const estadoAnterior = p.estado;
           p.estado = estado;
           p.ultimoMovimiento = new Date().toISOString();
+          if (persona) {
+            p.ultimoMovimientoPor = persona.slug;
+            p.historial = p.historial || [];
+            p.historial.push({
+              fecha: p.ultimoMovimiento,
+              por: persona.slug,
+              accion: 'avanzar',
+              de: estadoAnterior,
+              a: estado,
+            });
+          }
           guardarPedidos(pedidos, leerNextId());
           // Auto-archive si llegó al final
           if (estado === 'enviado-final') {
@@ -910,6 +931,7 @@ http.createServer((req, res) => {
   // Usado por mini-vistas moviles para editar sin resincronizar todo el tablero.
   if (req.method === 'PATCH' && req.url.match(/^\/api\/pedidos\/\d+$/)) {
     const id = parseInt(req.url.split('/')[3]);
+    const persona = leerPersonaRequest(req);
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
@@ -922,10 +944,24 @@ http.createServer((req, res) => {
         const pedidos = leerPedidos();
         const p = pedidos.find(x => x.id === id);
         if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        const cambiosAplicados = {};
         for (const [k, v] of Object.entries(cambios)) {
-          if (permitidos.has(k)) p[k] = v;
+          if (permitidos.has(k)) {
+            cambiosAplicados[k] = { de: p[k], a: v };
+            p[k] = v;
+          }
         }
         p.ultimoMovimiento = new Date().toISOString();
+        if (persona && Object.keys(cambiosAplicados).length) {
+          p.ultimoMovimientoPor = persona.slug;
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: p.ultimoMovimiento,
+            por: persona.slug,
+            accion: 'patch',
+            cambios: cambiosAplicados,
+          });
+        }
         guardarPedidos(pedidos, leerNextId());
         return json(res, 200, { ok: true, pedido: p });
       } catch (e) {
@@ -2991,6 +3027,94 @@ http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(data);
     });
+  }
+
+  // ── GET /api/personas — roster completo (slug, nombre, roles, color, vistaInicial) ──
+  if (req.method === 'GET' && req.url === '/api/personas') {
+    return json(res, 200, { personas: PERSONAS });
+  }
+
+  // ── GET /manifest/:slug — manifest PWA personalizado por persona ──
+  // Cada celular instala SU app dedicada apuntando a este manifest.
+  if (req.method === 'GET' && req.url.startsWith('/manifest/')) {
+    const slug = req.url.split('/')[2];
+    const persona = getPersona(slug);
+    if (!persona) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'persona no encontrada' }));
+    }
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
+    return res.end(JSON.stringify(manifestParaPersona(persona), null, 2));
+  }
+
+  // ── GET /app/:slug — página de bienvenida que setea localStorage y redirige ──
+  // Es a este URL que se apuntan los links/QR personales: al abrirlo,
+  // el celular ve el manifest personalizado y ofrece "Instalar app".
+  if (req.method === 'GET' && req.url.startsWith('/app/')) {
+    const slug = req.url.split('/')[2].split('?')[0];
+    const persona = getPersona(slug);
+    if (!persona) {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<h1>Persona no encontrada</h1><p><a href="/#/movil">Volver al hub</a></p>');
+    }
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W&amp;S ${persona.nombre}</title>
+<link rel="manifest" href="/manifest/${persona.slug}">
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="W&amp;S ${persona.nombre}">
+<meta name="theme-color" content="${persona.color}">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Inter,sans-serif;background:#0f1117;color:#eef5ff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+  .card{max-width:380px;width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:20px;padding:32px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.45)}
+  .emoji{font-size:64px;line-height:1;margin-bottom:10px}
+  h1{font-size:1.6rem;margin-bottom:6px;color:${persona.color}}
+  .sub{color:#93a4b8;font-size:0.9rem;margin-bottom:24px}
+  .roles{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:22px}
+  .rol{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);padding:4px 10px;border-radius:999px;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;color:#cbd5e1}
+  .btn{display:block;width:100%;background:${persona.color};color:#0f1117;font-weight:700;padding:14px 18px;border-radius:12px;text-decoration:none;font-size:1rem;margin-top:6px}
+  .hint{margin-top:18px;font-size:0.78rem;color:#93a4b8;line-height:1.5}
+  .hint strong{color:#eef5ff}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="emoji">${persona.emoji}</div>
+  <h1>${persona.nombre}</h1>
+  <div class="sub">Tu app personal — W&amp;S Textil</div>
+  <div class="roles">${persona.roles.map(r => `<span class="rol">${r}</span>`).join('')}</div>
+  <a class="btn" id="ir" href="${persona.vistaInicial}">Entrar</a>
+  <div class="hint">
+    <strong>Para instalar en tu celular:</strong><br>
+    1. Pulsa el menú del navegador (⋮).<br>
+    2. Elige <em>Instalar app</em> o <em>Añadir a pantalla de inicio</em>.<br>
+    3. Quedará un ícono con tu nombre.
+  </div>
+</div>
+<script>
+  try {
+    localStorage.setItem('ws_persona', ${JSON.stringify(persona.slug)});
+    localStorage.setItem('ws_persona_nombre', ${JSON.stringify(persona.nombre)});
+  } catch (e) {}
+  // Auto-entrar después de 1.5s si NO está siendo abierta como PWA standalone.
+  // Si está en modo standalone (instalada), entra inmediatamente.
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isStandalone) {
+    window.location.replace(${JSON.stringify(persona.vistaInicial)});
+  }
+</script>
+</body>
+</html>`;
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(html);
   }
 
   // ── Archivos estáticos ──────────────────────────────────────

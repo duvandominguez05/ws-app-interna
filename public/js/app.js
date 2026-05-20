@@ -360,10 +360,52 @@ function miniCard(p, options = {}) {
 function renderMiniRoleViews() {
   renderInstallCard();
   renderMobileQuickAccess();
+  renderPersonalApps();
   renderStaffAccess();
   renderMiniVentas();
   renderMiniDiseno();
   renderMiniCostura();
+}
+
+// Carga el roster desde /api/personas y dibuja una tarjeta por persona
+// con el link a /app/:slug. Cada uno puede abrir SU app y desde el celular
+// pulsar "Instalar app" para tenerla con su nombre en la pantalla principal.
+let _personasCache = null;
+async function renderPersonalApps() {
+  const cont = document.getElementById('mobile-personal-apps');
+  if (!cont) return;
+  try {
+    if (!_personasCache) {
+      const r = await fetch('/api/personas');
+      const d = await r.json();
+      _personasCache = d.personas || [];
+    }
+    const actual = (window.WS_PERSONA && WS_PERSONA.slug) || '';
+    const filas = _personasCache.map(p => {
+      const esActual = p.slug === actual;
+      return `<a class="mini-persona-card${esActual ? ' actual' : ''}" href="/app/${p.slug}" style="--color:${p.color};">
+        <span class="mini-persona-emoji">${p.emoji}</span>
+        <div class="mini-persona-body">
+          <strong>${esc(p.nombre)}</strong>
+          <small>${p.roles.join(' · ')}</small>
+        </div>
+        <span class="mini-persona-arrow">${esActual ? '✓ Tu app' : 'Abrir →'}</span>
+      </a>`;
+    }).join('');
+    cont.innerHTML = `
+      <div class="mobile-staff-panel">
+        <div class="mobile-staff-title">Tu app personal</div>
+        <p style="margin:0 0 10px;color:var(--text-muted);font-size:0.78rem;">
+          Abre el link con tu nombre y pulsa <strong>Instalar app</strong> desde el menú del navegador.
+          Cada quien queda con su ícono propio.
+        </p>
+        <div class="mini-persona-grid">${filas}</div>
+      </div>
+    `;
+  } catch (e) {
+    console.warn('[personas] no se pudo cargar', e);
+    cont.innerHTML = '';
+  }
 }
 
 function renderMiniVentas() {
