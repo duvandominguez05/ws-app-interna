@@ -199,6 +199,7 @@ function guardar() {
    NAVEGACIÓN
 ════════════════════════════════════════════════════════════════ */
 const HEADER_INFO = {
+  'mi-dia':            { icon: '☀️', title: 'Mi Día' },
   'mobile-role-hub':   { icon: '📱', title: 'Areas moviles' },
   'vista-general': { icon: '📊', title: 'Vista general' },
   'torre':         { icon: '🗼', title: 'Torre de Control' },
@@ -240,6 +241,9 @@ function showSection(id, navEl) {
 
   closeSidebar();
   render();
+  if (id === 'mi-dia' && typeof renderMiDia === 'function') {
+    try { renderMiDia(); } catch (e) { console.error('[mi-dia]', e); }
+  }
 }
 
 function toggleSidebar() {
@@ -305,6 +309,12 @@ function abrirWorkerRole(nombre, rol) {
 function renderMobileQuickAccess() {
   const cont = document.getElementById('mobile-quick-access');
   if (!cont) return;
+  // Si la persona ya está identificada, mostrar acceso directo a Mi Día (lo principal)
+  const personaActual = getPersonaActual();
+  if (personaActual) {
+    cont.innerHTML = `<button class="mobile-quick-card" onclick="window.location.hash='#/mi-dia';showSection('mi-dia',null);renderMiDia();" style="background:linear-gradient(135deg,${personaActual.color || '#a78bfa'} 0%, #6366f1 100%);"><small>${esc(personaActual.nombre)}</small><strong>☀️ Mi Día</strong></button>`;
+    return;
+  }
   const rol = localStorage.getItem('ws_mobile_last_role');
   if (rol && rol.startsWith('costura-')) {
     const costurera = costureraDesdeSlug(rol.replace('costura-', ''));
@@ -396,6 +406,214 @@ function renderMiniRoleViews() {
   renderMiniVentas();
   renderMiniDiseno();
   renderMiniCostura();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   MI DÍA — vista unificada por persona con bloques por cada rol
+   Camilo (admin+diseno) ve ambos bloques en una sola pantalla.
+   Ney/Wendy/Paola (ventas+diseno) ven sus ventas + sus diseños.
+   Betty (ventas+produccion), Lidermeyer (produccion+corte), etc.
+════════════════════════════════════════════════════════════════ */
+function _miDiaActivos() {
+  return pedidos.filter(p => p.estado !== 'enviado-final' && p.estado !== 'archivado');
+}
+
+function _miDiaBloqueAdmin() {
+  const activos = _miDiaActivos();
+  const sinSticker = activos.filter(p => p.estado === 'bandeja' && !p.stickerVenta).length;
+  const enDiseno = activos.filter(p => p.estado === 'hacer-diseno').length;
+  const enProd = activos.filter(p => ['enviado-calandra','llego-impresion','corte','calidad','costura'].includes(p.estado)).length;
+  const listos = activos.filter(p => p.estado === 'listo').length;
+  return `
+    <article class="midia-bloque" style="--bloque-color:#a78bfa;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">👑</span>
+        <div>
+          <h2>Admin</h2>
+          <small>Visión general del taller</small>
+        </div>
+      </header>
+      <div class="midia-kpis">
+        <div class="midia-kpi"><strong>${activos.length}</strong><span>Activos</span></div>
+        <div class="midia-kpi"><strong>${enDiseno}</strong><span>En diseño</span></div>
+        <div class="midia-kpi"><strong>${enProd}</strong><span>En producción</span></div>
+        <div class="midia-kpi"><strong>${listos}</strong><span>Listos</span></div>
+        <div class="midia-kpi ${sinSticker ? 'alert' : ''}"><strong>${sinSticker}</strong><span>Sin sticker</span></div>
+      </div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="showSection('tablero-principal', null); window.location.hash='';">📋 Tablero</button>
+        <button class="midia-btn" onclick="showSection('torre-unificada', null); renderTorreUnificada(); window.location.hash='';">🗼 Torre</button>
+        <button class="midia-btn" onclick="showSection('vista-general', null); window.location.hash='';">📊 Vista general</button>
+      </div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueDiseno(nombrePersona) {
+  const mios = _miDiaActivos().filter(p => p.estado === 'hacer-diseno' && p.disenadorAsignado === nombrePersona);
+  const sinAsignar = _miDiaActivos().filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado);
+  const cards = mios.slice(0, 10).map(p => `
+    <div class="midia-card" onclick="irAlPedido(${p.id})">
+      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+      <div class="midia-card-meta">${esc(p.vendedora || '—')} · Entrega: ${p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '—'}</div>
+    </div>
+  `).join('') || '<div class="midia-empty">No tienes diseños asignados.</div>';
+  return `
+    <article class="midia-bloque" style="--bloque-color:#fb923c;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">🎨</span>
+        <div>
+          <h2>Mis diseños</h2>
+          <small>${mios.length} asignados · ${sinAsignar.length} sin asignar en cola</small>
+        </div>
+      </header>
+      <div class="midia-cards">${cards}</div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="showSection('diseno', null);">Ver todos los diseños</button>
+      </div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueVentas(nombrePersona) {
+  const mias = _miDiaActivos().filter(p => p.vendedora === nombrePersona);
+  const hoyStr = new Date().toISOString().slice(0,10);
+  const hoy = mias.filter(p => (p.fechaVenta || '').slice(0,10) === hoyStr);
+  const sinSticker = mias.filter(p => p.estado === 'bandeja' && !p.stickerVenta);
+  const cards = mias.slice(0, 10).map(p => `
+    <div class="midia-card ${p.estado === 'bandeja' && !p.stickerVenta ? 'warn' : ''}" onclick="irAlPedido(${p.id})">
+      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+      <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado} ${p.stickerVenta ? '· 💰' : '· ⚠️ falta sticker'}</div>
+    </div>
+  `).join('') || '<div class="midia-empty">Aún no tienes ventas registradas.</div>';
+  return `
+    <article class="midia-bloque" style="--bloque-color:#34d399;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">💼</span>
+        <div>
+          <h2>Mis ventas</h2>
+          <small>${hoy.length} hoy · ${mias.length} activas ${sinSticker.length ? ' · ⚠️ '+sinSticker.length+' sin sticker' : ''}</small>
+        </div>
+      </header>
+      <div class="midia-cards">${cards}</div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="abrirRolMovil('ventas')">Ver todas mis ventas</button>
+      </div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueProduccion() {
+  const enProd = _miDiaActivos().filter(p => ['enviado-calandra','llego-impresion','corte','calidad','costura','listo'].includes(p.estado));
+  const cards = enProd.slice(0, 10).map(p => `
+    <div class="midia-card" onclick="irAlPedido(${p.id})">
+      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+      <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado}</div>
+    </div>
+  `).join('') || '<div class="midia-empty">Nada en producción ahora.</div>';
+  return `
+    <article class="midia-bloque" style="--bloque-color:#67e8f9;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">🏭</span>
+        <div>
+          <h2>Producción</h2>
+          <small>${enProd.length} pedidos activos</small>
+        </div>
+      </header>
+      <div class="midia-cards">${cards}</div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="location.href='/produccion.html'">📱 Tablet de producción</button>
+      </div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueCorte() {
+  const enCorte = _miDiaActivos().filter(p => p.estado === 'corte');
+  return `
+    <article class="midia-bloque" style="--bloque-color:#f59e0b;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">✂️</span>
+        <div>
+          <h2>Corte</h2>
+          <small>${enCorte.length} en corte</small>
+        </div>
+      </header>
+      <div class="midia-cards">${enCorte.slice(0, 10).map(p => `
+        <div class="midia-card" onclick="irAlPedido(${p.id})">
+          <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+          <div class="midia-card-meta">${esc(p.vendedora || '—')}</div>
+        </div>
+      `).join('') || '<div class="midia-empty">No hay pedidos en corte.</div>'}</div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueCostura(nombrePersona) {
+  const mios = _miDiaActivos().filter(p => p.estado === 'costura' && p.costureraAsignada === nombrePersona);
+  return `
+    <article class="midia-bloque" style="--bloque-color:#ec4899;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">🧵</span>
+        <div>
+          <h2>Mi costura</h2>
+          <small>${mios.length} asignados</small>
+        </div>
+      </header>
+      <div class="midia-cards">${mios.slice(0, 15).map(p => `
+        <div class="midia-card" onclick="irAlPedido(${p.id})">
+          <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+          <div class="midia-card-meta">${esc(p.vendedora || '—')}</div>
+        </div>
+      `).join('') || '<div class="midia-empty">No tienes pedidos asignados.</div>'}</div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="abrirCosturera('${esc(nombrePersona)}')">Ver mi vista completa</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderMiDia() {
+  const cont = document.getElementById('mi-dia-content');
+  if (!cont) return;
+  const persona = getPersonaActual();
+  if (!persona) {
+    cont.innerHTML = `
+      <div class="midia-vacio">
+        <h1>☀️ Mi Día</h1>
+        <p>Para ver tu día personalizado, abre tu link personal y guarda la app en tu inicio.</p>
+        <button class="midia-btn" onclick="showSection('mobile-role-hub', null); window.location.hash='#/movil';">Ver lista de personas</button>
+      </div>
+    `;
+    return;
+  }
+  const roles = persona.roles || [];
+  const bloques = [];
+  if (roles.includes('admin'))      bloques.push(_miDiaBloqueAdmin());
+  if (roles.includes('ventas'))     bloques.push(_miDiaBloqueVentas(persona.nombre));
+  if (roles.includes('diseno'))     bloques.push(_miDiaBloqueDiseno(persona.nombre));
+  if (roles.includes('produccion')) bloques.push(_miDiaBloqueProduccion());
+  if (roles.includes('corte'))      bloques.push(_miDiaBloqueCorte());
+  if (roles.includes('costura'))    bloques.push(_miDiaBloqueCostura(persona.nombre));
+
+  const saludo = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+  })();
+
+  cont.innerHTML = `
+    <header class="midia-header">
+      <div>
+        <div class="midia-kicker">${saludo}</div>
+        <h1>${esc(persona.nombre)}</h1>
+        <div class="midia-roles">${roles.map(r => `<span class="midia-rol-chip">${ROLE_LABELS[r] || r}</span>`).join('')}</div>
+      </div>
+      <button class="midia-btn ghost" onclick="renderMiDia()" title="Refrescar">🔄</button>
+    </header>
+    <div class="midia-bloques">${bloques.join('')}</div>
+  `;
 }
 
 // Carga el roster desde /api/personas y dibuja una tarjeta por persona
@@ -4273,13 +4491,24 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   } else if(hash === '#/movil') {
     showSection('mobile-role-hub', null);
+  } else if(hash === '#/mi-dia') {
+    showSection('mi-dia', null);
+    if (typeof renderMiDia === 'function') renderMiDia();
   } else if(hash === '#/tv') {
     activarModoTV();
   } else if(hash === '#tablero-foto') {
     showSection('tablero-foto', document.querySelector('[onclick*="tablero-foto"]'));
     if (typeof renderTableroFoto === 'function') renderTableroFoto();
   } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
-    showSection('mobile-role-hub', null);
+    // En móvil: si la persona ya está identificada, abre Mi Día. Si no, hub de selección.
+    const slugIdent = (window.WS_PERSONA && window.WS_PERSONA.slug) || localStorage.getItem('ws_persona');
+    if (slugIdent) {
+      window.location.hash = '#/mi-dia';
+      showSection('mi-dia', null);
+      if (typeof renderMiDia === 'function') renderMiDia();
+    } else {
+      showSection('mobile-role-hub', null);
+    }
   }
   // Por defecto en PC muestra el Tablero principal (active en HTML)
 });

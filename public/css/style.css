@@ -2487,6 +2487,94 @@ body.modo-miniapp .mini-role-screen { display: block; }
   letter-spacing: .4px;
   margin-bottom: 3px;
 }
+
+/* ─── MI DÍA ────────────────────────────────────────────────── */
+#mi-dia { padding: 18px 16px 80px; }
+.midia-header {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:14px; margin-bottom:18px;
+}
+.midia-kicker {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: 2px;
+  color: var(--text-muted); margin-bottom: 4px;
+}
+.midia-header h1 {
+  font-family:'Outfit',sans-serif; font-size: 1.9rem; font-weight: 800;
+  margin: 0 0 8px; line-height: 1.1;
+}
+.midia-roles { display:flex; gap:6px; flex-wrap:wrap; }
+.midia-rol-chip {
+  background: rgba(124,58,237,0.18); border:1px solid rgba(124,58,237,0.35);
+  color:#c4b5fd; padding:3px 10px; border-radius:999px;
+  font-size:.72rem; font-weight:600;
+}
+.midia-bloques { display:flex; flex-direction:column; gap:14px; }
+.midia-bloque {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-left: 4px solid var(--bloque-color, #a78bfa);
+  border-radius: 14px; padding: 14px 14px 12px;
+}
+.midia-bloque-head {
+  display:flex; align-items:center; gap:12px; margin-bottom:12px;
+}
+.midia-bloque-icon { font-size: 1.8rem; }
+.midia-bloque-head h2 {
+  margin:0; font-family:'Outfit',sans-serif; font-size: 1.05rem; font-weight: 800;
+}
+.midia-bloque-head small { color: var(--text-muted); font-size:.74rem; }
+.midia-kpis {
+  display:grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap:6px; margin-bottom: 12px;
+}
+.midia-kpi {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px; padding: 8px 6px; text-align:center;
+}
+.midia-kpi strong {
+  display:block; font-family:'Outfit',sans-serif;
+  font-size: 1.4rem; font-weight: 800; color: var(--bloque-color, #fff);
+  line-height: 1;
+}
+.midia-kpi span {
+  display:block; color: var(--text-muted);
+  font-size: .65rem; text-transform: uppercase; letter-spacing: .5px;
+  margin-top: 4px;
+}
+.midia-kpi.alert strong { color:#fca5a5; }
+.midia-cards { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+.midia-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 10px 12px; cursor: pointer;
+  transition: background .15s;
+}
+.midia-card:hover { background: rgba(255,255,255,0.06); }
+.midia-card.warn { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.06); }
+.midia-card-name { font-size: .9rem; font-weight: 600; }
+.midia-card-meta { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
+.midia-empty {
+  font-size: .8rem; color: var(--text-muted);
+  text-align:center; padding: 14px; font-style:italic;
+}
+.midia-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.midia-btn {
+  background: rgba(124,58,237,0.18);
+  border: 1px solid rgba(124,58,237,0.35);
+  color: #c4b5fd; padding: 8px 14px;
+  border-radius: 10px; font-size: .82rem; font-weight: 600;
+  cursor: pointer;
+}
+.midia-btn:hover { background: rgba(124,58,237,0.28); }
+.midia-btn.ghost {
+  background: transparent; border-color: rgba(255,255,255,0.12);
+  color: var(--text-muted);
+}
+.midia-vacio {
+  text-align:center; padding: 40px 20px; max-width: 480px; margin: 0 auto;
+}
+.midia-vacio h1 { font-family:'Outfit',sans-serif; font-size: 1.8rem; margin: 0 0 10px; }
+.midia-vacio p { color: var(--text-muted); margin: 0 0 18px; }
 .mini-next strong {
   font-family: 'Outfit', sans-serif;
   font-size: .92rem;
