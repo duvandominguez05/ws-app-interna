@@ -418,6 +418,68 @@ function _miDiaActivos() {
   return pedidos.filter(p => p.estado !== 'enviado-final' && p.estado !== 'archivado');
 }
 
+// Cache de arreglos (compartido en Mi Día).
+let _miDiaArreglos = [];
+async function _miDiaCargarArreglos() {
+  try {
+    const r = await fetch('/api/arreglos');
+    const d = await r.json();
+    _miDiaArreglos = Array.isArray(d.arreglos) ? d.arreglos : [];
+  } catch (e) { _miDiaArreglos = []; }
+}
+
+function _miDiaBloqueArreglos(nombrePersona, vistaCompleta) {
+  // vistaCompleta = true para Lidermeyer (todos los pendientes)
+  // vistaCompleta = false para diseñadores (solo los suyos)
+  const pendientes = _miDiaArreglos.filter(a => !a.resuelto);
+  const mios = vistaCompleta ? pendientes : pendientes.filter(a => a.disenador === nombrePersona);
+  const cards = mios.slice(0, 15).map(a => `
+    <div class="midia-card warn" onclick="${a.pedidoId ? `irAlPedido(${a.pedidoId})` : `showSection('arreglos', null)`}">
+      <div class="midia-card-name">🔧 ${esc(a.equipo)}</div>
+      <div class="midia-card-meta">Falta: ${esc(a.faltante)} ${vistaCompleta ? '· ' + esc(a.disenador) : ''}</div>
+    </div>
+  `).join('') || '<div class="midia-empty">Sin arreglos pendientes. 🎉</div>';
+  return `
+    <article class="midia-bloque" style="--bloque-color:#ef4444;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">🔧</span>
+        <div>
+          <h2>Arreglos pendientes</h2>
+          <small>${mios.length} ${vistaCompleta ? 'sin resolver' : 'asignados a ti'}</small>
+        </div>
+      </header>
+      <div class="midia-cards">${cards}</div>
+      <div class="midia-actions">
+        <button class="midia-btn" onclick="showSection('arreglos', null)">Ver tablero de arreglos</button>
+      </div>
+    </article>
+  `;
+}
+
+function _miDiaBloqueEntregasHoy() {
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const hoy = _miDiaActivos().filter(p => (p.fechaEntrega || '').slice(0, 10) === hoyStr);
+  if (!hoy.length) return '';
+  const cards = hoy.slice(0, 8).map(p => `
+    <div class="midia-card warn" onclick="irAlPedido(${p.id})">
+      <div class="midia-card-name">⏰ #${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+      <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado} · ${esc(p.vendedora || '—')}</div>
+    </div>
+  `).join('');
+  return `
+    <article class="midia-bloque" style="--bloque-color:#fbbf24;">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">⏰</span>
+        <div>
+          <h2>Entregas para HOY</h2>
+          <small>${hoy.length} pedidos con fecha de entrega hoy</small>
+        </div>
+      </header>
+      <div class="midia-cards">${cards}</div>
+    </article>
+  `;
+}
+
 function _miDiaBloqueAdmin() {
   const activos = _miDiaActivos();
   const sinSticker = activos.filter(p => p.estado === 'bandeja' && !p.stickerVenta).length;
@@ -573,9 +635,34 @@ function _miDiaBloqueCostura(nombrePersona) {
   `;
 }
 
+// Auto-refresh: cuando llega Mi Día arranca un loop que cada 60s vuelve
+// a pintar (recogiendo cambios del server y de la cache local).
+let _miDiaRefreshInt = null;
+function _miDiaArrancarRefresh() {
+  if (_miDiaRefreshInt) return;
+  _miDiaRefreshInt = setInterval(() => {
+    const seccion = document.getElementById('mi-dia');
+    if (seccion && seccion.classList.contains('active')) {
+      _miDiaCargarArreglos().then(() => renderMiDia());
+      if (typeof hardSyncFromServer === 'function') {
+        try { hardSyncFromServer(true); } catch (e) {}
+      }
+    }
+  }, 60 * 1000);
+}
+
 function renderMiDia() {
   const cont = document.getElementById('mi-dia-content');
   if (!cont) return;
+  // Carga arreglos en background la primera vez y re-renderiza
+  if (!_miDiaArreglos.length && !window._miDiaArreglosCargando) {
+    window._miDiaArreglosCargando = true;
+    _miDiaCargarArreglos().then(() => {
+      window._miDiaArreglosCargando = false;
+      renderMiDia();
+    });
+  }
+  _miDiaArrancarRefresh();
   const persona = getPersonaActual();
   if (!persona) {
     cont.innerHTML = `
@@ -589,11 +676,26 @@ function renderMiDia() {
   }
   const roles = persona.roles || [];
   const bloques = [];
+
+  // Entregas HOY arriba de todo (alerta), si aplica para este rol
+  if (roles.some(r => ['admin','ventas','diseno','produccion','corte'].includes(r))) {
+    const entregasHoy = _miDiaBloqueEntregasHoy();
+    if (entregasHoy) bloques.push(entregasHoy);
+  }
+
   if (roles.includes('admin'))      bloques.push(_miDiaBloqueAdmin());
   if (roles.includes('ventas'))     bloques.push(_miDiaBloqueVentas(persona.nombre));
-  if (roles.includes('diseno'))     bloques.push(_miDiaBloqueDiseno(persona.nombre));
+  if (roles.includes('diseno')) {
+    bloques.push(_miDiaBloqueDiseno(persona.nombre));
+    // Diseñadores ven SUS arreglos asignados
+    bloques.push(_miDiaBloqueArreglos(persona.nombre, false));
+  }
   if (roles.includes('produccion')) bloques.push(_miDiaBloqueProduccion());
-  if (roles.includes('corte'))      bloques.push(_miDiaBloqueCorte());
+  if (roles.includes('corte')) {
+    bloques.push(_miDiaBloqueCorte());
+    // Lidermeyer (el de corte) ve TODOS los arreglos pendientes — él los gestiona
+    bloques.push(_miDiaBloqueArreglos(persona.nombre, true));
+  }
   if (roles.includes('costura'))    bloques.push(_miDiaBloqueCostura(persona.nombre));
 
   const saludo = (() => {
@@ -691,7 +793,7 @@ function renderMiniDiseno() {
   const asignados = pendientes.filter(p => p.disenadorAsignado);
   const confirmados = pedidos.filter(p => p.estado === 'confirmado');
   const calandra = pedidos.filter(p => p.estado === 'enviado-calandra');
-  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Oscar', 'Wendy', 'Ney', 'Paola'];
   const cards = [
     ...sinAsignar.map(p => miniCard(p, {
       clase: 'warn',
@@ -1532,7 +1634,7 @@ function renderKanban(estado) {
 }
 
 function renderKanbanCardDiseno(p) {
-  const DISENADORES = ['Camilo', 'Wendy', 'Ney', 'Paola'];
+  const DISENADORES = ['Camilo', 'Oscar', 'Wendy', 'Ney', 'Paola'];
   const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
   const disenadorTxt = p.disenadorAsignado || '';
 
@@ -2634,6 +2736,7 @@ function syncConServidor(silencioso = false) {
         localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
         localStorage.setItem('ws_nextId3', String(nextId));
         render();
+        try { if (document.getElementById('mi-dia') && document.getElementById('mi-dia').classList.contains('active')) renderMiDia(); } catch (e) {}
         if (!silencioso) toast('🔄 ' + pedidos.length + ' pedidos cargados del servidor', 'success');
         return;
       }
@@ -2680,6 +2783,7 @@ function syncConServidor(silencioso = false) {
         localStorage.setItem('ws_nextId3', String(nextId));
         guardar();
         render();
+        try { if (document.getElementById('mi-dia') && document.getElementById('mi-dia').classList.contains('active')) renderMiDia(); } catch (e) {}
         if (!silencioso) toast('🔄 Pedidos sincronizados', 'info');
       }
     })
