@@ -96,27 +96,57 @@ let miniCosturaVistaPersonal = false;
 let _syncEstado = 'cargando'; // 'cargando' | 'ok' | 'error'
 let _syncUltimoTs = 0;
 
-// Rol del usuario actual
+// Rol del usuario actual (legacy: un solo rol activo).
+// userRoles es el nuevo array de roles activos de la persona. Permite multi-rol.
 let userRol = localStorage.getItem('ws_rol') || 'admin';
-const WORKERS = [
-  { nombre: 'Ney', roles: ['ventas', 'diseno'] },
-  { nombre: 'Wendy', roles: ['ventas', 'diseno'] },
-  { nombre: 'Paola', roles: ['ventas', 'diseno'] },
-  { nombre: 'Betty', roles: ['ventas', 'produccion'] },
-  { nombre: 'Camilo', roles: ['admin', 'diseno'] },
-  { nombre: 'Graciela', roles: ['admin'] },
-  { nombre: 'Lidermeyer', roles: ['produccion'] },
-  { nombre: 'Marcela', roles: ['costura-personal'] },
-  { nombre: 'Cristina', roles: ['costura-personal'] },
-  { nombre: 'Wilson', roles: ['costura-personal'] },
-  { nombre: 'Yamile', roles: ['costura-personal'] },
+let userRoles = []; // se llena cuando se identifica la persona desde /api/personas
+
+// Roster de personas — se inicializa con valores correctos y se actualiza
+// dinámicamente desde /api/personas al cargar la app. Alineado con personas.js (server).
+let WORKERS = [
+  { slug: 'ney',        nombre: 'Ney',        roles: ['ventas', 'diseno'] },
+  { slug: 'wendy',      nombre: 'Wendy',      roles: ['ventas', 'diseno'] },
+  { slug: 'paola',      nombre: 'Paola',      roles: ['ventas', 'diseno'] },
+  { slug: 'betty',      nombre: 'Betty',      roles: ['ventas', 'produccion'] },
+  { slug: 'camilo',     nombre: 'Camilo',     roles: ['admin', 'diseno'] },
+  { slug: 'graciela',   nombre: 'Graciela',   roles: ['admin'] },
+  { slug: 'lidermeyer', nombre: 'Lidermeyer', roles: ['produccion', 'corte'] },
+  { slug: 'marcela',    nombre: 'Marcela',    roles: ['costura'] },
+  { slug: 'cristina',   nombre: 'Cristina',   roles: ['costura'] },
+  { slug: 'wilson',     nombre: 'Wilson',     roles: ['costura'] },
+  { slug: 'yamile',     nombre: 'Yamile',     roles: ['costura'] },
 ];
+
+// Carga WORKERS dinámicamente desde el server (fuente única de verdad: personas.js).
+async function _cargarPersonasDesdeServer() {
+  try {
+    const r = await fetch('/api/personas');
+    const data = await r.json();
+    if (Array.isArray(data.personas) && data.personas.length > 0) {
+      WORKERS = data.personas.map(p => ({ slug: p.slug, nombre: p.nombre, roles: p.roles, color: p.color }));
+    }
+  } catch (e) { console.warn('[personas] no se pudo cargar del server, usando fallback', e.message); }
+}
+_cargarPersonasDesdeServer();
+
+// Helpers para roles
+function getPersonaActual() {
+  const slug = (window.WS_PERSONA && window.WS_PERSONA.slug) || '';
+  return WORKERS.find(w => w.slug === slug) || null;
+}
+function personaTieneRol(rol) {
+  const p = getPersonaActual();
+  return !!(p && p.roles && p.roles.includes(rol));
+}
 const ROLE_LABELS = {
   ventas: 'Ventas',
   diseno: 'Diseno',
-  produccion: 'Produccion/Corte',
+  produccion: 'Produccion',
+  corte: 'Corte',
   admin: 'Admin',
-  'costura-personal': 'Mis pedidos',
+  costura: 'Mi costura',
+  // Legacy: mantener para compatibilidad con datos viejos en localStorage
+  'costura-personal': 'Mi costura',
 };
 function cambiarRol() {
   const sel = document.getElementById('role-selector');
@@ -251,7 +281,8 @@ function abrirRolMovil(rol) {
 
 function abrirWorkerRole(nombre, rol) {
   localStorage.setItem('ws_worker_actual', nombre || '');
-  if (rol === 'costura-personal') {
+  // 'costura' (oficial) y 'costura-personal' (legacy) llevan al mismo lugar
+  if (rol === 'costura' || rol === 'costura-personal') {
     abrirCosturera(nombre);
     return;
   }
@@ -4450,7 +4481,7 @@ function renderWorkerMonitor(activos) {
           if (w.roles.includes('ventas')) partes.push(`Ventas ${c.venta}`);
           if (w.roles.includes('diseno')) partes.push(`Diseno ${c.diseno}`);
           if (w.roles.includes('produccion')) partes.push(`Produccion ${c.produccion}`);
-          if (w.roles.includes('costura-personal')) partes.push(`Costura ${c.costura}`);
+          if (w.roles.includes('costura') || w.roles.includes('costura-personal')) partes.push(`Costura ${c.costura}`);
           if (w.roles.includes('admin')) partes.push(`Admin ${c.admin}`);
           return `<div style="background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px;">
             <div style="font-family:Outfit,sans-serif;font-weight:800;margin-bottom:6px;">${esc(w.nombre)}</div>
