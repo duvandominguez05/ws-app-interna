@@ -5,6 +5,7 @@ const { webcrypto } = require('crypto');
 if (!global.crypto) global.crypto = webcrypto;
 const db   = require('./db');
 const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
+const gmailWT = require('./gmail-wt');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -863,7 +864,7 @@ function evaluarPasoCalandra(pedido) {
   return true;
 }
 
-http.createServer((req, res) => {
+http.createServer(async (req, res) => {
 
   // ── CORS preflight ──────────────────────────────────────────
   if (req.method === 'OPTIONS') {
@@ -3132,6 +3133,116 @@ http.createServer((req, res) => {
     return json(res, 200, { personas: PERSONAS });
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // GMAIL + WETRANSFER INTEGRATION
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── GET /api/gmail/status — ¿Gmail está conectado? ──
+  if (req.method === 'GET' && req.url === '/api/gmail/status') {
+    return json(res, 200, {
+      conectado: gmailWT.estaConectado(),
+      clientIdConfigurado: !!process.env.GOOGLE_CLIENT_ID,
+      clientSecretConfigurado: !!process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri: process.env.GOOGLE_REDIRECT_URI || 'https://ws-app-interna-production.up.railway.app/api/gmail/callback',
+    });
+  }
+
+  // ── GET /api/gmail/auth — inicia OAuth (redirect a Google) ──
+  if (req.method === 'GET' && req.url === '/api/gmail/auth') {
+    try {
+      const url = gmailWT.getAuthUrl();
+      res.writeHead(302, { Location: url });
+      return res.end();
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<h1>Error</h1><p>${e.message}</p><p>Configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Railway env vars.</p>`);
+    }
+  }
+
+  // ── GET /api/gmail/callback?code=XXX — guarda refresh_token ──
+  if (req.method === 'GET' && req.url.startsWith('/api/gmail/callback')) {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const code = u.searchParams.get('code');
+    const err  = u.searchParams.get('error');
+    if (err) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<h1>OAuth cancelado</h1><p>${err}</p>`);
+    }
+    if (!code) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<h1>Falta code</h1>');
+    }
+    try {
+      await gmailWT.intercambiarCodigo(code);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`
+        <html><body style="font-family:system-ui;text-align:center;padding:40px;background:#0f1117;color:#eef5ff;">
+          <h1 style="color:#34d399;">✅ Gmail conectado</h1>
+          <p>El sistema ya puede leer correos de WeTransfer automáticamente.</p>
+          <p><a href="/api/gmail/sync" style="color:#a78bfa;">Probar sincronización manual</a></p>
+          <p><a href="/" style="color:#60a5fa;">Volver a la app</a></p>
+        </body></html>
+      `);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<h1>Error</h1><pre>${e.message}</pre>`);
+    }
+  }
+
+  // ── POST/GET /api/gmail/sync — disparar sincronización manual ──
+  if ((req.method === 'POST' || req.method === 'GET') && req.url.startsWith('/api/gmail/sync')) {
+    try {
+      const pedidos = db.leerPedidos();
+      const resultado = await gmailWT.sincronizarConPedidos(pedidos);
+      // Aplicar updates a la BD
+      const aplicados = [];
+      for (const u of resultado.updates) {
+        const p = pedidos.find(x => x.id === u.pedidoId);
+        if (!p) continue;
+        p.wetransfer = u.wetransfer;
+        // Si el archivo es original y el pedido está en hacer-diseno/confirmado, avanzar a enviado-calandra
+        if (u.accion === 'enviado' && u.archivo.tipo === 'original' &&
+            ['hacer-diseno', 'confirmado'].includes(p.estado)) {
+          p.estado = 'enviado-calandra';
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'gmail-bot',
+            accion: 'avanzar',
+            de: 'hacer-diseno',
+            a: 'enviado-calandra',
+            nota: `Auto-detectado por WeTransfer: ${u.archivo.nombreOriginal}`,
+          });
+        }
+        aplicados.push({ id: p.id, equipo: p.equipo, accion: u.accion, archivo: u.archivo.nombreOriginal, m2: u.archivo.m2 });
+      }
+      if (aplicados.length) db.guardarPedidos(pedidos);
+      // Notificar huérfanos por Telegram
+      if (resultado.huerfanos.length) {
+        const msg = '⚠️ *WeTransfer sin match*\n\n' +
+          resultado.huerfanos.slice(0, 5).map(h => `• ${h.archivo.nombreOriginal} (base: "${h.archivo.base}")`).join('\n') +
+          (resultado.huerfanos.length > 5 ? `\n\n... y ${resultado.huerfanos.length - 5} más` : '');
+        notificarTelegramDuvan(msg).catch(()=>{});
+      }
+      // Notificar matches importantes
+      if (aplicados.length) {
+        const msgOk = `📤 *WeTransfer auto-vinculado* (${aplicados.length})\n\n` +
+          aplicados.slice(0, 10).map(a => `• #${a.id} ${a.equipo} - ${a.archivo} (${a.m2}m²)`).join('\n');
+        notificarTelegramDuvan(msgOk).catch(()=>{});
+      }
+      return json(res, 200, {
+        ok: true,
+        total: resultado.total,
+        aplicados: aplicados.length,
+        huerfanos: resultado.huerfanos.length,
+        detalles: aplicados,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
   // ── GET /manifest/:slug — manifest PWA personalizado por persona ──
   // Cada celular instala SU app dedicada apuntando a este manifest.
   if (req.method === 'GET' && req.url.startsWith('/manifest/')) {
@@ -3417,3 +3528,57 @@ setInterval(cron8pmTick, 60 * 1000);
 // Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
 setTimeout(cron8pmTick, 30 * 1000);
 console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
+// ═══════════════════════════════════════════════════════════════════
+let _wtSyncEnCurso = false;
+async function cronWeTransferTick() {
+  if (_wtSyncEnCurso) return;
+  if (!gmailWT.estaConectado()) return; // silencioso si no está conectado
+  _wtSyncEnCurso = true;
+  try {
+    const pedidos = db.leerPedidos();
+    const resultado = await gmailWT.sincronizarConPedidos(pedidos);
+    const aplicados = [];
+    for (const u of resultado.updates) {
+      const p = pedidos.find(x => x.id === u.pedidoId);
+      if (!p) continue;
+      p.wetransfer = u.wetransfer;
+      if (u.accion === 'enviado' && u.archivo.tipo === 'original' &&
+          ['hacer-diseno', 'confirmado'].includes(p.estado)) {
+        p.estado = 'enviado-calandra';
+        p.ultimoMovimiento = new Date().toISOString();
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'gmail-bot',
+          accion: 'avanzar',
+          de: p.estado === 'enviado-calandra' ? 'hacer-diseno' : p.estado,
+          a: 'enviado-calandra',
+          nota: `Auto-detectado por WeTransfer: ${u.archivo.nombreOriginal}`,
+        });
+      }
+      aplicados.push({ id: p.id, equipo: p.equipo, accion: u.accion, archivo: u.archivo.nombreOriginal });
+    }
+    if (aplicados.length) {
+      db.guardarPedidos(pedidos);
+      const msg = `📤 *WT auto-vinculado* (${aplicados.length})\n\n` +
+        aplicados.slice(0, 10).map(a => `• #${a.id} ${a.equipo}: ${a.archivo} (${a.accion})`).join('\n');
+      notificarTelegramDuvan(msg).catch(()=>{});
+      console.log('[cron-wt] aplicados', aplicados.length, 'updates');
+    }
+    if (resultado.huerfanos.length) {
+      console.log('[cron-wt] huérfanos:', resultado.huerfanos.map(h => h.archivo.nombreOriginal));
+    }
+  } catch (e) {
+    console.error('[cron-wt error]', e.message);
+  } finally {
+    _wtSyncEnCurso = false;
+  }
+}
+// Cada 5 minutos
+setInterval(cronWeTransferTick, 5 * 60 * 1000);
+// Tick inicial 60s después de arrancar
+setTimeout(cronWeTransferTick, 60 * 1000);
+console.log('[cron-wt] activado — sincronizará WeTransfer cada 5 minutos');
