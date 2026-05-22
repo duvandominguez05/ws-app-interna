@@ -3382,7 +3382,38 @@ async function enviarResumenComprobantes() {
   }
 }
 
-// CRON 8PM DESACTIVADO — el resumen se hace ahora desde n8n consultando
-// /api/comprobantes-detectados. La función enviarResumenComprobantes()
-// queda disponible solo para POST /api/comprobantes-detectados/forzar-resumen
-// (modo debug manual).
+// CRON 8PM REACTIVADO (2026-05-22) — chequea cada minuto si es 8 PM Bogotá
+// y dispara enviarResumenComprobantes UNA sola vez al día. Manda WA personal
+// a cada vendedora con sus comprobantes sin marcar + resumen a Duvan en TG.
+// Guarda última fecha de envío en archivo para evitar duplicados.
+const CRON_8PM_FILE = path.join(__dirname, 'data', 'cron_8pm_ultimo.json');
+function _ya8pmHoy() {
+  try {
+    if (!fs.existsSync(CRON_8PM_FILE)) return false;
+    const ultimo = JSON.parse(fs.readFileSync(CRON_8PM_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ultimo.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcar8pmHoy() {
+  try {
+    fs.mkdirSync(path.dirname(CRON_8PM_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(CRON_8PM_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now() }));
+  } catch (e) { console.error('[cron-8pm] no se pudo marcar:', e.message); }
+}
+async function cron8pmTick() {
+  try {
+    const hora = _huelaPMBogota();
+    if (hora !== 20) return; // solo en la hora 20 (8 PM)
+    if (_ya8pmHoy()) return; // ya se ejecutó hoy
+    console.log('[cron-8pm] disparando resumen de comprobantes...');
+    await enviarResumenComprobantes();
+    _marcar8pmHoy();
+  } catch (e) { console.error('[cron-8pm error]', e.message); }
+}
+// Tick cada 60 segundos
+setInterval(cron8pmTick, 60 * 1000);
+// Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
+setTimeout(cron8pmTick, 30 * 1000);
+console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
