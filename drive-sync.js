@@ -15,8 +15,10 @@ const gmailWT = require('./gmail-wt');
 
 // IDs hardcoded por ahora (override via env si querés).
 // Confirmados en Drive con MCP.
-const FOLDER_COREL  = process.env.DRIVE_FOLDER_COREL  || '11rC8sAn5-DB-bZU7QOFGaEEzHPyW896C';
-const FOLDER_PDFRIP = process.env.DRIVE_FOLDER_PDFRIP || '1qaEI69DxqwDCE_Ce4UKHAQjCVcdgx_qy';
+const FOLDER_COREL         = process.env.DRIVE_FOLDER_COREL         || '11rC8sAn5-DB-bZU7QOFGaEEzHPyW896C';
+const FOLDER_PDFRIP        = process.env.DRIVE_FOLDER_PDFRIP        || '1qaEI69DxqwDCE_Ce4UKHAQjCVcdgx_qy';
+const FOLDER_FACTURAS      = process.env.DRIVE_FOLDER_FACTURAS      || '1a_a6MyT_pRqlHi81s03NJSwm8t_roHEn';
+const FOLDER_COTIZACIONES  = process.env.DRIVE_FOLDER_COTIZACIONES  || '1AYe_y0NDqI4FtmftHlcbgvtSzlBrVxxz';
 
 const STATE_FILE = path.join(__dirname, 'data', 'drive_sync_state.json');
 
@@ -197,11 +199,99 @@ async function sincronizarConPedidos(pedidos) {
   };
 }
 
+// ── Subir archivo a Drive (multipart upload) ─────────────────────
+// Body: { titulo, mimeType, contentBase64, parentId }
+// Devuelve: { id, viewLink, downloadLink }
+async function subirArchivo({ titulo, mimeType, contentBase64, parentId }) {
+  const tokens = gmailWT._leerTokens();
+  if (!tokens || !tokens.refresh_token) throw new Error('Drive no conectado');
+  let token = tokens.access_token;
+
+  const metadata = {
+    name: titulo,
+    parents: parentId ? [parentId] : undefined,
+  };
+  const boundary = '-------ws-textil-' + Date.now();
+  const delim = `\r\n--${boundary}\r\n`;
+  const closeDelim = `\r\n--${boundary}--`;
+  const body =
+    delim +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delim +
+    `Content-Type: ${mimeType}\r\n` +
+    'Content-Transfer-Encoding: base64\r\n\r\n' +
+    contentBase64 +
+    closeDelim;
+
+  const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink';
+  let r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+  if (r.status === 401) {
+    const refreshed = await _refrescarToken();
+    token = refreshed.google;
+    r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    });
+  }
+  if (!r.ok) throw new Error('Drive upload fallo: ' + r.status + ' ' + await r.text());
+  const data = await r.json();
+  return {
+    id: data.id,
+    viewLink: `https://drive.google.com/file/d/${data.id}/view`,
+    downloadLink: `https://drive.google.com/uc?export=download&id=${data.id}`,
+  };
+}
+
+// ── Hacer un archivo público (cualquiera con el link puede verlo) ──
+async function hacerArchivoPublico(fileId) {
+  const tokens = gmailWT._leerTokens();
+  let token = tokens.access_token;
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`;
+  let r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  });
+  if (r.status === 401) {
+    const refreshed = await _refrescarToken();
+    token = refreshed.google;
+    r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    });
+  }
+  if (!r.ok) throw new Error('Permiso público falló: ' + r.status + ' ' + await r.text());
+  return await r.json();
+}
+
 module.exports = {
   sincronizarConPedidos,
   listarArchivos,
   procesarCorel,
   procesarPdfRip,
+  subirArchivo,
+  hacerArchivoPublico,
   FOLDER_COREL,
   FOLDER_PDFRIP,
+  FOLDER_FACTURAS,
+  FOLDER_COTIZACIONES,
 };

@@ -69,6 +69,53 @@ db.exec(`
     id INTEGER PRIMARY KEY DEFAULT 1,
     data TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS facturas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    cliente_nombre TEXT,
+    cliente_telefono TEXT,
+    cliente_nit TEXT,
+    cliente_correo TEXT,
+    vendedora TEXT,
+    items TEXT NOT NULL,
+    subtotal INTEGER DEFAULT 0,
+    abono INTEGER DEFAULT 0,
+    total INTEGER DEFAULT 0,
+    fecha TEXT NOT NULL,
+    pedido_id INTEGER,
+    drive_file_id TEXT,
+    drive_link TEXT,
+    pdf_size INTEGER,
+    wa_enviado_a TEXT,
+    wa_enviado_fecha TEXT,
+    origen TEXT DEFAULT 'app',
+    notas TEXT,
+    creado_en TEXT NOT NULL,
+    actualizado_en TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_facturas_tipo ON facturas(tipo);
+  CREATE INDEX IF NOT EXISTS idx_facturas_telefono ON facturas(cliente_telefono);
+  CREATE INDEX IF NOT EXISTS idx_facturas_fecha ON facturas(fecha);
+  CREATE INDEX IF NOT EXISTS idx_facturas_pedido ON facturas(pedido_id);
+  CREATE TABLE IF NOT EXISTS clientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT,
+    telefono TEXT UNIQUE,
+    nit TEXT,
+    correo TEXT,
+    ciudad TEXT,
+    direccion TEXT,
+    notas TEXT,
+    total_comprado INTEGER DEFAULT 0,
+    num_compras INTEGER DEFAULT 0,
+    ultima_compra TEXT,
+    primer_compra TEXT,
+    creado_en TEXT NOT NULL,
+    actualizado_en TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON clientes(telefono);
+  CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(nombre);
 `);
 
 // ── Prepared statements ──────────────────────────────────────────
@@ -121,6 +168,48 @@ const S = {
 
   getPendWt: db.prepare('SELECT data FROM pendientes_wt WHERE id = 1'),
   setPendWt: db.prepare('INSERT OR REPLACE INTO pendientes_wt (id, data) VALUES (1, ?)'),
+
+  // Facturas
+  insertFactura: db.prepare(`INSERT INTO facturas
+    (numero, tipo, cliente_nombre, cliente_telefono, cliente_nit, cliente_correo, vendedora,
+     items, subtotal, abono, total, fecha, pedido_id, drive_file_id, drive_link, pdf_size,
+     origen, notas, creado_en)
+    VALUES (@numero, @tipo, @cliente_nombre, @cliente_telefono, @cliente_nit, @cliente_correo, @vendedora,
+            @items, @subtotal, @abono, @total, @fecha, @pedido_id, @drive_file_id, @drive_link, @pdf_size,
+            @origen, @notas, @creado_en)`),
+  updateFacturaDrive: db.prepare('UPDATE facturas SET drive_file_id = ?, drive_link = ?, actualizado_en = ? WHERE id = ?'),
+  updateFacturaWa: db.prepare('UPDATE facturas SET wa_enviado_a = ?, wa_enviado_fecha = ?, actualizado_en = ? WHERE id = ?'),
+  getFacturas: db.prepare(`SELECT * FROM facturas ORDER BY id DESC LIMIT ? OFFSET ?`),
+  getFacturasByTel: db.prepare(`SELECT * FROM facturas WHERE cliente_telefono = ? ORDER BY id DESC`),
+  getFacturasByPedido: db.prepare(`SELECT * FROM facturas WHERE pedido_id = ? ORDER BY id DESC`),
+  getFacturaById: db.prepare(`SELECT * FROM facturas WHERE id = ?`),
+  getFacturaByNumero: db.prepare(`SELECT * FROM facturas WHERE numero = ? AND tipo = ?`),
+  countFacturas: db.prepare(`SELECT COUNT(*) as n FROM facturas WHERE tipo = ?`),
+  sumFacturasPeriodo: db.prepare(`SELECT SUM(total) as total, COUNT(*) as n FROM facturas WHERE tipo = 'factura' AND fecha >= ? AND fecha <= ?`),
+  deleteFactura: db.prepare(`DELETE FROM facturas WHERE id = ?`),
+
+  // Clientes
+  upsertCliente: db.prepare(`INSERT INTO clientes
+    (nombre, telefono, nit, correo, ciudad, direccion, notas, creado_en, actualizado_en)
+    VALUES (@nombre, @telefono, @nit, @correo, @ciudad, @direccion, @notas, @creado_en, @actualizado_en)
+    ON CONFLICT(telefono) DO UPDATE SET
+      nombre = COALESCE(excluded.nombre, nombre),
+      nit = COALESCE(excluded.nit, nit),
+      correo = COALESCE(excluded.correo, correo),
+      ciudad = COALESCE(excluded.ciudad, ciudad),
+      direccion = COALESCE(excluded.direccion, direccion),
+      notas = COALESCE(excluded.notas, notas),
+      actualizado_en = excluded.actualizado_en`),
+  bumpClienteCompra: db.prepare(`UPDATE clientes
+    SET total_comprado = total_comprado + ?,
+        num_compras = num_compras + 1,
+        ultima_compra = ?,
+        primer_compra = COALESCE(primer_compra, ?),
+        actualizado_en = ?
+    WHERE telefono = ?`),
+  getClientes: db.prepare(`SELECT * FROM clientes ORDER BY total_comprado DESC LIMIT ? OFFSET ?`),
+  getClienteByTel: db.prepare(`SELECT * FROM clientes WHERE telefono = ?`),
+  searchClientes: db.prepare(`SELECT * FROM clientes WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY total_comprado DESC LIMIT 50`),
 };
 
 // ═════════════════════════════════════════════════════════════════
@@ -413,6 +502,123 @@ migrar();
 console.log('[db] SQLite inicializado en', DB_PATH);
 
 // ═════════════════════════════════════════════════════════════════
+// FACTURAS / COTIZACIONES
+// ═════════════════════════════════════════════════════════════════
+function crearFactura(data) {
+  const now = new Date().toISOString();
+  const fila = {
+    numero: String(data.numero || '').trim(),
+    tipo: data.tipo || 'factura',
+    cliente_nombre: data.cliente_nombre || null,
+    cliente_telefono: data.cliente_telefono || null,
+    cliente_nit: data.cliente_nit || null,
+    cliente_correo: data.cliente_correo || null,
+    vendedora: data.vendedora || null,
+    items: JSON.stringify(data.items || []),
+    subtotal: Math.round(Number(data.subtotal) || 0),
+    abono: Math.round(Number(data.abono) || 0),
+    total: Math.round(Number(data.total) || 0),
+    fecha: data.fecha || now.slice(0, 10),
+    pedido_id: data.pedido_id ? parseInt(data.pedido_id, 10) : null,
+    drive_file_id: data.drive_file_id || null,
+    drive_link: data.drive_link || null,
+    pdf_size: data.pdf_size ? parseInt(data.pdf_size, 10) : null,
+    origen: data.origen || 'app',
+    notas: data.notas || null,
+    creado_en: now,
+  };
+  const res = S.insertFactura.run(fila);
+  // Si tiene cliente con teléfono, actualizar/crear cliente
+  if (fila.cliente_telefono) {
+    upsertCliente({
+      nombre: fila.cliente_nombre,
+      telefono: fila.cliente_telefono,
+      nit: fila.cliente_nit,
+      correo: fila.cliente_correo,
+    });
+    if (fila.tipo === 'factura' && fila.total > 0) {
+      S.bumpClienteCompra.run(fila.total, fila.fecha, fila.fecha, now, fila.cliente_telefono);
+    }
+  }
+  return { id: res.lastInsertRowid, ...fila };
+}
+
+function setFacturaDrive(id, drive_file_id, drive_link) {
+  S.updateFacturaDrive.run(drive_file_id, drive_link, new Date().toISOString(), id);
+}
+function setFacturaWaEnviada(id, telefono) {
+  S.updateFacturaWa.run(telefono, new Date().toISOString(), new Date().toISOString(), id);
+}
+
+function leerFacturas(limit = 100, offset = 0) {
+  return S.getFacturas.all(limit, offset).map(r => ({
+    ...r,
+    items: (() => { try { return JSON.parse(r.items); } catch { return []; } })(),
+  }));
+}
+function leerFacturasPorTelefono(tel) {
+  return S.getFacturasByTel.all(tel).map(r => ({
+    ...r,
+    items: (() => { try { return JSON.parse(r.items); } catch { return []; } })(),
+  }));
+}
+function leerFacturasPorPedido(pedidoId) {
+  return S.getFacturasByPedido.all(pedidoId).map(r => ({
+    ...r,
+    items: (() => { try { return JSON.parse(r.items); } catch { return []; } })(),
+  }));
+}
+function leerFacturaPorId(id) {
+  const r = S.getFacturaById.get(id);
+  if (!r) return null;
+  try { r.items = JSON.parse(r.items); } catch { r.items = []; }
+  return r;
+}
+function leerFacturaPorNumero(numero, tipo) {
+  const r = S.getFacturaByNumero.get(numero, tipo);
+  if (!r) return null;
+  try { r.items = JSON.parse(r.items); } catch { r.items = []; }
+  return r;
+}
+function contarFacturasPorTipo(tipo) {
+  const r = S.countFacturas.get(tipo);
+  return r ? r.n : 0;
+}
+function sumarFacturasPeriodo(desde, hasta) {
+  const r = S.sumFacturasPeriodo.get(desde, hasta);
+  return { total: r ? (r.total || 0) : 0, n: r ? r.n : 0 };
+}
+function eliminarFactura(id) { S.deleteFactura.run(id); }
+
+// ═════════════════════════════════════════════════════════════════
+// CLIENTES
+// ═════════════════════════════════════════════════════════════════
+function upsertCliente(data) {
+  const now = new Date().toISOString();
+  S.upsertCliente.run({
+    nombre: data.nombre || null,
+    telefono: data.telefono,
+    nit: data.nit || null,
+    correo: data.correo || null,
+    ciudad: data.ciudad || null,
+    direccion: data.direccion || null,
+    notas: data.notas || null,
+    creado_en: data.creado_en || now,
+    actualizado_en: now,
+  });
+}
+function leerClientes(limit = 100, offset = 0) {
+  return S.getClientes.all(limit, offset);
+}
+function leerClientePorTel(tel) {
+  return S.getClienteByTel.get(tel);
+}
+function buscarClientes(q) {
+  const wild = `%${q}%`;
+  return S.searchClientes.all(wild, wild);
+}
+
+// ═════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════
 module.exports = {
@@ -429,4 +635,11 @@ module.exports = {
   insertEvolutionEvent, leerEvolutionEvents,
   leerIgnorados, insertIgnorado,
   leerPendientesWt, guardarPendientesWt,
+  // Facturas
+  crearFactura, setFacturaDrive, setFacturaWaEnviada,
+  leerFacturas, leerFacturasPorTelefono, leerFacturasPorPedido,
+  leerFacturaPorId, leerFacturaPorNumero,
+  contarFacturasPorTipo, sumarFacturasPeriodo, eliminarFactura,
+  // Clientes
+  upsertCliente, leerClientes, leerClientePorTel, buscarClientes,
 };

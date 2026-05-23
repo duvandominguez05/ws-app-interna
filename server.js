@@ -183,6 +183,56 @@ async function notificarWAVendedora(vendedora, texto) {
   } catch (e) { console.error('[wa-vendedora error]', e.message); }
 }
 
+// Manda un DOCUMENTO (PDF u otro) vía WhatsApp Evolution.
+// telefono: 57XXXXXXXXXX (sin +, sin espacios) — se normaliza
+// mediaUrl: URL pública del archivo (ej: link público de Drive)
+// fileName: nombre que verá el cliente
+// caption: texto que acompaña el documento
+// instance: instancia Evolution a usar (default ws-duvan)
+async function enviarWADocumento({ telefono, mediaUrl, fileName, caption, instance, mimetype }) {
+  try {
+    const tel = String(telefono || '').replace(/\D/g, '');
+    if (!tel) throw new Error('telefono inválido');
+    const numero = tel.startsWith('57') ? tel : '57' + tel;
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const inst = instance || process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const r = await fetch(`${url}/message/sendMedia/${inst}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({
+        number: numero,
+        mediatype: 'document',
+        mimetype: mimetype || 'application/pdf',
+        media: mediaUrl,
+        fileName: fileName || 'documento.pdf',
+        caption: caption || '',
+      }),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(()=>'');
+      throw new Error(`Evolution sendMedia respondió ${r.status}: ${body.slice(0,300)}`);
+    }
+    return await r.json().catch(()=>({ ok: true }));
+  } catch (e) {
+    console.error('[wa-doc error]', e.message);
+    throw e;
+  }
+}
+
+// Mapeo de vendedora → instancia Evolution que usa para mandar
+const INSTANCIA_POR_VENDEDORA = {
+  'betty':    'ws-ventas',
+  'paola':    'ws-paola',
+  'ney':      'ws-ney',
+  'wendy':    'ws wendy',
+  'graciela': 'ws-duvan',
+  'camilo':   'ws-duvan',
+};
+function instanciaParaVendedora(vendedora) {
+  return INSTANCIA_POR_VENDEDORA[String(vendedora || '').toLowerCase()] || 'ws-duvan';
+}
+
 // ── DETECTOR DE COMPROBANTES DE PAGO con Gemini Flash ──
 // Cuando el cliente manda una imagen, la pasamos a Gemini para que decida si es comprobante.
 // Si lo es, guardamos un registro para el resumen de las 8 PM.
@@ -3248,6 +3298,145 @@ http.createServer(async (req, res) => {
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FACTURAS / COTIZACIONES — nueva API profesional
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── POST /api/facturas — crear factura/cotización + opcional subir PDF a Drive ──
+  // Body: { numero, tipo, cliente_nombre, cliente_telefono, cliente_nit, cliente_correo,
+  //         vendedora, items, subtotal, abono, total, fecha, pedido_id, notas, pdfBase64? }
+  if (req.method === 'POST' && req.url === '/api/facturas') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        if (!data.numero || !data.tipo) return json(res, 400, { error: 'numero y tipo son requeridos' });
+        // Guardar registro
+        const factura = db.crearFactura(data);
+        // Si viene PDF en base64, subir a Drive
+        if (data.pdfBase64) {
+          try {
+            const parentId = factura.tipo === 'cotizacion'
+              ? driveSync.FOLDER_COTIZACIONES
+              : driveSync.FOLDER_FACTURAS;
+            const tituloArchivo = `${factura.tipo === 'cotizacion' ? 'COTIZACION' : 'FACTURA'} ${factura.numero}${factura.cliente_nombre ? ' - ' + factura.cliente_nombre : ''}.pdf`;
+            const subida = await driveSync.subirArchivo({
+              titulo: tituloArchivo,
+              mimeType: 'application/pdf',
+              contentBase64: data.pdfBase64,
+              parentId,
+            });
+            // Hacer público para que pueda enviarse por WA
+            try { await driveSync.hacerArchivoPublico(subida.id); } catch (e) { console.warn('[fact] no se pudo hacer público:', e.message); }
+            db.setFacturaDrive(factura.id, subida.id, subida.viewLink);
+            factura.drive_file_id = subida.id;
+            factura.drive_link = subida.viewLink;
+            factura.drive_download = subida.downloadLink;
+          } catch (e) {
+            console.error('[fact upload Drive]', e.message);
+            // No fallar la creación de la factura por error de Drive
+            factura.driveError = e.message;
+          }
+        }
+        return json(res, 201, { ok: true, factura });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/facturas?tipo=&limit=&offset= — listar ──
+  if (req.method === 'GET' && req.url.startsWith('/api/facturas')) {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    // /api/facturas/:id
+    const m = req.url.match(/^\/api\/facturas\/(\d+)(\?|$)/);
+    if (m) {
+      const factura = db.leerFacturaPorId(parseInt(m[1], 10));
+      if (!factura) return json(res, 404, { error: 'no encontrada' });
+      return json(res, 200, { factura });
+    }
+    // /api/facturas/pedido/:id
+    const mp = req.url.match(/^\/api\/facturas\/pedido\/(\d+)/);
+    if (mp) {
+      return json(res, 200, { facturas: db.leerFacturasPorPedido(parseInt(mp[1], 10)) });
+    }
+    // /api/facturas/cliente/:tel
+    const mc = req.url.match(/^\/api\/facturas\/cliente\/(.+)/);
+    if (mc) {
+      return json(res, 200, { facturas: db.leerFacturasPorTelefono(decodeURIComponent(mc[1])) });
+    }
+    // Lista general
+    const limit = parseInt(u.searchParams.get('limit') || '100', 10);
+    const offset = parseInt(u.searchParams.get('offset') || '0', 10);
+    const facturas = db.leerFacturas(limit, offset);
+    // Stats
+    const hoy = new Date().toISOString().slice(0, 10);
+    const inicioMes = hoy.slice(0, 7) + '-01';
+    const inicioAnio = hoy.slice(0, 4) + '-01-01';
+    return json(res, 200, {
+      facturas,
+      stats: {
+        mes: db.sumarFacturasPeriodo(inicioMes, hoy),
+        anio: db.sumarFacturasPeriodo(inicioAnio, hoy),
+        totalFacturas: db.contarFacturasPorTipo('factura'),
+        totalCotizaciones: db.contarFacturasPorTipo('cotizacion'),
+      },
+    });
+  }
+
+  // ── POST /api/facturas/:id/enviar-wa — enviar PDF al cliente por WA ──
+  if (req.method === 'POST' && /^\/api\/facturas\/\d+\/enviar-wa/.test(req.url)) {
+    const id = parseInt(req.url.match(/^\/api\/facturas\/(\d+)/)[1], 10);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const factura = db.leerFacturaPorId(id);
+        if (!factura) return json(res, 404, { error: 'no encontrada' });
+        if (!factura.drive_file_id) return json(res, 400, { error: 'la factura no tiene PDF en Drive' });
+        const opts = body ? JSON.parse(body) : {};
+        const telefono = opts.telefono || factura.cliente_telefono;
+        if (!telefono) return json(res, 400, { error: 'falta teléfono del cliente' });
+        const mediaUrl = `https://drive.google.com/uc?export=download&id=${factura.drive_file_id}`;
+        const fileName = `${factura.tipo === 'cotizacion' ? 'COTIZACION' : 'FACTURA'} ${factura.numero}.pdf`;
+        const esCot = factura.tipo === 'cotizacion';
+        const titulo = esCot ? 'cotización' : 'factura';
+        const caption = opts.caption ||
+          `Hola${factura.cliente_nombre ? ' ' + factura.cliente_nombre : ''}, te envío tu ${titulo} de W&S Uniformes Deportivos.\n` +
+          `Total: $${(factura.total || 0).toLocaleString('es-CO')}\n` +
+          (esCot ? '\nSi te interesa, con gusto avanzamos con el pedido. Gracias 🙏' : '\nGracias por tu compra 🙏');
+        const instance = opts.instance || instanciaParaVendedora(factura.vendedora);
+        await enviarWADocumento({ telefono, mediaUrl, fileName, caption, instance });
+        db.setFacturaWaEnviada(id, telefono);
+        return json(res, 200, { ok: true, telefono, instance });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/clientes — listar / buscar ──
+  if (req.method === 'GET' && req.url.startsWith('/api/clientes')) {
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    // /api/clientes/:tel
+    const m = req.url.match(/^\/api\/clientes\/([^?]+)/);
+    if (m && !req.url.startsWith('/api/clientes?')) {
+      const tel = decodeURIComponent(m[1]);
+      const cliente = db.leerClientePorTel(tel);
+      if (!cliente) return json(res, 404, { error: 'no encontrado' });
+      const facturas = db.leerFacturasPorTelefono(tel);
+      return json(res, 200, { cliente, facturas });
+    }
+    const q = u.searchParams.get('q');
+    if (q) return json(res, 200, { clientes: db.buscarClientes(q) });
+    const limit = parseInt(u.searchParams.get('limit') || '100', 10);
+    const offset = parseInt(u.searchParams.get('offset') || '0', 10);
+    return json(res, 200, { clientes: db.leerClientes(limit, offset) });
   }
 
   // ── POST/GET /api/gmail/sync — disparar sincronización manual ──
