@@ -3915,6 +3915,9 @@ function fmtPesoNum(n) {
   return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(n);
 }
 
+// generarPDF: solo imprimir / vista previa. Usa MISMO template buildDocHTML
+// que el flow nuevo (Generar+Drive) para que el estilo sea consistente
+// entre lo que ve el cliente por WhatsApp y lo que se imprime.
 function generarPDF() {
   const cliente   = document.getElementById('doc-cliente').value.trim();
   const vendedora = document.getElementById('doc-vendedora').value;
@@ -3923,190 +3926,37 @@ function generarPDF() {
   if (docItems.every(it => !it.desc)) return toast('Agrega al menos un ítem', 'warning');
 
   const telefono = document.getElementById('doc-telefono').value.trim();
-  const nit      = document.getElementById('doc-nit').value.trim();
-  const correo   = document.getElementById('doc-correo').value.trim();
   const abono    = docTipo === 'factura' ? (parseInt(document.getElementById('doc-abono').value || '0') || 0) : 0;
   const { subtotal, total } = calcDocTotales();
 
   const num    = docTipo === 'cotizacion' ? nextCot : nextFac;
   const numStr = String(num).padStart(5, '0');
   const fecha  = new Date().toLocaleDateString('es-CO');
-  const esCot  = docTipo === 'cotizacion';
-  const titulo = esCot ? 'COTIZACION' : 'FACTURA';
-  const color1 = '#c8a96e';
-  const color2 = '#f5e6c8';
 
-  const filasItems = docItems.filter(it => it.desc).map(it => {
-    const tot = it.cant * it.precio;
-    return `<tr>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;color:#c8501a;">${it.cant}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:13px;font-weight:700;text-transform:uppercase;">${esc(it.desc)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(it.precio)}</td>
-      <td style="text-align:center;padding:10px 6px;font-size:12px;">${fmtPesoNum(tot)}</td>
-    </tr>`;
-  }).join('');
-
-  const itemsValidos = docItems.filter(it => it.desc).length;
-  const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
-    .map(() => `<tr><td style="padding:10px 6px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
-
-  const abonoFila = !esCot ? `<tr>
-    <td colspan="2"></td>
-    <td style="text-align:right;font-weight:600;padding:6px 6px;">ABONO:</td>
-    <td style="text-align:center;padding:6px 6px;">
-      <span style="background:${color1};color:white;padding:2px 10px;border-radius:3px;font-weight:700;">${abono > 0 ? fmtPesoNum(abono) : '0'}</span>
-    </td>
-  </tr>` : '';
-
-  const notaCot = esCot ? `<div style="margin-top:16px;font-size:11px;line-height:1.8;">
-    <strong style="text-transform:uppercase;font-size:12px;">NOTA:</strong><br>
-    TELA<br>
-    microfibra poliéster semilicrado 8005 &nbsp;brillo sauvidad y resistente<br><br>
-    BONOS<br>
-    por compra de 35 uniformes obsequiamos bandera 1mtr x 1.50<br>
-    por compra de +100 uniformes obsequiamos descuento del 5%
-  </div>` : '';
-
-  const htmlDoc = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>${titulo} #${numStr}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:Arial,sans-serif;font-size:12px;color:#333;background:white}
-  .page{width:800px;margin:0 auto;padding:30px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-  .empresa-info{font-size:11px;line-height:1.7}
-  .titulo-doc h1{font-size:32px;color:${color1};font-weight:900;letter-spacing:2px;text-align:right}
-  .titulo-doc .num{font-size:22px;font-weight:700;color:#555;text-align:right}
-  hr{border:none;border-top:1px solid #ddd;margin:14px 0}
-  .campo{color:#999;min-width:60px;display:inline-block}
-  table{width:100%;border-collapse:collapse}
-  thead tr{background:${color1}}
-  thead th{padding:8px 6px;font-size:11px;font-weight:700;color:white;text-transform:uppercase;text-align:center}
-  tbody tr:nth-child(even){background:${color2}}
-  tbody tr{border-bottom:1px solid #e8d8b8}
-  .footer-text{text-align:center;font-size:9.5px;font-weight:700;margin:16px 0 10px;text-transform:uppercase;line-height:1.6}
-  .cuentas{display:flex;justify-content:space-around;margin-top:10px}
-  .cuenta{text-align:center;font-size:10px;line-height:1.7}
-  .cuenta strong{font-size:11px;text-transform:uppercase}
-  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="header">
-    <div>
-      <img src="${LOGO_WYS}" style="height:90px;width:auto;" alt="W&S">
-      <div class="empresa-info" style="margin-top:8px;">
-        <strong>W&S DEPORTIVO</strong><br>
-        1030675743-0<br>
-        CARRERA 90A # 4-40<br>
-        Bogotá D.C<br>
-        (350) 697-4711<br>
-        301 663 94 30
-      </div>
-    </div>
-    <div class="titulo-doc">
-      <h1>${titulo}</h1>
-      <div class="num"># ${numStr}</div>
-      <div style="text-align:right;font-size:11px;margin-top:10px;">
-        Fecha: ${fecha}<br>
-        <strong>VENDEDOR: ${esc(vendedora)}</strong>
-      </div>
-    </div>
-  </div>
-
-  <hr>
-
-  <div style="margin-bottom:16px;">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#999;font-weight:700;margin-bottom:6px;">Cliente</div>
-    <div style="font-size:11px;line-height:1.8;">
-      <span class="campo">Nombre</span> ${esc(cliente)}<br>
-      <span class="campo">Teléfono</span> ${telefono || '—'}<br>
-      ${nit ? `<span class="campo">NIT/CC</span> ${nit}<br>` : ''}
-      ${correo ? `<span class="campo">Correo</span> ${correo}<br>` : ''}
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width:80px">CANTIDAD</th>
-        <th>DESCRIPCION</th>
-        <th style="width:110px">PRECIO</th>
-        <th style="width:110px">TOTAL</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filasItems}
-      ${filasVacias}
-      <tr>
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:600;padding:8px 6px;">SUBTOTAL:</td>
-        <td style="text-align:center;font-weight:700;padding:8px 6px;">${fmtPesoNum(subtotal)}</td>
-      </tr>
-      ${abonoFila}
-      <tr style="background:${color2};">
-        <td colspan="2"></td>
-        <td style="text-align:right;font-weight:800;font-size:13px;padding:8px 6px;">TOTAL:</td>
-        <td style="text-align:center;font-weight:800;font-size:14px;padding:8px 6px;">${fmtPesoNum(total)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div class="footer-text">
-    UNIFORME DE NIÑO VALE 5.000 PESOS MENOS QUE EL UNIFORME DE ADULTO<br>
-    SE LE INFORMA A LOS CLIENTES QUE PARA INICIAR EL PEDIDO DEBE COMENZAR CON EL 50% DEL PEDIDO
-  </div>
-
-  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:10px;">CUENTAS DE CONSIGNACION</div>
-
-  <div class="cuentas">
-    <div class="cuenta">
-      <strong>BANCOLOMBIA</strong><br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].num}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].nombre}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].cc}<br>
-      ${CUENTAS_BANCOLOMBIA[docCuenta].tipo}
-    </div>
-    <div class="cuenta">
-      <strong>NEQUI</strong><br>
-      350 697 47 11<br>
-      301 663 94 30
-    </div>
-    <div class="cuenta">
-      <strong>DAVIPLATA</strong><br>
-      350 697 47 11<br>
-      301 663 94 30
-    </div>
-  </div>
-
-  ${notaCot}
-</div>
-</body>
-</html>`;
-
-  // Guardar en historial
+  // Construir registro con misma forma que el historial / flow nuevo
   const registro = {
     id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora, telefono,
     subtotal, abono, total, fecha, cuenta: docCuenta,
     items: docItems.filter(it => it.desc).map(it => ({...it})),
   };
+
+  // Guardar en historial local + bump contador
   docHistorial.unshift(registro);
   if (docHistorial.length > 50) docHistorial = docHistorial.slice(0, 50);
   if (docTipo === 'cotizacion') nextCot++; else nextFac++;
   guardarDocs();
   renderDocHistorial();
 
+  // Usar el MISMO template que el flow nuevo y el envío WA
+  const htmlDoc = buildDocHTML(registro);
   const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const win  = window.open(url, '_blank');
   if (win) setTimeout(() => win.print(), 1200);
-  else window.location.href = url; // fallback celular bloqueó popup
+  else window.location.href = url;
 
-  toast(titulo + ' #' + numStr + ' generada', 'success');
+  const tituloLabel = docTipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  toast(tituloLabel + ' #' + numStr + ' generada', 'success');
   cerrarFormDoc();
 }
 
