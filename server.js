@@ -2041,10 +2041,74 @@ http.createServer(async (req, res) => {
                       confianza: analisis.confianza || 'media',
                       messageId: eventData.key?.id || null,
                       remoteJid,
-                      stickerEnviado: false, // se actualiza si despues llega el sticker
+                      stickerEnviado: false,
+                      pedidoAutoCreado: null,
                     };
+
+                    // ─── AUTO-CREAR PEDIDO en bandeja al instante ───
+                    // Para que las ventas NUNCA se pierdan, incluso si la vendedora
+                    // olvida usar el sticker. El sticker oficializa la venta
+                    // (avisa al grupo familia + Chatwoot).
+                    let pedidoCreado = null;
+                    try {
+                      // Solo crear si hay confianza media o alta (evitar falsos positivos)
+                      if (analisis.confianza !== 'baja') {
+                        const equipoTentativo = nombreCliente || `Cliente ${telefonoCliente}`;
+                        const resCrear = crearVentaInterna(
+                          'pedido',
+                          vendedora,
+                          telefonoCliente,
+                          eventData.key?.id || null,
+                          equipoTentativo
+                        );
+                        if (resCrear.ok && !resCrear.duplicado) {
+                          pedidoCreado = resCrear.id;
+                          registro.pedidoAutoCreado = resCrear.id;
+                          // Anotar que vino por comprobante (no sticker)
+                          const pedidos = leerPedidos();
+                          const p = pedidos.find(x => x.id === resCrear.id);
+                          if (p) {
+                            p.origenComprobante = true;
+                            p.montoComprobante = analisis.monto || null;
+                            p.bancoComprobante = analisis.banco || null;
+                            p.confianzaComprobante = analisis.confianza;
+                            p.historial = p.historial || [];
+                            p.historial.push({
+                              fecha: new Date().toISOString(),
+                              por: 'comprobante-bot',
+                              accion: 'crear-pedido',
+                              nota: `Auto-creado por comprobante detectado ($${analisis.monto||'?'} ${analisis.banco})`,
+                            });
+                            db.guardarPedidos(pedidos);
+                          }
+                          console.log(`[comprobante] PEDIDO #${resCrear.id} auto-creado por comprobante (${vendedora} ← ${nombreCliente})`);
+                        } else if (resCrear.duplicado) {
+                          registro.pedidoAutoCreado = resCrear.id;
+                          console.log(`[comprobante] Pedido ya existía: #${resCrear.id}`);
+                        }
+                      }
+                    } catch (eCrear) {
+                      console.error('[comprobante auto-crear pedido]', eCrear.message);
+                    }
+
                     guardarComprobanteDetectado(registro);
                     console.log(`[comprobante] DETECTADO ${vendedora} ← ${nombreCliente} ${analisis.banco} $${analisis.monto||'?'} (confianza=${analisis.confianza})`);
+
+                    // ─── WA INMEDIATO a la vendedora ───
+                    // "Detectamos pago de $X de Y. Subimos pedido #N. Confirma con sticker 💰"
+                    try {
+                      const montoTxt = analisis.monto ? `$${Number(analisis.monto).toLocaleString('es-CO')}` : 'monto no detectado';
+                      const bancoTxt = analisis.banco && analisis.banco !== 'desconocido' ? ` por ${analisis.banco}` : '';
+                      const pedidoTxt = pedidoCreado ? `\n📋 *Subimos el pedido #${pedidoCreado}* al tablero.\n` : '';
+                      const msg = `💸 *Detectamos pago* ${montoTxt}${bancoTxt}\n\n` +
+                        `👤 Cliente: ${nombreCliente || telefonoCliente}\n` +
+                        `📱 ${telefonoCliente}\n` +
+                        pedidoTxt +
+                        `\n✅ *Por favor confirma poniendo el sticker venta 💰* en el chat del cliente para que avisemos al grupo familia y Chatwoot.`;
+                      await notificarWAVendedora(vendedora, msg);
+                    } catch (eWa) {
+                      console.error('[comprobante wa vendedora]', eWa.message);
+                    }
                   } else {
                     console.log(`[comprobante] NO es comprobante (${vendedora} ← ${telefonoCliente})`);
                   }
