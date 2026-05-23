@@ -6,6 +6,7 @@ if (!global.crypto) global.crypto = webcrypto;
 const db   = require('./db');
 const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
 const gmailWT = require('./gmail-wt');
+const driveSync = require('./drive-sync');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -3189,6 +3190,66 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST/GET /api/drive/sync — sincronizar archivos de Drive con pedidos ──
+  if ((req.method === 'POST' || req.method === 'GET') && req.url.startsWith('/api/drive/sync')) {
+    try {
+      const pedidos = db.leerPedidos();
+      const resultado = await driveSync.sincronizarConPedidos(pedidos);
+      const aplicados = [];
+      for (const u of resultado.updates) {
+        const p = pedidos.find(x => x.id === u.pedidoId);
+        if (!p) continue;
+        p.drive = p.drive || {};
+        if (u.corel) p.drive.corel = u.corel;
+        if (u.pdfRip) p.drive.pdfRip = u.pdfRip;
+        // Auto-asignar diseñador si no tiene y Drive lo identificó
+        if (u.disenadorSugerido && !p.disenadorAsignado) {
+          p.disenadorAsignado = u.disenadorSugerido;
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'drive-bot',
+            accion: 'asignar-disenador',
+            a: u.disenadorSugerido,
+            nota: `Auto-asignado por owner del .cdr en Drive`,
+          });
+        }
+        // Si el pedido está en bandeja y aparece .cdr → avanzar a hacer-diseno
+        if (u.corel && p.estado === 'bandeja') {
+          p.estado = 'hacer-diseno';
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'drive-bot',
+            accion: 'avanzar',
+            de: 'bandeja',
+            a: 'hacer-diseno',
+            nota: `Auto-avanzado: archivo Corel detectado en Drive`,
+          });
+        }
+        aplicados.push({
+          id: p.id,
+          equipo: p.equipo,
+          corel: !!u.corel,
+          pdfRip: !!u.pdfRip,
+          disenador: u.disenadorSugerido || null,
+        });
+      }
+      if (aplicados.length) db.guardarPedidos(pedidos);
+      return json(res, 200, {
+        ok: true,
+        totales: resultado.totales,
+        aplicados: aplicados.length,
+        huerfanos: resultado.huerfanos.length,
+        detalles: aplicados,
+        huerfanosLista: resultado.huerfanos.slice(0, 20),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
   // ── POST/GET /api/gmail/sync — disparar sincronización manual ──
   if ((req.method === 'POST' || req.method === 'GET') && req.url.startsWith('/api/gmail/sync')) {
     try {
@@ -3582,3 +3643,57 @@ setInterval(cronWeTransferTick, 5 * 60 * 1000);
 // Tick inicial 60s después de arrancar
 setTimeout(cronWeTransferTick, 60 * 1000);
 console.log('[cron-wt] activado — sincronizará WeTransfer cada 5 minutos');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Drive — cada 10 min lee carpetas corel + PDF RIP y vincula a pedidos
+// ═══════════════════════════════════════════════════════════════════
+let _driveSyncEnCurso = false;
+async function cronDriveTick() {
+  if (_driveSyncEnCurso) return;
+  if (!gmailWT.estaConectado()) return; // mismo OAuth
+  _driveSyncEnCurso = true;
+  try {
+    const pedidos = db.leerPedidos();
+    const resultado = await driveSync.sincronizarConPedidos(pedidos);
+    const aplicados = [];
+    let cambios = false;
+    for (const u of resultado.updates) {
+      const p = pedidos.find(x => x.id === u.pedidoId);
+      if (!p) continue;
+      p.drive = p.drive || {};
+      const corelChanged = u.corel && (!p.drive.corel || p.drive.corel.id !== u.corel.id);
+      const pdfChanged = u.pdfRip && (!p.drive.pdfRip || p.drive.pdfRip.id !== u.pdfRip.id);
+      if (u.corel) p.drive.corel = u.corel;
+      if (u.pdfRip) p.drive.pdfRip = u.pdfRip;
+      if (u.disenadorSugerido && !p.disenadorAsignado) {
+        p.disenadorAsignado = u.disenadorSugerido;
+        cambios = true;
+      }
+      if (u.corel && p.estado === 'bandeja' && corelChanged) {
+        p.estado = 'hacer-diseno';
+        p.ultimoMovimiento = new Date().toISOString();
+        cambios = true;
+        aplicados.push({ id: p.id, equipo: p.equipo, accion: 'avance-a-hacer-diseno', archivo: u.corel.nombre });
+      }
+      if (corelChanged || pdfChanged) cambios = true;
+    }
+    if (cambios) {
+      db.guardarPedidos(pedidos);
+      if (aplicados.length) {
+        const msg = `📂 *Drive auto-vinculado* (${aplicados.length})\n\n` +
+          aplicados.slice(0, 10).map(a => `• #${a.id} ${a.equipo}: ${a.archivo} → ${a.accion}`).join('\n');
+        notificarTelegramDuvan(msg).catch(()=>{});
+      }
+      console.log('[cron-drive] aplicados', aplicados.length, 'avances de estado');
+    }
+  } catch (e) {
+    console.error('[cron-drive error]', e.message);
+  } finally {
+    _driveSyncEnCurso = false;
+  }
+}
+// Cada 10 minutos
+setInterval(cronDriveTick, 10 * 60 * 1000);
+// Tick inicial 90s después de arrancar (después del WT)
+setTimeout(cronDriveTick, 90 * 1000);
+console.log('[cron-drive] activado — sincronizará Drive cada 10 minutos');

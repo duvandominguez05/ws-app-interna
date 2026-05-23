@@ -1633,6 +1633,20 @@ function renderKanban(estado) {
   if (col) col.innerHTML = items.length ? items.map(p => renderKanbanCard(p)).join('') : emptyHtml;
 }
 
+// Render del bloque Drive (Corel + PDF RIP) en una tarjeta de pedido.
+// Muestra botones para ver el .cdr y el .pdf que se mandó a calandra.
+function driveBadgeHtml(p) {
+  const d = p.drive;
+  if (!d || (!d.corel && !d.pdfRip)) return '';
+  const corelBtn = d.corel
+    ? `<a href="${esc(d.corel.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${esc(d.corel.nombre)}" style="display:inline-block;background:rgba(167,139,250,0.18);border:1px solid rgba(167,139,250,0.4);color:#c4b5fd;border-radius:5px;padding:3px 8px;font-size:0.68rem;font-weight:600;text-decoration:none;margin-right:4px;">🎨 Ver Corel</a>`
+    : '';
+  const pdfBtn = d.pdfRip
+    ? `<a href="${esc(d.pdfRip.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${esc(d.pdfRip.nombre)}" style="display:inline-block;background:rgba(251,146,60,0.18);border:1px solid rgba(251,146,60,0.4);color:#fdba74;border-radius:5px;padding:3px 8px;font-size:0.68rem;font-weight:600;text-decoration:none;">📑 Ver PDF rip</a>`
+    : '';
+  return `<div style="margin-bottom:6px;">${corelBtn}${pdfBtn}</div>`;
+}
+
 // Render del bloque WeTransfer en una tarjeta de pedido.
 // Muestra archivos enviados a calandra, m², link al envío y estado (enviado/descargado).
 function wtBadgeHtml(p) {
@@ -1728,6 +1742,7 @@ function renderKanbanCardDiseno(p) {
       </div>
       ${notasHtml}
       ${disenadorHtml}
+      ${driveBadgeHtml(p)}
       ${wtBadgeHtml(p)}
       ${actionHtml}
     </div>
@@ -1899,6 +1914,7 @@ function renderKanbanCard(p) {
       ${fechaHtml}
       ${notasHtml}
       ${arregloInfoHtml}
+      ${driveBadgeHtml(p)}
       ${wtBadgeHtml(p)}
       ${actionsHtml}
     </div>
