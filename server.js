@@ -183,6 +183,88 @@ async function notificarWAVendedora(vendedora, texto) {
   } catch (e) { console.error('[wa-vendedora error]', e.message); }
 }
 
+// Manda mensaje WA al teléfono personal de CUALQUIER persona del roster.
+// Usa env vars WA_<NOMBRE> con fallback a hardcoded por slug.
+// Devuelve true si se envió, false si no hay número configurado.
+const WA_NUMS_PERSONA = {
+  // Hardcoded — sobrescribibles con env WA_<SLUG_UPPER>
+  betty:      '573506974711',
+  ney:        '573016639430',
+  wendy:      '573118287892',
+  paola:      '573026027865',
+  duvan:      process.env.WA_DUVAN || '573108428712', // owner
+  camilo:     process.env.WA_CAMILO || null,
+  oscar:      process.env.WA_OSCAR || null,
+  graciela:   process.env.WA_GRACIELA || null,
+  lidermeyer: process.env.WA_LIDERMEYER || null,
+  marcela:    process.env.WA_MARCELA || null,
+  cristina:   process.env.WA_CRISTINA || null,
+  wilson:     process.env.WA_WILSON || null,
+  yamile:     process.env.WA_YAMILE || null,
+};
+function _numeroPersona(slugOrNombre) {
+  if (!slugOrNombre) return null;
+  const k = String(slugOrNombre).toLowerCase().split(' ')[0]; // toma primer nombre
+  // 1. Override via env WA_<SLUG_UPPER>
+  const envKey = 'WA_' + k.toUpperCase();
+  if (process.env[envKey]) return process.env[envKey];
+  // 2. Hardcoded
+  return WA_NUMS_PERSONA[k] || null;
+}
+// Construye el mensaje de onboarding personalizado por rol.
+function _buildOnboardingMsg(persona, link, rolesTxt) {
+  const rol = (persona.roles && persona.roles[0]) || '';
+  let acciones = '';
+  if (persona.roles.includes('ventas')) {
+    acciones += '✅ Cuando recibas un pago, la app te avisa automático y sube el pedido al tablero\n';
+    acciones += '✅ Pon el sticker venta 💰 en el chat del cliente para oficializar la venta\n';
+    acciones += '✅ Genera cotizaciones y facturas directo desde la app y mándalas al cliente por WA con 1 click\n';
+  }
+  if (persona.roles.includes('diseno')) {
+    acciones += '✅ Ves los pedidos que te asignaron y los archivos en Drive\n';
+    acciones += '✅ Cuando termines, marca "Listo" desde Mi Día\n';
+  }
+  if (persona.roles.includes('produccion') || persona.roles.includes('corte')) {
+    acciones += '✅ Ves los pedidos que llegan de calandra para corte/costura\n';
+    acciones += '✅ Reporta arreglos cuando algo viene con fallo\n';
+  }
+  if (persona.roles.includes('costura')) {
+    acciones += '✅ Ves SOLO los pedidos que te asignaron\n';
+    acciones += '✅ Cuando termines uno, súbele foto y marca "Listo"\n';
+  }
+  if (persona.roles.includes('admin')) {
+    acciones += '✅ Tablero completo + Torre de Control con KPIs\n';
+    acciones += '✅ Calandra + Facturas + Productividad del equipo\n';
+  }
+  return `👋 *Hola ${persona.nombre}*, bienvenido a la app de W&S Textil.\n\n` +
+    `Tu rol: *${rolesTxt}*\n\n` +
+    `*Abre tu link personal:*\n${link}\n\n` +
+    `*Para instalarla en tu celular* (1 minuto):\n` +
+    `1️⃣ Abre el link arriba\n` +
+    `2️⃣ Toca el menú del navegador (⋮ arriba a la derecha)\n` +
+    `3️⃣ Elige "Instalar app" o "Añadir a pantalla de inicio"\n` +
+    `4️⃣ Listo, queda un ícono con tu nombre\n\n` +
+    `*Qué puedes hacer:*\n${acciones}\n` +
+    `Si tienes dudas, escríbele a Duvan 💜`;
+}
+
+async function notificarWAPersona(slugOrNombre, texto) {
+  try {
+    const numero = _numeroPersona(slugOrNombre);
+    if (!numero) { console.log(`[wa-persona] sin número para ${slugOrNombre}`); return false; }
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const r = await fetch(`${url}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ number: numero, text: texto }),
+    });
+    if (!r.ok) console.error(`[wa-persona ${slugOrNombre}] respuesta:`, r.status);
+    return r.ok;
+  } catch (e) { console.error('[wa-persona error]', e.message); return false; }
+}
+
 // Manda un DOCUMENTO (PDF u otro) vía WhatsApp Evolution.
 // telefono: 57XXXXXXXXXX (sin +, sin espacios) — se normaliza
 // mediaUrl: URL pública del archivo (ej: link público de Drive)
@@ -1306,7 +1388,47 @@ http.createServer(async (req, res) => {
         existing.forEach(e => { if (!incomingIds.has(e.id) && !eliminadosSet.has(e.id) && !archivadosSet.has(e.id)) merged.push(e); });
         merged.sort((a, b) => a.id - b.id);
 
+        // ─── DETECCIÓN DE CAMBIOS para disparar notificaciones WA ───
+        // (antes de guardar) Identificar:
+        //   1) Diseñador recién asignado (existing.disenadorAsignado vacío → nuevo tiene valor)
+        //   2) Estado avanzó a 'listo' (avisar a la vendedora)
+        const cambiosDisenador = [];
+        const cambiosListo = [];
+        for (const p of merged) {
+          const e = mapaExisting.get(p.id);
+          if (!e) continue;
+          // Diseñador asignado por primera vez
+          if (!e.disenadorAsignado && p.disenadorAsignado && p.disenadorAsignado !== 'null') {
+            cambiosDisenador.push({ pedido: p, disenador: p.disenadorAsignado });
+          }
+          // Pedido pasa a 'listo'
+          if (e.estado !== 'listo' && p.estado === 'listo') {
+            cambiosListo.push({ pedido: p });
+          }
+        }
+
         guardarPedidos(merged, nextId);
+
+        // Disparar notificaciones en background (no bloquear respuesta)
+        for (const c of cambiosDisenador) {
+          const p = c.pedido;
+          const msg = `🎨 *Nuevo pedido asignado*\n\n` +
+            `Pedido #${p.id} — ${p.equipo || p.telefono || 'Sin equipo'}\n` +
+            `Vendedora: ${p.vendedora || '—'}\n` +
+            (p.fechaEntrega ? `Entrega: ${p.fechaEntrega}\n` : '') +
+            (p.notas ? `Nota: ${p.notas}\n` : '') +
+            `\nAbre tu Mi Día para verlo: https://ws-app-interna-production.up.railway.app/#/mi-dia`;
+          notificarWAPersona(c.disenador, msg).catch(()=>{});
+        }
+        for (const c of cambiosListo) {
+          const p = c.pedido;
+          if (!p.vendedora) continue;
+          const msg = `✅ *Pedido listo para enviar*\n\n` +
+            `Pedido #${p.id} — ${p.equipo || p.telefono || 'Sin equipo'} está listo.\n` +
+            `Avísale al cliente que ya puede pagar el saldo final para despachar.`;
+          notificarWAPersona(p.vendedora, msg).catch(()=>{});
+        }
+
         return json(res, 200, { ok: true, total: merged.length });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
@@ -3101,6 +3223,22 @@ http.createServer(async (req, res) => {
           `🎨 *Asignado a:* ${nuevo.disenador}` +
           (pedidoId ? `\n📦 *Pedido:* #${pedidoId}` : '');
         notificarTelegramDuvan(tel).catch(()=>{});
+
+        // ─── NOTIF WA al diseñador asignado ───
+        if (nuevo.disenador && nuevo.disenador !== 'Sin asignar') {
+          const link = pedidoId
+            ? `https://ws-app-interna-production.up.railway.app/#/mi-dia`
+            : `https://ws-app-interna-production.up.railway.app/`;
+          const msgWA = `🔧 *Nuevo arreglo asignado a ti*\n\n` +
+            `👕 Equipo: ${nuevo.equipo}\n` +
+            `📝 Falta: ${nuevo.faltante}\n` +
+            (pedidoId ? `📦 Pedido: #${pedidoId}\n` : '') +
+            `\nPor favor re-envía el archivo corregido a calandra por WeTransfer.\n` +
+            `Cuando lo mandes, marca como "Re-enviado" en tu app.\n\n` +
+            `🔗 ${link}`;
+          notificarWAPersona(nuevo.disenador, msgWA).catch(()=>{});
+        }
+
         return json(res, 200, { ok: true, id: nuevo.id });
       } catch (e) { return json(res, 400, { error: e.message }); }
     });
@@ -3568,6 +3706,80 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/onboarding/enviar-uno — enviar WA de onboarding a UNA persona ──
+  // Body: { slug }  o  { slug, mensaje? }
+  if (req.method === 'POST' && req.url === '/api/onboarding/enviar-uno') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const { slug, mensaje } = JSON.parse(body);
+        const persona = getPersona(slug);
+        if (!persona) return json(res, 404, { error: 'persona no encontrada' });
+        const link = `https://ws-app-interna-production.up.railway.app/app/${persona.slug}`;
+        const rolesTxt = (persona.roles || []).join(', ');
+        const txt = mensaje || _buildOnboardingMsg(persona, link, rolesTxt);
+        const sent = await notificarWAPersona(persona.slug, txt);
+        return json(res, 200, { ok: true, sent, persona: persona.slug, link });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/onboarding/enviar-todos — disparar a TODAS las personas con teléfono ──
+  // Solo manda a las que tienen número configurado.
+  if (req.method === 'POST' && req.url === '/api/onboarding/enviar-todos') {
+    (async () => {
+      try {
+        const enviados = [];
+        const sinNumero = [];
+        for (const persona of PERSONAS) {
+          const link = `https://ws-app-interna-production.up.railway.app/app/${persona.slug}`;
+          const rolesTxt = (persona.roles || []).join(', ');
+          const txt = _buildOnboardingMsg(persona, link, rolesTxt);
+          const sent = await notificarWAPersona(persona.slug, txt);
+          if (sent) enviados.push(persona.slug);
+          else sinNumero.push(persona.slug);
+        }
+        return json(res, 200, { ok: true, enviados, sinNumero });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
+  // ── POST /api/backup/forzar — admin dispara backup manual ──
+  if (req.method === 'POST' && req.url === '/api/backup/forzar') {
+    (async () => {
+      try {
+        // Limpiar marca para forzar
+        try { if (fs.existsSync(BACKUP_FILE)) fs.unlinkSync(BACKUP_FILE); } catch {}
+        // Truco: hacer "como si fuera la 2 AM" llamando directo
+        if (!gmailWT.estaConectado()) return json(res, 400, { error: 'Gmail/Drive no conectado' });
+        const dbFile = path.join(__dirname, 'data', 'ws-textil.db');
+        if (!fs.existsSync(dbFile)) return json(res, 404, { error: 'BD no encontrada' });
+        const buffer = fs.readFileSync(dbFile);
+        const contentBase64 = buffer.toString('base64');
+        const hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }).replace(/\//g, '-');
+        const titulo = `ws-textil-backup-${hoyStr}-manual.db`;
+        const subida = await driveSync.subirArchivo({
+          titulo,
+          mimeType: 'application/x-sqlite3',
+          contentBase64,
+          parentId: driveSync.FOLDER_FACTURAS,
+        });
+        _marcarBackupHoy({ driveId: subida.id, link: subida.viewLink, size: buffer.length, manual: true });
+        return json(res, 200, { ok: true, titulo, size: buffer.length, link: subida.viewLink });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/calandra/vincular-huerfano — vincular manualmente ──
   if (req.method === 'POST' && req.url === '/api/calandra/vincular-huerfano') {
     let body = '';
@@ -3967,6 +4179,17 @@ async function cronWeTransferTick() {
         });
       }
       aplicados.push({ id: p.id, equipo: p.equipo, accion: u.accion, archivo: u.archivo.nombreOriginal });
+
+      // ─── NOTIF WA al diseñador cuando calandra DESCARGA su archivo ───
+      // (la descarga es señal de que calandra ya lo recibió e iniciará impresión)
+      if (u.accion === 'descargado' && p.disenadorAsignado) {
+        const msg = `✅ *Calandra descargó tu archivo*\n\n` +
+          `Pedido #${p.id} — ${p.equipo || p.telefono || 'Sin equipo'}\n` +
+          `Archivo: ${u.archivo.nombreOriginal}\n` +
+          (u.archivo.m2 ? `Metros: ${u.archivo.m2} m²\n` : '') +
+          `\nCalandra ya lo recibió, debería llegar al taller en 1-2 días.`;
+        notificarWAPersona(p.disenadorAsignado, msg).catch(()=>{});
+      }
     }
     if (aplicados.length) {
       db.guardarPedidos(pedidos);
@@ -4043,3 +4266,112 @@ setInterval(cronDriveTick, 10 * 60 * 1000);
 // Tick inicial 90s después de arrancar (después del WT)
 setTimeout(cronDriveTick, 90 * 1000);
 console.log('[cron-drive] activado — sincronizará Drive cada 10 minutos');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Recordatorio sticker — cada 15 min revisa comprobantes >90min sin sticker
+// ═══════════════════════════════════════════════════════════════════
+async function cronRecordatorioStickerTick() {
+  try {
+    const comprobantes = db.leerComprobantes();
+    const ahora = Date.now();
+    const NOVENTA_MIN = 90 * 60 * 1000;
+    const cambios = [];
+    for (const c of comprobantes) {
+      if (c.stickerEnviado) continue;
+      if (c.recordatorio90Enviado) continue;
+      const ts = new Date(c.ts).getTime();
+      if (isNaN(ts)) continue;
+      if ((ahora - ts) < NOVENTA_MIN) continue;
+      // Solo en horario laboral 8 AM - 8 PM Bogotá
+      const horaBogota = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+      if (horaBogota < 8 || horaBogota > 19) continue;
+      // Mandar recordatorio
+      try {
+        const monto = c.monto ? `$${Number(c.monto).toLocaleString('es-CO')}` : '';
+        const banco = c.banco && c.banco !== 'desconocido' ? c.banco : '';
+        const cliente = c.cliente || c.telefono || 'cliente';
+        const pedidoTxt = c.pedidoAutoCreado ? ` (pedido #${c.pedidoAutoCreado})` : '';
+        const msg = `⏰ *Recordatorio: falta sticker*\n\n` +
+          `Hace +90 min detectamos un pago ${monto} ${banco} de *${cliente}*${pedidoTxt}.\n\n` +
+          `Por favor pon el sticker venta 💰 en el chat para oficializar la venta (avisa al grupo familia + Chatwoot).`;
+        await notificarWAVendedora(c.vendedora, msg);
+        cambios.push(c.messageId || c.ts);
+        c.recordatorio90Enviado = true;
+        c.recordatorio90Fecha = new Date().toISOString();
+        db.upsertComprobante(c);
+        console.log(`[cron-90min] recordatorio enviado a ${c.vendedora} por ${cliente}`);
+      } catch (eMsg) {
+        console.error('[cron-90min msg]', eMsg.message);
+      }
+    }
+    if (cambios.length) {
+      console.log(`[cron-90min] ${cambios.length} recordatorios enviados`);
+    }
+  } catch (e) {
+    console.error('[cron-90min error]', e.message);
+  }
+}
+// Cada 15 minutos
+setInterval(cronRecordatorioStickerTick, 15 * 60 * 1000);
+// Tick inicial 2 min después de arrancar
+setTimeout(cronRecordatorioStickerTick, 2 * 60 * 1000);
+console.log('[cron-90min] activado — recordatorios sticker cada 15 min');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Backup nocturno a Drive — cada noche 2 AM Bogotá sube BD a Drive
+// ═══════════════════════════════════════════════════════════════════
+const BACKUP_FILE = path.join(__dirname, 'data', 'backup_ultimo.json');
+function _yaBackupHoy() {
+  try {
+    if (!fs.existsSync(BACKUP_FILE)) return false;
+    const ultimo = JSON.parse(fs.readFileSync(BACKUP_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ultimo.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcarBackupHoy(info) {
+  try {
+    fs.mkdirSync(path.dirname(BACKUP_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now(), ...info }, null, 2));
+  } catch (e) { console.error('[backup] no se pudo marcar:', e.message); }
+}
+async function cronBackupTick() {
+  try {
+    const hora = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (hora !== 2) return; // solo a las 2 AM
+    if (_yaBackupHoy()) return;
+    if (!gmailWT.estaConectado()) return;
+
+    console.log('[backup] disparando backup BD a Drive...');
+    const dbFile = path.join(__dirname, 'data', 'ws-textil.db');
+    if (!fs.existsSync(dbFile)) return;
+    const buffer = fs.readFileSync(dbFile);
+    const contentBase64 = buffer.toString('base64');
+    const hoyStr = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }).replace(/\//g, '-');
+    const titulo = `ws-textil-backup-${hoyStr}.db`;
+    const subida = await driveSync.subirArchivo({
+      titulo,
+      mimeType: 'application/x-sqlite3',
+      contentBase64,
+      parentId: driveSync.FOLDER_FACTURAS, // por ahora ponemos en FACTURAS, podemos crear carpeta Backups
+    });
+    _marcarBackupHoy({ driveId: subida.id, link: subida.viewLink, size: buffer.length });
+    const msgTG = `💾 *Backup BD diario OK*\n\nArchivo: ${titulo}\nTamaño: ${(buffer.length/1024/1024).toFixed(2)} MB\nDrive: ${subida.viewLink}`;
+    notificarTelegramDuvan(msgTG).catch(()=>{});
+    console.log('[backup] OK', titulo, buffer.length, 'bytes');
+  } catch (e) {
+    console.error('[backup error]', e.message);
+    notificarTelegramDuvan(`⚠️ *Backup falló*\n\n${e.message}`).catch(()=>{});
+  }
+}
+// Tick cada 30 min (chequea si es hora 2 AM y aún no se hizo hoy)
+setInterval(cronBackupTick, 30 * 60 * 1000);
+// Tick inicial 5 min después de arrancar
+setTimeout(cronBackupTick, 5 * 60 * 1000);
+console.log('[backup] activado — backup diario 2 AM Bogotá a Drive');
+
+// ═══════════════════════════════════════════════════════════════════
+// ENDPOINT MANUAL: forzar backup ahora (admin)
+// ═══════════════════════════════════════════════════════════════════
+// se registra dentro del handler de rutas, no acá
