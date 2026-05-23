@@ -24,6 +24,7 @@ const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI || 'https://ws-app-interna
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/drive.readonly',
 ].join(' ');
 
 // ── Token storage ─────────────────────────────────────────────────────
