@@ -3960,7 +3960,170 @@ function generarPDF() {
   cerrarFormDoc();
 }
 
+// ════════════════════════════════════════════════════════════════
+// LISTA FACTURAS SERVER-SIDE (BD profesional)
+// ════════════════════════════════════════════════════════════════
+let _facturasCache = null; // { facturas, stats } cargado del server
+let _facturasUltimaCarga = 0;
+
+async function _cargarFacturasServer(force) {
+  const ahora = Date.now();
+  if (!force && _facturasCache && (ahora - _facturasUltimaCarga) < 30000) return _facturasCache;
+  try {
+    const r = await fetch('/api/facturas?limit=200');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _facturasCache = await r.json();
+    _facturasUltimaCarga = ahora;
+  } catch (e) {
+    console.warn('[facturas] error cargando del server, fallback localStorage', e.message);
+    _facturasCache = null;
+  }
+  return _facturasCache;
+}
+
+function _fmtPeso0(n) {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0);
+}
+
+function renderFacturasStats() {
+  const cont = document.getElementById('facturas-stats');
+  if (!cont) return;
+  const data = _facturasCache || {};
+  const stats = data.stats || { mes: { total: 0, n: 0 }, anio: { total: 0, n: 0 }, totalFacturas: 0, totalCotizaciones: 0 };
+  // Hoy: contar facturas con fecha = hoy
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const facturas = data.facturas || [];
+  const hoyArr = facturas.filter(f => f.tipo === 'factura' && (f.fecha || '').slice(0, 10) === hoyStr);
+  const totalHoy = hoyArr.reduce((s, f) => s + (f.total || 0), 0);
+
+  const kpi = (val, label, color, sub) => `
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;">
+      <div style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">${label}</div>
+      <div style="font-family:'Outfit',sans-serif;font-size:1.6rem;font-weight:800;color:${color};line-height:1;">${val}</div>
+      ${sub ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">${sub}</div>` : ''}
+    </div>
+  `;
+  cont.innerHTML =
+    kpi(_fmtPeso0(totalHoy), 'Facturado hoy', '#34d399', `${hoyArr.length} facturas`) +
+    kpi(_fmtPeso0(stats.mes.total), 'Facturado mes', '#60a5fa', `${stats.mes.n} facturas`) +
+    kpi(_fmtPeso0(stats.anio.total), 'Facturado año', '#a78bfa', `${stats.anio.n} facturas`) +
+    kpi(stats.totalFacturas || 0, 'Total facturas', '#fb923c', 'históricas') +
+    kpi(stats.totalCotizaciones || 0, 'Total cotizaciones', '#f472b6', 'históricas');
+}
+
+async function renderFacturasLista(forceReload) {
+  const cont = document.getElementById('doc-historial');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">Cargando…</div>';
+  await _cargarFacturasServer(forceReload);
+  renderFacturasStats();
+
+  const buscar = (document.getElementById('doc-buscar')?.value || '').toLowerCase().trim();
+  const filtroTipo = document.getElementById('doc-filtro-tipo')?.value || '';
+  const filtroVendedora = document.getElementById('doc-filtro-vendedora')?.value || '';
+
+  // Combinar facturas del server + las locales que aún no se subieron (si el server fallaba)
+  const fromServer = (_facturasCache && _facturasCache.facturas) ? _facturasCache.facturas : [];
+  const map = new Map();
+  for (const f of fromServer) {
+    // Normalizar campos para que coincidan con los del historial local
+    map.set(`s-${f.id}`, {
+      _serverId: f.id,
+      tipo: f.tipo,
+      numero: f.numero,
+      cliente: f.cliente_nombre,
+      telefono: f.cliente_telefono,
+      vendedora: f.vendedora,
+      total: f.total,
+      subtotal: f.subtotal,
+      abono: f.abono,
+      fecha: f.fecha,
+      items: f.items || [],
+      drive_link: f.drive_link,
+      drive_file_id: f.drive_file_id,
+      wa_enviado_a: f.wa_enviado_a,
+      creado_en: f.creado_en,
+    });
+  }
+  // Añadir las del historial local que aún no están en server (por número+tipo)
+  for (const d of docHistorial) {
+    const existe = fromServer.find(f => f.numero === d.numero && f.tipo === d.tipo);
+    if (!existe) map.set(`l-${d.id}`, { ...d, _local: true });
+  }
+  let lista = Array.from(map.values());
+
+  if (filtroTipo) lista = lista.filter(d => d.tipo === filtroTipo);
+  if (filtroVendedora) lista = lista.filter(d => d.vendedora === filtroVendedora);
+  if (buscar) lista = lista.filter(d =>
+    (d.cliente || '').toLowerCase().includes(buscar) ||
+    (d.numero || '').toLowerCase().includes(buscar) ||
+    (d.vendedora || '').toLowerCase().includes(buscar) ||
+    (d.telefono || '').toLowerCase().includes(buscar)
+  );
+
+  // Ordenar por fecha desc
+  lista.sort((a, b) => {
+    const ta = a.creado_en || a.fecha || '';
+    const tb = b.creado_en || b.fecha || '';
+    return tb.localeCompare(ta);
+  });
+
+  if (!lista.length) {
+    cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:24px;text-align:center;">' +
+      ((_facturasCache && _facturasCache.facturas && _facturasCache.facturas.length) ? 'Sin resultados para esa búsqueda.' : 'No hay documentos generados aún.') +
+      '</div>';
+    return;
+  }
+
+  cont.innerHTML = lista.slice(0, 100).map(d => {
+    const id = d._serverId || d.id;
+    const esCot = d.tipo === 'cotizacion';
+    const driveBtn = d.drive_link
+      ? `<a href="${esc(d.drive_link)}" target="_blank" rel="noopener" style="background:rgba(167,139,250,0.18);border:1px solid rgba(167,139,250,0.4);color:#c4b5fd;border-radius:6px;padding:4px 9px;font-size:0.72rem;font-weight:600;text-decoration:none;">📁 Drive</a>`
+      : '';
+    const waBtn = (d._serverId && d.telefono)
+      ? `<button onclick="enviarFacturaPorWA(${d._serverId})" style="background:#25d366;border:none;color:#fff;border-radius:6px;padding:4px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;" title="Enviar al cliente por WhatsApp">📤 WA</button>`
+      : (d._local ? `<button onclick="compartirDocWA(${d.id})" style="background:#25d366;border:none;color:#fff;border-radius:6px;padding:4px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;" title="Compartir PDF">📤 WA</button>` : '');
+    const verBtn = d._local
+      ? `<button onclick="verDocHistorial(${d.id})" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:6px;padding:4px 9px;font-size:0.72rem;cursor:pointer;">Ver</button>`
+      : '';
+    const waEnviado = d.wa_enviado_a
+      ? `<span style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.3);color:#86efac;border-radius:5px;padding:1px 7px;font-size:0.66rem;font-weight:700;" title="Enviado a ${esc(d.wa_enviado_a)}">✓ enviado WA</span>`
+      : '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;background:rgba(255,255,255,0.02);">
+        <span style="font-family:'Outfit',sans-serif;font-weight:800;color:#94a3b8;font-size:0.82rem;min-width:62px;">#${d.numero}</span>
+        <span style="background:${esCot ? 'rgba(249,115,22,0.15)' : 'rgba(16,185,129,0.15)'};border:1px solid ${esCot ? 'rgba(249,115,22,0.35)' : 'rgba(16,185,129,0.35)'};color:${esCot ? '#fdba74' : '#6ee7b7'};border-radius:5px;padding:2px 8px;font-size:0.66rem;font-weight:700;text-transform:uppercase;">${esCot ? 'Cot' : 'Fac'}</span>
+        <span style="font-weight:600;color:var(--text);font-size:0.85rem;flex:1;min-width:160px;">${esc(d.cliente || '—')}</span>
+        <span style="color:var(--text-muted);font-size:0.74rem;min-width:90px;">👤 ${esc((d.vendedora || '').split(' ')[0] || '—')}</span>
+        <span style="font-weight:700;color:#fbbf24;font-size:0.85rem;min-width:110px;text-align:right;">${_fmtPeso0(d.total || 0)}</span>
+        <span style="color:var(--text-muted);font-size:0.7rem;min-width:85px;">${esc((d.fecha || '').slice(0, 10))}</span>
+        ${waEnviado}
+        <div style="display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;">
+          ${verBtn}${driveBtn}${waBtn}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderDocHistorial() {
+  // Wrapper de compatibilidad. Llama a la nueva lista server-side.
+  renderFacturasLista();
+}
+
+// Auto-cargar facturas cuando se entra a la sección
+document.addEventListener('DOMContentLoaded', () => {
+  // Si entran a cotizaciones, recargar
+  const obs = setInterval(() => {
+    const sec = document.getElementById('cotizaciones');
+    if (sec && sec.classList.contains('active') && !_facturasUltimaCarga) {
+      renderFacturasLista();
+    }
+  }, 3000);
+});
+
+function _renderDocHistorialAntiguo_NO_USAR() {
   const cont = document.getElementById('doc-historial');
   if (!cont) return;
 
