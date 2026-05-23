@@ -329,28 +329,30 @@ async function procesarMensaje(id) {
 }
 
 // ── API pública: sincronizar correos WT con la BD de pedidos ─────────
-// Recibe pedidos en memoria, devuelve actualizaciones a aplicar.
-// El llamador se encarga de persistir y notificar.
+// Recibe pedidos en memoria, devuelve SOLO actualizaciones realmente nuevas.
+// Dedup robusto: persiste TODOS los IDs ya procesados (cap 1500 entradas).
 async function sincronizarConPedidos(pedidos) {
   const state = _leerState();
-  const desde = state.ultimoTs || (Date.now() - 7 * 24 * 60 * 60 * 1000); // por defecto últimos 7d
+  const procesadosSet = new Set(state.procesados || state.ultimoIds || []);
 
   const ids = (await listarMensajesWT(50)).map(m => m.id);
+  const nuevos = ids.filter(id => !procesadosSet.has(id));
   const procesados = [];
-  for (const id of ids) {
-    if (state.ultimoIds && state.ultimoIds.includes(id)) continue;
+  for (const id of nuevos) {
     try {
       const info = await procesarMensaje(id);
       if (info) procesados.push(info);
+      // Marcamos como procesado incluso si parsearSubject devolvió null
+      // (así no reintentamos correos no-WT en cada tick).
+      procesadosSet.add(id);
     } catch (e) {
       console.error('[gmail-wt] error procesando', id, e.message);
     }
   }
-  // Ordenar por fecha asc para procesar viejos primero
   procesados.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-  const updates = []; // { pedidoId, cambios, info }
-  const huerfanos = []; // sin match
+  const updates = [];
+  const huerfanos = [];
   for (const m of procesados) {
     const match = matchPedido(m.archivo.base, pedidos);
     if (!match) {
@@ -358,10 +360,9 @@ async function sincronizarConPedidos(pedidos) {
       continue;
     }
     const p = match.pedido;
-    // Construir/actualizar p.wetransfer
     const wt = p.wetransfer || { archivos: [] };
-    // Verificar si ya tenemos este archivo
     const existente = wt.archivos.find(a => a.nombreOriginal === m.archivo.nombreOriginal);
+    let cambio = false;
     if (!existente) {
       wt.archivos.push({
         ...m.archivo,
@@ -370,29 +371,32 @@ async function sincronizarConPedidos(pedidos) {
         destinatario: m.destinatario,
         linkWT: m.linkWT,
       });
+      cambio = true;
     } else {
-      // Actualizar
       if (m.accion === 'enviado') {
-        existente.fechaEnvio = existente.fechaEnvio || m.fecha;
-        if (m.linkWT) existente.linkWT = m.linkWT;
+        if (!existente.fechaEnvio) { existente.fechaEnvio = m.fecha; cambio = true; }
+        if (m.linkWT && existente.linkWT !== m.linkWT) { existente.linkWT = m.linkWT; cambio = true; }
       }
       if (m.accion === 'descargado') {
-        existente.fechaDescarga = m.fecha;
+        if (!existente.fechaDescarga) { existente.fechaDescarga = m.fecha; cambio = true; }
       }
     }
-    wt.ultimaActualizacion = new Date().toISOString();
-    updates.push({
-      pedidoId: p.id,
-      wetransfer: wt,
-      accion: m.accion,
-      archivo: m.archivo,
-      msgId: m.id,
-    });
+    if (cambio) {
+      wt.ultimaActualizacion = new Date().toISOString();
+      updates.push({
+        pedidoId: p.id,
+        wetransfer: wt,
+        accion: m.accion,
+        archivo: m.archivo,
+        msgId: m.id,
+      });
+    }
   }
 
-  // Guardar state
-  const todosIds = ids.slice(0, 30);
-  _guardarState({ ultimoTs: Date.now(), ultimoIds: todosIds });
+  // Cap del Set a 1500 IDs más recientes para que no crezca infinito
+  const procesadosArr = Array.from(procesadosSet);
+  const procesadosFinal = procesadosArr.slice(-1500);
+  _guardarState({ ultimoTs: Date.now(), procesados: procesadosFinal });
 
   return { updates, huerfanos, total: procesados.length };
 }
