@@ -4366,6 +4366,198 @@ async function imgToBase64(src) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// FACTURAS / COTIZACIONES — flow nuevo (server + Drive + WA)
+// ════════════════════════════════════════════════════════════════
+
+// Helper: convierte Blob a base64 (sin prefijo data:...)
+function _blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const i = result.indexOf(',');
+      resolve(i >= 0 ? result.slice(i + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Helper: genera PDF blob desde un registro de documento
+async function _generarPdfBlobDesdeRegistro(registro) {
+  const htmlDoc = buildDocHTML(registro);
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
+  document.body.appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(htmlDoc);
+  iframe.contentDocument.close();
+  await new Promise(r => setTimeout(r, 1000));
+  const opt = {
+    margin: [8, 8, 8, 8],
+    image: { type: 'jpeg', quality: 0.97 },
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+  };
+  const pdfBlob = await html2pdf().set(opt).from(iframe.contentDocument.body).outputPdf('blob');
+  document.body.removeChild(iframe);
+  return pdfBlob;
+}
+
+// Flow nuevo: genera factura → PDF → server → Drive → modal WA
+async function generarYGuardarFactura() {
+  const cliente   = document.getElementById('doc-cliente').value.trim();
+  const vendedora = document.getElementById('doc-vendedora').value;
+  if (!cliente)   return toast('Ingresa el nombre del cliente', 'warning');
+  if (!vendedora) return toast('Selecciona la vendedora', 'warning');
+  if (docItems.every(it => !it.desc)) return toast('Agrega al menos un ítem', 'warning');
+
+  const telefono = document.getElementById('doc-telefono').value.trim();
+  const nit      = document.getElementById('doc-nit').value.trim();
+  const correo   = document.getElementById('doc-correo').value.trim();
+  const abono    = docTipo === 'factura' ? (parseInt(document.getElementById('doc-abono').value || '0') || 0) : 0;
+  const { subtotal, total } = calcDocTotales();
+
+  const num    = docTipo === 'cotizacion' ? nextCot : nextFac;
+  const numStr = String(num).padStart(5, '0');
+  const fecha  = new Date().toLocaleDateString('es-CO');
+  const items  = docItems.filter(it => it.desc).map(it => ({ cant: it.cant, desc: it.desc, precio: it.precio }));
+
+  const registroLocal = {
+    id: Date.now(), tipo: docTipo, numero: numStr, cliente, vendedora, telefono,
+    subtotal, abono, total, fecha, cuenta: docCuenta, items,
+  };
+
+  toast('Generando PDF…', 'info');
+
+  let pdfBase64 = null;
+  try {
+    const blob = await _generarPdfBlobDesdeRegistro(registroLocal);
+    pdfBase64 = await _blobToBase64(blob);
+  } catch (e) {
+    console.error('[fact pdf]', e);
+    toast('Error generando PDF', 'error');
+    return;
+  }
+
+  toast('Subiendo a Drive…', 'info');
+
+  // POST al server
+  let facturaServer = null;
+  try {
+    const r = await fetch('/api/facturas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        numero: numStr,
+        tipo: docTipo,
+        cliente_nombre: cliente,
+        cliente_telefono: telefono || null,
+        cliente_nit: nit || null,
+        cliente_correo: correo || null,
+        vendedora,
+        items,
+        subtotal,
+        abono,
+        total,
+        fecha: new Date().toISOString().slice(0, 10),
+        pdfBase64,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.factura) throw new Error(data.error || 'fallo al guardar');
+    facturaServer = data.factura;
+  } catch (e) {
+    console.error('[fact post]', e);
+    toast('Guardado local pero falló subir al servidor: ' + e.message, 'error');
+    // Fallback: seguir con historial local
+  }
+
+  // Guardar también en localStorage (historial corto + contadores)
+  docHistorial.unshift(registroLocal);
+  if (docHistorial.length > 50) docHistorial = docHistorial.slice(0, 50);
+  if (docTipo === 'cotizacion') nextCot++; else nextFac++;
+  guardarDocs();
+  renderDocHistorial();
+
+  if (facturaServer && facturaServer.drive_link) {
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} guardada en Drive`, 'success');
+    mostrarModalPostFactura(facturaServer, registroLocal);
+  } else {
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada (sin subir a Drive)`, 'warning');
+  }
+  cerrarFormDoc();
+}
+
+// Modal post-generación con botón gigante "Enviar al cliente por WA"
+function mostrarModalPostFactura(facturaServer, registroLocal) {
+  const tipoLabel = facturaServer.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const tipoEmoji = facturaServer.tipo === 'cotizacion' ? '🧾' : '📄';
+  const tel = facturaServer.cliente_telefono || (registroLocal && registroLocal.telefono) || '';
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-post-factura';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:#1e1b2e;border:1px solid rgba(124,58,237,0.4);border-radius:14px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="text-align:center;font-size:2.2rem;margin-bottom:8px;">${tipoEmoji}</div>
+      <div style="text-align:center;font-family:'Outfit',sans-serif;font-size:1.3rem;font-weight:800;color:#fff;margin-bottom:4px;">${tipoLabel} #${facturaServer.numero}</div>
+      <div style="text-align:center;font-size:0.85rem;color:#94a3b8;margin-bottom:6px;">${esc(facturaServer.cliente_nombre || 'Sin cliente')}</div>
+      <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#10b981;margin-bottom:18px;">${fmtPeso(facturaServer.total || 0)}</div>
+
+      ${tel ? `
+        <button onclick="enviarFacturaPorWA(${facturaServer.id})" style="width:100%;background:#25d366;border:none;color:#fff;border-radius:12px;padding:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:10px;">
+          📤 Enviar por WhatsApp a ${esc(tel)}
+        </button>
+      ` : `
+        <div style="text-align:center;font-size:0.78rem;color:#fbbf24;margin-bottom:10px;padding:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:8px;">
+          ⚠️ Sin teléfono del cliente — no se puede enviar por WA
+        </div>
+      `}
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        ${facturaServer.drive_link ? `
+          <a href="${esc(facturaServer.drive_link)}" target="_blank" rel="noopener" style="flex:1;background:rgba(167,139,250,0.18);border:1px solid rgba(167,139,250,0.4);color:#c4b5fd;border-radius:10px;padding:10px;font-size:0.82rem;font-weight:600;text-decoration:none;text-align:center;">
+            👁️ Ver en Drive
+          </a>
+        ` : ''}
+        <button onclick="descargarFacturaDelHistorial(${registroLocal ? registroLocal.id : 0})" style="flex:1;background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:10px;padding:10px;font-size:0.82rem;font-weight:600;cursor:pointer;">
+          💾 Descargar PDF
+        </button>
+      </div>
+      <button onclick="document.getElementById('modal-post-factura').remove()" style="width:100%;background:transparent;border:1px solid rgba(255,255,255,0.15);color:#94a3b8;border-radius:10px;padding:9px;font-size:0.82rem;cursor:pointer;">
+        Cerrar
+      </button>
+    </div>
+  `;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function descargarFacturaDelHistorial(id) {
+  if (id) compartirDocWA(id);
+}
+
+// Llamar al server para enviar factura por WhatsApp al cliente
+async function enviarFacturaPorWA(facturaId) {
+  if (!confirm('¿Enviar la factura por WhatsApp al cliente?')) return;
+  toast('Enviando por WhatsApp…', 'info');
+  try {
+    const r = await fetch(`/api/facturas/${facturaId}/enviar-wa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'falló envío');
+    toast(`✅ Enviada por WA a ${data.telefono} (instancia ${data.instance})`, 'success');
+    document.getElementById('modal-post-factura')?.remove();
+  } catch (e) {
+    console.error('[wa send]', e);
+    toast('Error al enviar por WA: ' + e.message, 'error');
+  }
+}
+
 async function compartirDocWA(id) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
