@@ -1633,6 +1633,44 @@ function renderKanban(estado) {
   if (col) col.innerHTML = items.length ? items.map(p => renderKanbanCard(p)).join('') : emptyHtml;
 }
 
+// Render del bloque WeTransfer en una tarjeta de pedido.
+// Muestra archivos enviados a calandra, m², link al envío y estado (enviado/descargado).
+function wtBadgeHtml(p) {
+  if (!p.wetransfer || !p.wetransfer.archivos || !p.wetransfer.archivos.length) return '';
+  const archivos = p.wetransfer.archivos;
+  const linkUnico = archivos.find(a => a.linkWT) ? archivos.find(a => a.linkWT).linkWT : null;
+  const m2Total = archivos.reduce((s, a) => s + (a.m2 || 0), 0);
+  const tipoBadges = {
+    original: '📦',
+    arreglo: '🔧',
+    adicional: '➕',
+    muestra: '🧪',
+  };
+  const items = archivos.slice(0, 4).map(a => {
+    const icon = tipoBadges[a.tipo] || '📄';
+    const descargado = a.fechaDescarga ? '<span title="Calandra ya descargó" style="color:#34d399;font-weight:700;">✓</span>' : '<span title="Esperando descarga" style="color:#fbbf24;">⏳</span>';
+    const m2Txt = a.m2 ? `${a.m2}m²` : '';
+    const prio = a.prioridad === 'urgente' ? ' <span style="color:#fca5a5;font-weight:700;">URGENTE</span>' : '';
+    const tela = a.tela ? ` · ${esc(a.tela)}` : '';
+    return `<div style="font-size:0.66rem;color:#cbd5e1;margin:1px 0;">${icon} ${esc(a.nombreOriginal)} ${descargado} <span style="color:var(--text-muted);">${m2Txt}${tela}${prio}</span></div>`;
+  }).join('');
+  const masTxt = archivos.length > 4 ? `<div style="font-size:0.62rem;color:var(--text-muted);">+ ${archivos.length - 4} más…</div>` : '';
+  const linkBtn = linkUnico
+    ? `<a href="${esc(linkUnico)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="display:inline-block;background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:5px;padding:3px 8px;font-size:0.68rem;font-weight:600;text-decoration:none;margin-top:4px;">👁️ Ver en WeTransfer</a>`
+    : '';
+  return `
+    <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.18);border-radius:6px;padding:6px 8px;margin-bottom:6px;">
+      <div style="font-size:0.66rem;color:#93c5fd;font-weight:700;margin-bottom:3px;display:flex;justify-content:space-between;">
+        <span>📤 WeTransfer</span>
+        <span style="color:var(--text-muted);">${archivos.length} archivo${archivos.length>1?'s':''} · ${m2Total}m²</span>
+      </div>
+      ${items}
+      ${masTxt}
+      ${linkBtn}
+    </div>
+  `;
+}
+
 function renderKanbanCardDiseno(p) {
   const DISENADORES = ['Camilo', 'Oscar', 'Wendy', 'Ney', 'Paola'];
   const fechaTxt = p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '-';
@@ -1690,6 +1728,7 @@ function renderKanbanCardDiseno(p) {
       </div>
       ${notasHtml}
       ${disenadorHtml}
+      ${wtBadgeHtml(p)}
       ${actionHtml}
     </div>
   `;
@@ -1860,6 +1899,7 @@ function renderKanbanCard(p) {
       ${fechaHtml}
       ${notasHtml}
       ${arregloInfoHtml}
+      ${wtBadgeHtml(p)}
       ${actionsHtml}
     </div>
   `;

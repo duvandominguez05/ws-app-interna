@@ -295,7 +295,9 @@ function matchPedido(base, pedidos) {
     for (const w of palabrasFile) if (palabrasEquipo.has(w)) coincidencias++;
     // Score = % de palabras del file que coinciden
     const score = palabrasFile.size > 0 ? coincidencias / palabrasFile.size : 0;
-    if (score > mejorScore && score >= 0.5) {
+    // Si el archivo tiene 2+ palabras, exigir al menos 2 coincidencias (no solo 1 palabra suelta como "negro")
+    const minCoincidencias = palabrasFile.size >= 2 ? 2 : 1;
+    if (score > mejorScore && score >= 0.6 && coincidencias >= minCoincidencias) {
       mejorScore = score;
       mejor = p;
     }
