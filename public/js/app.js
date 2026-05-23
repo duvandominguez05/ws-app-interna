@@ -506,9 +506,118 @@ function _miDiaBloqueAdmin() {
         <button class="midia-btn" onclick="showSection('tablero-principal', null); window.location.hash='';">📋 Tablero</button>
         <button class="midia-btn" onclick="showSection('torre-unificada', null); renderTorreUnificada(); window.location.hash='';">🗼 Torre</button>
         <button class="midia-btn" onclick="showSection('vista-general', null); window.location.hash='';">📊 Vista general</button>
+        <button class="midia-btn" style="background:rgba(34,197,94,0.18);border-color:rgba(34,197,94,0.4);color:#86efac;" onclick="abrirPanelAdmin()">⚙️ Panel admin</button>
       </div>
     </article>
   `;
+}
+
+// Modal con acciones de admin: onboarding masivo, backup, etc.
+function abrirPanelAdmin() {
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-panel-admin';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const opciones = (WORKERS || []).map(w => `<option value="${esc(w.slug)}">${esc(w.nombre)} (${(w.roles||[]).join(', ')})</option>`).join('');
+  overlay.innerHTML = `
+    <div style="background:#1e1b2e;border:1px solid rgba(124,58,237,0.4);border-radius:14px;padding:24px;max-width:500px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <h2 style="margin:0;font-family:'Outfit',sans-serif;font-size:1.3rem;font-weight:800;color:#fff;">⚙️ Panel Admin</h2>
+        <button onclick="document.getElementById('modal-panel-admin').remove()" style="background:transparent;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer;">✕</button>
+      </div>
+
+      <div style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.25);border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#c4b5fd;margin-bottom:10px;font-size:0.95rem;">📨 Onboarding por WhatsApp</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:10px;">
+          Manda el link personal de instalación a una persona o a TODAS las que tengan número configurado en Railway.
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <select id="onb-persona-select" style="flex:1;background:#0f0d1a;border:1px solid #4c1d95;border-radius:7px;color:#e2e8f0;font-size:0.82rem;padding:7px 9px;outline:none;">
+            <option value="">— Seleccionar persona —</option>
+            ${opciones}
+          </select>
+          <button onclick="enviarOnboardingUno()" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:7px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;white-space:nowrap;">📨 Enviar</button>
+        </div>
+        <button onclick="enviarOnboardingTodos()" style="width:100%;background:#22c55e;border:none;color:#fff;border-radius:8px;padding:10px;font-size:0.85rem;font-weight:700;cursor:pointer;">
+          📢 Enviar a TODAS las personas con número
+        </button>
+      </div>
+
+      <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.25);border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#93c5fd;margin-bottom:10px;font-size:0.95rem;">💾 Backup BD a Drive</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:10px;">
+          El backup nocturno corre a las 2 AM. Aquí puedes forzar uno manual ahora.
+        </div>
+        <button onclick="forzarBackup()" style="width:100%;background:rgba(96,165,250,0.25);border:1px solid rgba(96,165,250,0.5);color:#93c5fd;border-radius:8px;padding:10px;font-size:0.85rem;font-weight:700;cursor:pointer;">
+          💾 Hacer backup ahora
+        </button>
+      </div>
+
+      <div style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.25);border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#c4b5fd;margin-bottom:10px;font-size:0.95rem;">🔄 Sincronización Gmail + Drive</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:10px;">
+          Los cron corren automáticos (Gmail cada 5 min, Drive cada 10 min). Click para forzar ahora.
+        </div>
+        <button onclick="syncCalandraManual();document.getElementById('modal-panel-admin').remove();" style="width:100%;background:rgba(124,58,237,0.25);border:1px solid rgba(124,58,237,0.5);color:#c4b5fd;border-radius:8px;padding:10px;font-size:0.85rem;font-weight:700;cursor:pointer;">
+          🔄 Sincronizar Gmail + Drive
+        </button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function enviarOnboardingUno() {
+  const sel = document.getElementById('onb-persona-select');
+  const slug = sel ? sel.value : '';
+  if (!slug) return toast('Selecciona una persona', 'warning');
+  if (!confirm(`¿Enviar mensaje de onboarding a ${slug} por WhatsApp?`)) return;
+  toast('Enviando…', 'info');
+  try {
+    const r = await fetch('/api/onboarding/enviar-uno', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'falló');
+    if (d.sent) {
+      toast(`✅ Onboarding enviado a ${slug}`, 'success');
+    } else {
+      toast(`⚠️ ${slug} no tiene número configurado en Railway (env WA_${slug.toUpperCase()})`, 'warning');
+    }
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function enviarOnboardingTodos() {
+  if (!confirm('¿Enviar el mensaje de onboarding a TODAS las personas con número configurado?\n\nEsto manda WhatsApp con su link personal.')) return;
+  toast('Enviando onboarding masivo…', 'info');
+  try {
+    const r = await fetch('/api/onboarding/enviar-todos', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'falló');
+    const enviados = (d.enviados || []).length;
+    const sin = (d.sinNumero || []).length;
+    toast(`✅ Enviados: ${enviados}. Sin número: ${sin}`, 'success');
+    console.log('[onboarding] Enviados:', d.enviados, 'Sin número:', d.sinNumero);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function forzarBackup() {
+  if (!confirm('¿Hacer backup de la BD a Drive AHORA?')) return;
+  toast('Haciendo backup… (puede tardar 30s)', 'info');
+  try {
+    const r = await fetch('/api/backup/forzar', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'falló');
+    toast(`✅ Backup creado: ${d.titulo} (${(d.size/1024/1024).toFixed(2)} MB)`, 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 function _miDiaBloqueDiseno(nombrePersona) {
