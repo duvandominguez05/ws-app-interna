@@ -396,9 +396,83 @@ async function sincronizarConPedidos(pedidos) {
   // Cap del Set a 1500 IDs más recientes para que no crezca infinito
   const procesadosArr = Array.from(procesadosSet);
   const procesadosFinal = procesadosArr.slice(-1500);
-  _guardarState({ ultimoTs: Date.now(), procesados: procesadosFinal });
+
+  // Persistir huérfanos para que el dashboard de Calandra pueda mostrarlos
+  // y permitir vincularlos manualmente más tarde.
+  const huerfanosAnteriores = (state.huerfanos || []).filter(h => {
+    // Eliminar los que ya tienen msgId en procesadosFinal (deduplicar)
+    return h && h.msgId;
+  });
+  // Mergeo: nuevos huérfanos primero, sin duplicar msgId
+  const huerfanosMap = new Map();
+  for (const h of huerfanos) {
+    huerfanosMap.set(h.id, {
+      msgId: h.id,
+      fecha: h.fecha,
+      accion: h.accion,
+      destinatario: h.destinatario,
+      archivo: h.archivo,
+      linkWT: h.linkWT,
+      vinculadoPedidoId: null,
+    });
+  }
+  for (const h of huerfanosAnteriores) {
+    if (!huerfanosMap.has(h.msgId) && !h.vinculadoPedidoId) huerfanosMap.set(h.msgId, h);
+  }
+  const huerfanosFinal = Array.from(huerfanosMap.values()).slice(0, 300);
+
+  _guardarState({
+    ultimoTs: Date.now(),
+    procesados: procesadosFinal,
+    huerfanos: huerfanosFinal,
+  });
 
   return { updates, huerfanos, total: procesados.length };
+}
+
+// ── Lectura/manipulación de huérfanos ────────────────────────────
+function leerHuerfanos() {
+  const state = _leerState();
+  return (state.huerfanos || []).filter(h => !h.vinculadoPedidoId);
+}
+
+function vincularHuerfano(msgId, pedidoId, pedidos) {
+  // Vincula manualmente un huérfano a un pedido específico.
+  // Devuelve la actualización para que el llamador la aplique al pedido.
+  const state = _leerState();
+  const huerfanos = state.huerfanos || [];
+  const idx = huerfanos.findIndex(h => h.msgId === msgId);
+  if (idx === -1) throw new Error('Huérfano no encontrado: ' + msgId);
+  const h = huerfanos[idx];
+  const p = pedidos.find(x => x.id === parseInt(pedidoId, 10));
+  if (!p) throw new Error('Pedido no encontrado: ' + pedidoId);
+
+  const wt = p.wetransfer || { archivos: [] };
+  const existente = wt.archivos.find(a => a.nombreOriginal === h.archivo.nombreOriginal);
+  if (!existente) {
+    wt.archivos.push({
+      ...h.archivo,
+      fechaEnvio: h.accion === 'enviado' ? h.fecha : null,
+      fechaDescarga: h.accion === 'descargado' ? h.fecha : null,
+      destinatario: h.destinatario,
+      linkWT: h.linkWT,
+    });
+  } else {
+    if (h.accion === 'enviado') {
+      existente.fechaEnvio = existente.fechaEnvio || h.fecha;
+      if (h.linkWT) existente.linkWT = h.linkWT;
+    }
+    if (h.accion === 'descargado') {
+      existente.fechaDescarga = existente.fechaDescarga || h.fecha;
+    }
+  }
+  wt.ultimaActualizacion = new Date().toISOString();
+
+  // Marcar el huérfano como vinculado (no eliminar, para auditoría)
+  huerfanos[idx] = { ...h, vinculadoPedidoId: p.id, vinculadoFecha: new Date().toISOString() };
+  _guardarState({ ...state, huerfanos });
+
+  return { wetransfer: wt, pedido: p };
 }
 
 module.exports = {
@@ -409,6 +483,8 @@ module.exports = {
   parsearArchivo,
   matchPedido,
   sincronizarConPedidos,
+  leerHuerfanos,
+  vincularHuerfano,
   // Exports para testing/debug
   _leerTokens,
   _leerState,

@@ -3961,6 +3961,183 @@ function generarPDF() {
 }
 
 // ════════════════════════════════════════════════════════════════
+// DASHBOARD CALANDRA — KPIs + huérfanos + envíos recientes
+// ════════════════════════════════════════════════════════════════
+let _calandraCache = null;
+let _calandraUltimaCarga = 0;
+
+async function _cargarCalandraServer(force) {
+  const ahora = Date.now();
+  if (!force && _calandraCache && (ahora - _calandraUltimaCarga) < 20000) return _calandraCache;
+  try {
+    const r = await fetch('/api/calandra/dashboard');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _calandraCache = await r.json();
+    _calandraUltimaCarga = ahora;
+  } catch (e) {
+    console.warn('[calandra dash] error:', e.message);
+    _calandraCache = null;
+  }
+  return _calandraCache;
+}
+
+function _calandraKpiCard(val, label, color, sub) {
+  return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;">
+    <div style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">${label}</div>
+    <div style="font-family:'Outfit',sans-serif;font-size:1.6rem;font-weight:800;color:${color};line-height:1;">${val}</div>
+    ${sub ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">${sub}</div>` : ''}
+  </div>`;
+}
+
+async function renderCalandraDashboard(force) {
+  await _cargarCalandraServer(force);
+  renderCalandraKPIs();
+  renderCalandraHuerfanos();
+  renderCalandraEnvios();
+}
+
+function renderCalandraKPIs() {
+  const cont = document.getElementById('calandra-kpis');
+  if (!cont) return;
+  const d = _calandraCache || {};
+  const s = d.stats || {};
+  cont.innerHTML =
+    _calandraKpiCard(`${(s.hoy && s.hoy.m2 || 0).toLocaleString('es-CO')} m²`, 'Hoy', '#34d399', `${(s.hoy && s.hoy.pedidos) || 0} pedidos`) +
+    _calandraKpiCard(`${(s.semana && s.semana.m2 || 0).toLocaleString('es-CO')} m²`, 'Esta semana', '#60a5fa', `${(s.semana && s.semana.pedidos) || 0} pedidos`) +
+    _calandraKpiCard(`${(s.mes && s.mes.m2 || 0).toLocaleString('es-CO')} m²`, 'Este mes', '#a78bfa', `${(s.mes && s.mes.pedidos) || 0} pedidos`) +
+    _calandraKpiCard(`${(s.anio && s.anio.m2 || 0).toLocaleString('es-CO')} m²`, 'Este año', '#fb923c', `${(s.anio && s.anio.pedidos) || 0} pedidos`) +
+    _calandraKpiCard((d.totalEnvios || 0).toLocaleString('es-CO'), 'Envíos totales', '#f472b6', 'históricos');
+}
+
+function renderCalandraHuerfanos() {
+  const cont = document.getElementById('calandra-huerfanos');
+  if (!cont) return;
+  const d = _calandraCache || {};
+  const huerfanos = d.huerfanos || [];
+  if (!huerfanos.length) {
+    cont.innerHTML = '';
+    return;
+  }
+  const filas = huerfanos.slice(0, 30).map(h => {
+    const arch = h.archivo || {};
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.25);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="font-size:1rem;">⚠️</span>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:600;color:var(--text);font-size:0.85rem;">${esc(arch.nombreOriginal || '—')}</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);">base: <em>${esc(arch.base || '')}</em> · ${arch.m2 || '—'}m² · ${esc(arch.tipo || 'original')} · ${esc((h.fecha || '').slice(0, 10))}</div>
+        </div>
+        <input type="text" id="huerf-pid-${esc(h.msgId)}" placeholder="ID pedido" style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-size:0.78rem;padding:5px 9px;outline:none;width:90px;">
+        <button onclick="vincularHuerfano('${esc(h.msgId)}')" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:6px;padding:5px 12px;font-size:0.75rem;font-weight:600;cursor:pointer;">Vincular</button>
+        ${h.linkWT ? `<a href="${esc(h.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:6px;padding:5px 10px;font-size:0.75rem;text-decoration:none;">Ver WT</a>` : ''}
+      </div>
+    `;
+  }).join('');
+  cont.innerHTML = `
+    <div style="background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.18);border-radius:12px;padding:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:1.1rem;">⚠️</span>
+        <span style="font-size:0.85rem;font-weight:700;color:#fbbf24;">Archivos sin pedido vinculado (${huerfanos.length})</span>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:10px;">
+        Pega el número del pedido en la app y click "Vincular" para asociarlos manualmente.
+      </div>
+      ${filas}
+      ${huerfanos.length > 30 ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">+ ${huerfanos.length - 30} más…</div>` : ''}
+    </div>
+  `;
+}
+
+async function vincularHuerfano(msgId) {
+  const inp = document.getElementById('huerf-pid-' + msgId);
+  if (!inp) return;
+  const pedidoId = parseInt(inp.value.trim(), 10);
+  if (!pedidoId) return toast('Ingresa un ID de pedido válido', 'warning');
+  try {
+    const r = await fetch('/api/calandra/vincular-huerfano', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msgId, pedidoId }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'falló');
+    toast(`✅ Vinculado al pedido #${data.pedidoId}`, 'success');
+    renderCalandraDashboard(true);
+    if (typeof hardSyncFromServer === 'function') hardSyncFromServer(true);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function renderCalandraEnvios() {
+  const cont = document.getElementById('calandra-envios-lista');
+  if (!cont) return;
+  const d = _calandraCache || {};
+  const envios = d.enviadosRecientes || [];
+  const buscar = (document.getElementById('calandra-buscar')?.value || '').toLowerCase().trim();
+  let lista = envios;
+  if (buscar) lista = lista.filter(e =>
+    (e.equipo || '').toLowerCase().includes(buscar) ||
+    (e.archivo || '').toLowerCase().includes(buscar) ||
+    (e.vendedora || '').toLowerCase().includes(buscar)
+  );
+  if (!lista.length) {
+    cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center;">No hay envíos a calandra todavía.</div>';
+    return;
+  }
+  cont.innerHTML = lista.slice(0, 80).map(e => {
+    const descargado = !!e.fechaDescarga;
+    const fEnvio = (e.fechaEnvio || '').slice(0, 16).replace('T', ' ');
+    const fDesc = descargado ? (e.fechaDescarga || '').slice(0, 16).replace('T', ' ') : '';
+    const badgeEstado = descargado
+      ? '<span style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:#86efac;border-radius:5px;padding:2px 8px;font-size:0.66rem;font-weight:700;" title="Calandra ya descargó">✓ DESCARGADO</span>'
+      : '<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;border-radius:5px;padding:2px 8px;font-size:0.66rem;font-weight:700;">⏳ ESPERANDO</span>';
+    const tipoBadge = {
+      original: '<span style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:#c4b5fd;border-radius:5px;padding:2px 7px;font-size:0.65rem;font-weight:600;">📦 ORIGINAL</span>',
+      arreglo: '<span style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;border-radius:5px;padding:2px 7px;font-size:0.65rem;font-weight:600;">🔧 ARREGLO</span>',
+      adicional: '<span style="background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:#93c5fd;border-radius:5px;padding:2px 7px;font-size:0.65rem;font-weight:600;">➕ ADICIONAL</span>',
+      muestra: '<span style="background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);color:#d8b4fe;border-radius:5px;padding:2px 7px;font-size:0.65rem;font-weight:600;">🧪 MUESTRA</span>',
+    }[e.tipo] || '';
+    const prio = e.prioridad === 'urgente' ? '<span style="background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;border-radius:5px;padding:2px 6px;font-size:0.65rem;font-weight:800;">🚨 URGENTE</span>' : '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;background:rgba(255,255,255,0.02);">
+        <a onclick="irAlPedido(${e.pedidoId})" style="font-family:'Outfit',sans-serif;font-weight:800;color:#a78bfa;font-size:0.85rem;min-width:55px;cursor:pointer;text-decoration:none;">#${e.pedidoId}</a>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:600;color:var(--text);font-size:0.85rem;">${esc(e.equipo || '—')}</div>
+          <div style="font-size:0.7rem;color:var(--text-muted);">${esc(e.archivo || '')}</div>
+        </div>
+        <span style="font-weight:700;color:#fbbf24;font-size:0.85rem;min-width:75px;text-align:right;">${(e.m2 || 0).toLocaleString('es-CO')}m²</span>
+        ${tipoBadge}
+        ${prio}
+        ${badgeEstado}
+        <div style="font-size:0.68rem;color:var(--text-muted);min-width:120px;text-align:right;">
+          📤 ${esc(fEnvio)}<br>
+          ${descargado ? `✓ ${esc(fDesc)}` : ''}
+        </div>
+        ${e.linkWT ? `<a href="${esc(e.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:5px;padding:3px 8px;font-size:0.7rem;text-decoration:none;">Ver WT</a>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function syncCalandraManual() {
+  toast('Sincronizando Gmail + Drive…', 'info');
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/gmail/sync', { method: 'POST' }),
+      fetch('/api/drive/sync', { method: 'POST' }),
+    ]);
+    const d1 = await r1.json();
+    const d2 = await r2.json();
+    const msg = `Gmail: ${d1.aplicados || 0}/${d1.total || 0} · Drive: ${d2.aplicados || 0} archivos`;
+    toast('✅ ' + msg, 'success');
+    renderCalandraDashboard(true);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // LISTA FACTURAS SERVER-SIDE (BD profesional)
 // ════════════════════════════════════════════════════════════════
 let _facturasCache = null; // { facturas, stats } cargado del server

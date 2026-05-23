@@ -3439,6 +3439,99 @@ http.createServer(async (req, res) => {
     return json(res, 200, { clientes: db.leerClientes(limit, offset) });
   }
 
+  // ── GET /api/calandra/dashboard — KPIs + huérfanos + envíos recientes ──
+  if (req.method === 'GET' && req.url === '/api/calandra/dashboard') {
+    try {
+      const pedidos = db.leerPedidos();
+      // Stats: sumar m² de archivos enviados a calandra
+      const ahora = new Date();
+      const hoyStr = ahora.toISOString().slice(0, 10);
+      const inicioSemana = new Date(ahora);
+      inicioSemana.setDate(ahora.getDate() - ahora.getDay());
+      const inicioSemanaStr = inicioSemana.toISOString().slice(0, 10);
+      const inicioMesStr = hoyStr.slice(0, 7) + '-01';
+      const inicioAnioStr = hoyStr.slice(0, 4) + '-01-01';
+
+      let m2Hoy = 0, m2Semana = 0, m2Mes = 0, m2Anio = 0;
+      let pedidosHoy = new Set(), pedidosSemana = new Set(), pedidosMes = new Set(), pedidosAnio = new Set();
+      const enviadosRecientes = [];
+      for (const p of pedidos) {
+        if (!p.wetransfer || !p.wetransfer.archivos) continue;
+        for (const a of p.wetransfer.archivos) {
+          if (!a.fechaEnvio) continue;
+          const fStr = a.fechaEnvio.slice(0, 10);
+          const m2 = a.m2 || 0;
+          if (fStr >= inicioAnioStr) { m2Anio += m2; pedidosAnio.add(p.id); }
+          if (fStr >= inicioMesStr) { m2Mes += m2; pedidosMes.add(p.id); }
+          if (fStr >= inicioSemanaStr) { m2Semana += m2; pedidosSemana.add(p.id); }
+          if (fStr === hoyStr) { m2Hoy += m2; pedidosHoy.add(p.id); }
+          enviadosRecientes.push({
+            pedidoId: p.id,
+            equipo: p.equipo,
+            vendedora: p.vendedora,
+            estado: p.estado,
+            archivo: a.nombreOriginal,
+            m2: a.m2,
+            tela: a.tela,
+            tipo: a.tipo,
+            prioridad: a.prioridad,
+            fechaEnvio: a.fechaEnvio,
+            fechaDescarga: a.fechaDescarga,
+            linkWT: a.linkWT,
+            destinatario: a.destinatario,
+          });
+        }
+      }
+      // Ordenar recientes por fecha desc
+      enviadosRecientes.sort((a, b) => (b.fechaEnvio || '').localeCompare(a.fechaEnvio || ''));
+
+      // Huérfanos
+      const huerfanos = gmailWT.leerHuerfanos ? gmailWT.leerHuerfanos() : [];
+
+      return json(res, 200, {
+        stats: {
+          hoy:    { m2: m2Hoy,    pedidos: pedidosHoy.size },
+          semana: { m2: m2Semana, pedidos: pedidosSemana.size },
+          mes:    { m2: m2Mes,    pedidos: pedidosMes.size },
+          anio:   { m2: m2Anio,   pedidos: pedidosAnio.size },
+        },
+        enviadosRecientes: enviadosRecientes.slice(0, 100),
+        huerfanos,
+        totalEnvios: enviadosRecientes.length,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/calandra/vincular-huerfano — vincular manualmente ──
+  if (req.method === 'POST' && req.url === '/api/calandra/vincular-huerfano') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { msgId, pedidoId } = JSON.parse(body);
+        if (!msgId || !pedidoId) return json(res, 400, { error: 'msgId y pedidoId son requeridos' });
+        const pedidos = db.leerPedidos();
+        const result = gmailWT.vincularHuerfano(msgId, pedidoId, pedidos);
+        result.pedido.wetransfer = result.wetransfer;
+        result.pedido.ultimoMovimiento = new Date().toISOString();
+        result.pedido.historial = result.pedido.historial || [];
+        result.pedido.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'manual',
+          accion: 'vincular-wt',
+          nota: `Huérfano vinculado manualmente: ${msgId}`,
+        });
+        db.guardarPedidos(pedidos);
+        return json(res, 200, { ok: true, pedidoId: result.pedido.id });
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST/GET /api/gmail/sync — disparar sincronización manual ──
   if ((req.method === 'POST' || req.method === 'GET') && req.url.startsWith('/api/gmail/sync')) {
     try {
