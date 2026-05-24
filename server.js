@@ -1502,6 +1502,51 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── GET /api/test/gemini — diagnóstico: verifica que la API key de Gemini funcione ──
+  if (req.method === 'GET' && req.url.startsWith('/api/test/gemini')) {
+    (async () => {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return json(res, 400, { ok: false, error: 'GEMINI_API_KEY no configurada' });
+      const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const inicio = Date.now();
+      try {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'Responde SOLO con la palabra OK, nada mas.' }] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 20, thinkingConfig: { thinkingBudget: 0 } },
+          }),
+        });
+        const latencia = Date.now() - inicio;
+        const data = await r.json();
+        if (!r.ok) {
+          return json(res, 200, {
+            ok: false,
+            status: r.status,
+            modelo,
+            error: data?.error?.message || JSON.stringify(data).slice(0, 300),
+            latencia_ms: latencia,
+            key_prefix: apiKey.slice(0, 8) + '...',
+          });
+        }
+        const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return json(res, 200, {
+          ok: true,
+          modelo,
+          respuesta: texto.trim(),
+          latencia_ms: latencia,
+          tokens_in: data?.usageMetadata?.promptTokenCount,
+          tokens_out: data?.usageMetadata?.candidatesTokenCount,
+          key_prefix: apiKey.slice(0, 8) + '...',
+        });
+      } catch (e) {
+        return json(res, 500, { ok: false, error: e.message, latencia_ms: Date.now() - inicio });
+      }
+    })();
+    return;
+  }
+
   // ── GET /api/telegram-updates — diagnóstico: lista chat_ids recientes del bot ──
   if (req.method === 'GET' && req.url === '/api/telegram-updates') {
     (async () => {
