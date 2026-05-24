@@ -486,6 +486,33 @@ function guardarComprobanteDetectado(registro) {
   db.upsertComprobante(registro);
 }
 
+// Resumen del dia de una vendedora — cuenta ventas con/sin sticker + total $.
+// Usado en los WA inmediato/90min para motivar con ranking.
+function resumenDiaVendedora(vendedora) {
+  try {
+    const todos = db.leerComprobantes();
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    const _norm = (s) => String(s || '').trim().toLowerCase();
+    const v = _norm(vendedora);
+    const propios = todos.filter(c => {
+      if (_norm(c.vendedora) !== v) return false;
+      const cFecha = c.ts ? new Date(c.ts).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '';
+      return cFecha === hoyBogota;
+    });
+    const conSticker = propios.filter(c => c.stickerEnviado).length;
+    const sinSticker = propios.filter(c => !c.stickerEnviado).length;
+    const totalMonto = propios.reduce((s, c) => s + (Number(c.monto) || 0), 0);
+    return { total: propios.length, conSticker, sinSticker, totalMonto };
+  } catch (e) {
+    return { total: 0, conSticker: 0, sinSticker: 0, totalMonto: 0 };
+  }
+}
+
+function _formatearMontoCOP(n) {
+  if (!n || isNaN(n)) return '$?';
+  return '$' + Number(n).toLocaleString('es-CO');
+}
+
 
 // Etiqueta una conversación de Chatwoot por contactId con la etiqueta dada.
 // Crea la etiqueta si no existe, busca la conversación abierta del contacto y le añade la etiqueta.
@@ -2001,17 +2028,23 @@ http.createServer(async (req, res) => {
                     guardarComprobanteDetectado(registro);
                     console.log(`[comprobante] DETECTADO ${vendedora} ← ${nombreCliente} ${analisis.banco} $${analisis.monto||'?'} (confianza=${analisis.confianza})`);
 
-                    // ─── WA INMEDIATO a la vendedora ───
-                    // "Detectamos pago de $X de Y. Subimos pedido #N. Confirma con sticker 💰"
+                    // ─── WA INMEDIATO a la vendedora con CONTADOR DEL DIA ───
                     try {
                       const montoTxt = analisis.monto ? `$${Number(analisis.monto).toLocaleString('es-CO')}` : 'monto no detectado';
                       const bancoTxt = analisis.banco && analisis.banco !== 'desconocido' ? ` por ${analisis.banco}` : '';
-                      const pedidoTxt = pedidoCreado ? `\n📋 *Subimos el pedido #${pedidoCreado}* al tablero.\n` : '';
-                      const msg = `💸 *Detectamos pago* ${montoTxt}${bancoTxt}\n\n` +
-                        `👤 Cliente: ${nombreCliente || telefonoCliente}\n` +
+                      const pedidoTxt = pedidoCreado ? `📋 Pedido #${pedidoCreado} creado en bandeja\n` : '';
+                      // Resumen del dia para motivar (este pago YA está contado en sinSticker)
+                      const r = resumenDiaVendedora(vendedora);
+                      const totalDiaTxt = r.totalMonto > 0 ? _formatearMontoCOP(r.totalMonto) : '$0';
+                      const msg = `💸 *Pago detectado* ${montoTxt}${bancoTxt}\n\n` +
+                        `👤 ${nombreCliente || telefonoCliente}\n` +
                         `📱 ${telefonoCliente}\n` +
                         pedidoTxt +
-                        `\n✅ *Por favor confirma poniendo el sticker venta 💰* en el chat del cliente para que avisemos al grupo familia y Chatwoot.`;
+                        `\n📊 *TU DIA HASTA AHORA:*\n` +
+                        `✅ ${r.conSticker} con sticker\n` +
+                        `⚠️ ${r.sinSticker} SIN sticker (este incluido)\n` +
+                        `💰 Detectado: ${totalDiaTxt}\n\n` +
+                        `👉 *Pasa el sticker 💰 al chat del cliente* para oficializar esta venta y subir tu contador.`;
                       await notificarWAVendedora(vendedora, msg);
                     } catch (eWa) {
                       console.error('[comprobante wa vendedora]', eWa.message);
@@ -4056,11 +4089,6 @@ setInterval(limpiezaAutomatica, 24 * 60 * 60 * 1000);
 // Lee comprobantes detectados en las últimas 18h, agrupa por vendedora,
 // manda WA a cada una con su lista. Vos recibís copia consolidada por TG.
 // ─────────────────────────────────────────────────────────────
-function _formatearMontoCOP(n) {
-  if (typeof n !== 'number' || isNaN(n)) return '?';
-  return '$' + n.toLocaleString('es-CO');
-}
-
 function _huelaPMBogota() {
   // Calcula si AHORA es la hora 20 (8 PM) en zona Bogotá (UTC-5).
   const ahoraUtc = new Date();
@@ -4110,16 +4138,22 @@ async function enviarResumenComprobantes() {
       porVendedora[v].push(r);
     });
 
-    // Mandar WA a cada vendedora con sus pendientes
+    // Mandar WA a cada vendedora con sus pendientes + cuadre del día completo
     for (const [vendedora, items] of Object.entries(porVendedora)) {
       const lineas = items.map((r, i) => {
         const hora = new Date(r.ts).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
         const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
         return `${i+1}. *${r.cliente}* (${hora}) — ${r.banco} ${monto}`;
       }).join('\n');
-      const texto = `🔔 *Recordatorio de cierre de día*\n\nDetecté ${items.length} comprobante${items.length>1?'s':''} de pago en tu WhatsApp que aún NO marcaste con el sticker 💰:\n\n${lineas}\n\n👉 Si fueron ventas reales, mandá el sticker para que entren a la app.\nSi alguna no era venta, ignorá ese.`;
+      const dia = resumenDiaVendedora(vendedora);
+      const texto = `📊 *${vendedora.toUpperCase()} — Cierre del día*\n\n` +
+        `🎯 *Ventas confirmadas con sticker:* ${dia.conSticker}\n` +
+        `💰 *Total detectado hoy:* ${_formatearMontoCOP(dia.totalMonto)}\n\n` +
+        `⚠️ *${items.length} pago${items.length>1?'s':''} SIN sticker:*\n${lineas}\n\n` +
+        `👉 Si fueron ventas reales, mandá el sticker para que entren a la app.\n` +
+        `Si alguna no era venta, ignorá ese.`;
       try { await notificarWAVendedora(vendedora, texto); } catch (e) { console.error('[resumen-8pm wa]', e.message); }
-      console.log(`[resumen-8pm] enviado a ${vendedora}: ${items.length} comprobante(s)`);
+      console.log(`[resumen-8pm] enviado a ${vendedora}: ${items.length} sin sticker / ${dia.conSticker} con sticker`);
     }
 
     // Resumen consolidado a Duvan por Telegram
@@ -4306,15 +4340,20 @@ async function cronRecordatorioStickerTick() {
       // Solo en horario laboral 8 AM - 8 PM Bogotá
       const horaBogota = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
       if (horaBogota < 8 || horaBogota > 19) continue;
-      // Mandar recordatorio
+      // Mandar recordatorio con CONTADOR DEL DIA
       try {
         const monto = c.monto ? `$${Number(c.monto).toLocaleString('es-CO')}` : '';
         const banco = c.banco && c.banco !== 'desconocido' ? c.banco : '';
         const cliente = c.cliente || c.telefono || 'cliente';
         const pedidoTxt = c.pedidoAutoCreado ? ` (pedido #${c.pedidoAutoCreado})` : '';
+        const r = resumenDiaVendedora(c.vendedora);
         const msg = `⏰ *Recordatorio: falta sticker*\n\n` +
-          `Hace +90 min detectamos un pago ${monto} ${banco} de *${cliente}*${pedidoTxt}.\n\n` +
-          `Por favor pon el sticker venta 💰 en el chat para oficializar la venta (avisa al grupo familia + Chatwoot).`;
+          `Hace +90 min detectamos pago ${monto} ${banco} de *${cliente}*${pedidoTxt}.\n\n` +
+          `📊 *TU DIA HASTA AHORA:*\n` +
+          `✅ ${r.conSticker} con sticker\n` +
+          `⚠️ ${r.sinSticker} SIN sticker\n` +
+          `💰 Detectado: ${_formatearMontoCOP(r.totalMonto)}\n\n` +
+          `👉 Pon el sticker venta 💰 en el chat para oficializar.`;
         await notificarWAVendedora(c.vendedora, msg);
         cambios.push(c.messageId || c.ts);
         c.recordatorio90Enviado = true;
