@@ -113,14 +113,11 @@
       </div>
       <div class="header-actions">
         <div class="header-date" id="header-date"></div>
-        <!-- Selector de Rol -->
-        <select id="role-selector" class="form-select" onchange="cambiarRol()" style="background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); color: #c4b5fd; font-size: 0.75rem; padding: 4px 8px; margin-right: 10px; width: auto; font-weight: 600;">
-          <option value="admin">👑 Admin / General</option>
-          <option value="ventas">💼 Ventas</option>
-          <option value="diseno">🎨 Diseño</option>
-          <option value="produccion">🏭 Producción</option>
-          <option value="costura">🧵 Costura / Satélites</option>
-        </select>
+        <!-- Chip persona actual (clickeable para cambiar) -->
+        <button id="persona-chip" onclick="abrirSelectorPersona()" title="Click para cambiar de persona" style="background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); color: #c4b5fd; font-size: 0.78rem; padding: 6px 12px; margin-right: 10px; border-radius: 99px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+          <span id="persona-chip-icon">👤</span>
+          <span id="persona-chip-text">Identificarme</span>
+        </button>
         <!-- Campana notificaciones -->
         <button class="notif-btn" onclick="toggleNotifPanel()" title="Notificaciones">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

@@ -123,7 +123,8 @@ async function _cargarPersonasDesdeServer() {
     const r = await fetch('/api/personas');
     const data = await r.json();
     if (Array.isArray(data.personas) && data.personas.length > 0) {
-      WORKERS = data.personas.map(p => ({ slug: p.slug, nombre: p.nombre, roles: p.roles, color: p.color }));
+      WORKERS = data.personas.map(p => ({ slug: p.slug, nombre: p.nombre, roles: p.roles, color: p.color, emoji: p.emoji }));
+      if (typeof renderPersonaChip === 'function') renderPersonaChip();
     }
   } catch (e) { console.warn('[personas] no se pudo cargar del server, usando fallback', e.message); }
 }
@@ -149,17 +150,103 @@ const ROLE_LABELS = {
   'costura-personal': 'Mi costura',
 };
 function cambiarRol() {
-  const sel = document.getElementById('role-selector');
-  if(sel) {
-    userRol = sel.value;
+  // Legacy: mantenido para compatibilidad con código viejo que aún lee userRol.
+  // El selector del header ya no existe; la identidad real viene de window.WS_PERSONA.
+  localStorage.setItem('ws_rol', userRol);
+  render();
+}
+
+// Pinta el chip de persona en el header. Llamar al cargar y tras cambiar persona.
+function renderPersonaChip() {
+  const chipIcon = document.getElementById('persona-chip-icon');
+  const chipText = document.getElementById('persona-chip-text');
+  if (!chipText) return;
+  const persona = getPersonaActual();
+  if (!persona) {
+    if (chipIcon) chipIcon.textContent = '👋';
+    chipText.textContent = 'Identificarme';
+    return;
+  }
+  if (chipIcon) chipIcon.textContent = persona.emoji || '👤';
+  const rolesTxt = (persona.roles || []).map(r => ROLE_LABELS[r] || r).join(' · ');
+  chipText.innerHTML = `<strong>${esc(persona.nombre)}</strong>` + (rolesTxt ? ` <span style="opacity:0.7;font-weight:500;">· ${esc(rolesTxt)}</span>` : '');
+  // Setear userRol automaticamente al primer rol de la persona (para compat con codigo viejo)
+  if (persona.roles && persona.roles[0]) {
+    userRol = persona.roles[0];
     localStorage.setItem('ws_rol', userRol);
-    render();
   }
 }
-// Inicializar selector
+
+// Modal: seleccionar/cambiar persona
+function abrirSelectorPersona() {
+  const actual = getPersonaActual();
+  const m = document.createElement('div');
+  m.id = 'modal-selector-persona';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const personasHtml = (WORKERS || []).map(p => {
+    const sel = actual && actual.slug === p.slug;
+    const rolesTxt = (p.roles || []).map(r => ROLE_LABELS[r] || r).join(' · ');
+    return `<button onclick="seleccionarPersona('${p.slug}','${esc(p.nombre).replace(/'/g, "\\'")}')" style="
+      background:${sel ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)'};
+      border:1px solid ${sel ? p.color || '#a78bfa' : 'rgba(255,255,255,0.08)'};
+      border-radius:10px;
+      padding:14px 16px;
+      text-align:left;
+      color:#fff;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      font-size:0.92rem;
+      width:100%;
+      transition:transform 0.1s;
+    " onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+      <span style="font-size:1.4rem;">${p.emoji || '👤'}</span>
+      <div style="flex:1;">
+        <div style="font-weight:700;">${esc(p.nombre)}${sel ? ' ✓' : ''}</div>
+        <div style="font-size:0.72rem;opacity:0.7;margin-top:2px;">${esc(rolesTxt)}</div>
+      </div>
+    </button>`;
+  }).join('');
+  m.innerHTML = `
+    <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:22px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <h3 style="margin:0;color:#fff;font-size:1.05rem;">¿Quién eres?</h3>
+        <button onclick="document.getElementById('modal-selector-persona').remove()" style="background:none;border:none;color:#9ca3af;font-size:1.5rem;cursor:pointer;">×</button>
+      </div>
+      <div style="font-size:0.78rem;color:#9ca3af;margin-bottom:14px;">Selecciona tu nombre para que la app te muestre lo tuyo:</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${personasHtml}</div>
+      ${actual ? `<button onclick="cerrarSesionPersona()" style="margin-top:14px;width:100%;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;padding:10px;border-radius:8px;font-size:0.82rem;cursor:pointer;">🚪 Cerrar sesión</button>` : ''}
+    </div>
+  `;
+  document.body.appendChild(m);
+}
+
+function seleccionarPersona(slug, nombre) {
+  try {
+    localStorage.setItem('ws_persona', slug);
+    localStorage.setItem('ws_persona_nombre', nombre);
+    // Recargar la página para que window.WS_PERSONA tome el cambio y todo se rearme
+    window.location.href = '/#/mi-dia';
+    setTimeout(() => window.location.reload(), 100);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+function cerrarSesionPersona() {
+  if (!confirm('¿Cerrar sesión? Tendrás que volver a identificarte.')) return;
+  try {
+    localStorage.removeItem('ws_persona');
+    localStorage.removeItem('ws_persona_nombre');
+    window.location.reload();
+  } catch (e) {}
+}
+
+// Inicializar al cargar
 document.addEventListener('DOMContentLoaded', () => {
-  const sel = document.getElementById('role-selector');
-  if(sel) sel.value = userRol;
+  // Pintar chip; reintentar al cargar WORKERS desde server
+  renderPersonaChip();
+  setTimeout(renderPersonaChip, 800);
+  setTimeout(renderPersonaChip, 2000);
 });
 
 
@@ -5401,18 +5488,21 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof renderMiDia === 'function') renderMiDia();
   } else if(hash === '#/tv') {
     activarModoTV();
-  } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
-    // En móvil: si la persona ya está identificada, abre Mi Día. Si no, hub de selección.
+  } else {
+    // Cualquiera (PC o móvil) que esté identificado entra directo a su Mi Día.
+    // Si NO está identificado: en móvil va al hub, en PC abre el selector de persona.
     const slugIdent = (window.WS_PERSONA && window.WS_PERSONA.slug) || localStorage.getItem('ws_persona');
     if (slugIdent) {
       window.location.hash = '#/mi-dia';
       showSection('mi-dia', null);
       if (typeof renderMiDia === 'function') renderMiDia();
-    } else {
+    } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
       showSection('mobile-role-hub', null);
+    } else {
+      // PC sin identificar: deja el tablero por default + abre selector automaticamente
+      setTimeout(() => { if (typeof abrirSelectorPersona === 'function') abrirSelectorPersona(); }, 500);
     }
   }
-  // Por defecto en PC muestra el Tablero principal (active en HTML)
 });
 
 /* ════════════════════════════════════════════════════════════════
