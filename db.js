@@ -116,6 +116,31 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON clientes(telefono);
   CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(nombre);
+
+  CREATE TABLE IF NOT EXISTS costureras_movimientos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER,
+    costurera_slug TEXT NOT NULL,
+    costurera_nombre TEXT NOT NULL,
+    equipo TEXT,
+    prenda TEXT,
+    cantidad_enviada INTEGER NOT NULL,
+    cantidad_recibida INTEGER,
+    faltante INTEGER DEFAULT 0,
+    fecha_envio TEXT NOT NULL,
+    fecha_recepcion TEXT,
+    observaciones TEXT,
+    enviado_por TEXT,
+    recibido_por TEXT,
+    confirmado_costurera INTEGER DEFAULT 0,
+    fecha_confirmacion TEXT,
+    aviso_7dias_enviado INTEGER DEFAULT 0,
+    aviso_7dias_fecha TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_cm_costurera ON costureras_movimientos(costurera_slug);
+  CREATE INDEX IF NOT EXISTS idx_cm_pedido ON costureras_movimientos(pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_cm_fenvio ON costureras_movimientos(fecha_envio);
+  CREATE INDEX IF NOT EXISTS idx_cm_pendientes ON costureras_movimientos(fecha_recepcion);
 `);
 
 // ── Prepared statements ──────────────────────────────────────────
@@ -619,6 +644,122 @@ function buscarClientes(q) {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// COSTUREsRAS — registro envio/recepcion de lotes a costura
+// ═════════════════════════════════════════════════════════════════
+const _cmInsert = db.prepare(`
+  INSERT INTO costureras_movimientos
+    (pedido_id, costurera_slug, costurera_nombre, equipo, prenda, cantidad_enviada,
+     fecha_envio, enviado_por, observaciones)
+  VALUES (@pedido_id, @costurera_slug, @costurera_nombre, @equipo, @prenda, @cantidad_enviada,
+          @fecha_envio, @enviado_por, @observaciones)
+`);
+const _cmRecepcion = db.prepare(`
+  UPDATE costureras_movimientos
+  SET cantidad_recibida = @cantidad_recibida,
+      faltante = @faltante,
+      fecha_recepcion = @fecha_recepcion,
+      recibido_por = @recibido_por,
+      observaciones = COALESCE(@observaciones, observaciones)
+  WHERE id = @id
+`);
+const _cmConfirmaCostu = db.prepare(`
+  UPDATE costureras_movimientos
+  SET confirmado_costurera = 1, fecha_confirmacion = @fecha
+  WHERE id = @id AND costurera_slug = @slug
+`);
+const _cmMarkAviso7 = db.prepare(`
+  UPDATE costureras_movimientos
+  SET aviso_7dias_enviado = 1, aviso_7dias_fecha = @fecha
+  WHERE id = @id
+`);
+const _cmGetById = db.prepare(`SELECT * FROM costureras_movimientos WHERE id = ?`);
+const _cmListPendientes = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE fecha_recepcion IS NULL
+  ORDER BY fecha_envio DESC
+`);
+const _cmListPorCostu = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE costurera_slug = ?
+  ORDER BY fecha_envio DESC
+  LIMIT ?
+`);
+const _cmListPendPorCostu = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE costurera_slug = ? AND fecha_recepcion IS NULL
+  ORDER BY fecha_envio ASC
+`);
+const _cmListSemana = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE fecha_recepcion >= @desde AND fecha_recepcion <= @hasta
+  ORDER BY fecha_recepcion ASC
+`);
+const _cmListSinAviso7 = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE fecha_recepcion IS NULL
+    AND aviso_7dias_enviado = 0
+    AND fecha_envio <= @limite
+`);
+
+function crearMovimientoCostura(data) {
+  const res = _cmInsert.run({
+    pedido_id: data.pedido_id || null,
+    costurera_slug: data.costurera_slug,
+    costurera_nombre: data.costurera_nombre,
+    equipo: data.equipo || null,
+    prenda: data.prenda || null,
+    cantidad_enviada: data.cantidad_enviada,
+    fecha_envio: data.fecha_envio || new Date().toISOString(),
+    enviado_por: data.enviado_por || null,
+    observaciones: data.observaciones || null,
+  });
+  return res.lastInsertRowid;
+}
+
+function recibirMovimientoCostura(id, data) {
+  _cmRecepcion.run({
+    id,
+    cantidad_recibida: data.cantidad_recibida,
+    faltante: data.faltante || 0,
+    fecha_recepcion: data.fecha_recepcion || new Date().toISOString(),
+    recibido_por: data.recibido_por || null,
+    observaciones: data.observaciones || null,
+  });
+}
+
+function confirmarRecibidoCostura(id, slug) {
+  _cmConfirmaCostu.run({ id, slug, fecha: new Date().toISOString() });
+}
+
+function marcarAviso7DiasCostura(id) {
+  _cmMarkAviso7.run({ id, fecha: new Date().toISOString() });
+}
+
+function leerMovimientoCostura(id) {
+  return _cmGetById.get(id);
+}
+
+function leerMovimientosCosturaPendientes() {
+  return _cmListPendientes.all();
+}
+
+function leerMovimientosCostureraPorSlug(slug, limit = 50) {
+  return _cmListPorCostu.all(slug, limit);
+}
+
+function leerMovimientosCostureraPendientes(slug) {
+  return _cmListPendPorCostu.all(slug);
+}
+
+function leerMovimientosCosturaSemana(desde, hasta) {
+  return _cmListSemana.all({ desde, hasta });
+}
+
+function leerMovimientosCosturaSinAviso7Dias(limiteIso) {
+  return _cmListSinAviso7.all({ limite: limiteIso });
+}
+
+// ═════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════
 module.exports = {
@@ -642,4 +783,10 @@ module.exports = {
   contarFacturasPorTipo, sumarFacturasPeriodo, eliminarFactura,
   // Clientes
   upsertCliente, leerClientes, leerClientePorTel, buscarClientes,
+  // Costureras
+  crearMovimientoCostura, recibirMovimientoCostura, confirmarRecibidoCostura,
+  marcarAviso7DiasCostura, leerMovimientoCostura,
+  leerMovimientosCosturaPendientes, leerMovimientosCostureraPorSlug,
+  leerMovimientosCostureraPendientes, leerMovimientosCosturaSemana,
+  leerMovimientosCosturaSinAviso7Dias,
 };

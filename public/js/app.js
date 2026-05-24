@@ -204,7 +204,6 @@ const HEADER_INFO = {
   'vista-general': { icon: '📊', title: 'Vista general' },
   'torre':         { icon: '🗼', title: 'Torre de Control' },
   'pdfs-huerfanos':{ icon: '📎', title: 'PDFs sin asignar' },
-  'tablero-foto':  { icon: '📸', title: 'Lector del tablero' },
   'tablero-principal': { icon: '📋', title: 'Tablero W&S' },
   'torre-unificada':   { icon: '🗼', title: 'Torre de Control' },
   'bandeja':       { icon: '💼', title: 'Ventas' },
@@ -721,27 +720,271 @@ function _miDiaBloqueCorte() {
 }
 
 function _miDiaBloqueCostura(nombrePersona) {
-  const mios = _miDiaActivos().filter(p => p.estado === 'costura' && p.costureraAsignada === nombrePersona);
+  // Para costureras: contenedor que se llena con AJAX (lotes desde /api/c/<slug>/lotes)
+  const slugCostu = (window.WS_PERSONA && window.WS_PERSONA.slug) || (localStorage.getItem('ws_persona') || '').toLowerCase();
+  const link = '/c/' + slugCostu;
   return `
-    <article class="midia-bloque" style="--bloque-color:#ec4899;">
+    <article class="midia-bloque" style="--bloque-color:#ec4899;" id="bloque-costura-${slugCostu}">
       <header class="midia-bloque-head">
         <span class="midia-bloque-icon">🧵</span>
         <div>
-          <h2>Mi costura</h2>
-          <small>${mios.length} asignados</small>
+          <h2>Mis lotes pendientes</h2>
+          <small id="costu-pend-count">cargando...</small>
         </div>
       </header>
-      <div class="midia-cards">${mios.slice(0, 15).map(p => `
-        <div class="midia-card" onclick="irAlPedido(${p.id})">
-          <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
-          <div class="midia-card-meta">${esc(p.vendedora || '—')}</div>
-        </div>
-      `).join('') || '<div class="midia-empty">No tienes pedidos asignados.</div>'}</div>
+      <div id="costu-lotes-list" class="midia-cards"><div class="midia-empty">Cargando...</div></div>
       <div class="midia-actions">
-        <button class="midia-btn" onclick="abrirCosturera('${esc(nombrePersona)}')">Ver mi vista completa</button>
+        <button class="midia-btn" onclick="location.href='${link}'">📲 Abrir mi vista completa</button>
       </div>
     </article>
   `;
+}
+
+// Carga lotes pendientes para la costurera identificada (rol 'costura') y los pinta.
+async function _miDiaCargarLotesCostura() {
+  const slugCostu = (window.WS_PERSONA && window.WS_PERSONA.slug) || (localStorage.getItem('ws_persona') || '').toLowerCase();
+  if (!slugCostu) return;
+  try {
+    const r = await fetch('/api/c/' + slugCostu + '/lotes');
+    if (!r.ok) return;
+    const data = await r.json();
+    const cont = document.getElementById('costu-lotes-list');
+    const cnt = document.getElementById('costu-pend-count');
+    if (!cont) return;
+    if (cnt) cnt.textContent = (data.pendientes.length || 0) + ' lote' + (data.pendientes.length !== 1 ? 's' : '') + ' pendiente' + (data.pendientes.length !== 1 ? 's' : '');
+    if (!data.pendientes.length) {
+      cont.innerHTML = '<div class="midia-empty">🎉 Sin lotes pendientes</div>';
+      return;
+    }
+    cont.innerHTML = data.pendientes.map(m => {
+      const dias = Math.floor((Date.now() - new Date(m.fecha_envio).getTime()) / 86400000);
+      const urg = dias >= 7;
+      const yaConf = m.confirmado_costurera == 1;
+      const btnConf = yaConf
+        ? '<div style="margin-top:6px;color:#6ee7b7;font-size:0.75rem;">✅ Ya marcaste como entregado</div>'
+        : `<button onclick="confirmarLoteCostura(${m.id},'${slugCostu}')" style="margin-top:8px;width:100%;background:#10b981;color:#fff;border:none;padding:8px;border-radius:7px;font-weight:600;font-size:0.82rem;cursor:pointer;">✅ Ya lo entregué</button>`;
+      return `<div class="midia-card" style="${urg ? 'border-color:rgba(239,68,68,0.4);' : ''}">
+        <div class="midia-card-name">${esc(m.equipo || 'Lote #' + m.id)}</div>
+        <div class="midia-card-meta">${esc(m.prenda || '-')} · ${m.cantidad_enviada} prendas · ${dias}d</div>
+        ${btnConf}
+      </div>`;
+    }).join('');
+  } catch (e) { console.warn('[costu-lotes]', e.message); }
+}
+
+async function confirmarLoteCostura(movId, slug) {
+  if (!confirm('¿Confirmar que ya entregaste este lote?')) return;
+  try {
+    const r = await fetch('/api/costureras/confirmar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movimiento_id: movId, costurera_slug: slug }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'falló');
+    toast('✅ Marcado. Avisamos al taller.', 'success');
+    _miDiaCargarLotesCostura();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// BLOQUE GESTION COSTURAS — solo para Lidermeyer (rol corte) y admin
+// Muestra lotes pendientes globales + boton "Enviar pedido a costura"
+// ───────────────────────────────────────────────────────────────────
+function _miDiaBloqueGestionCosturas() {
+  return `
+    <article class="midia-bloque" style="--bloque-color:#10b981;" id="bloque-gestion-costuras">
+      <header class="midia-bloque-head">
+        <span class="midia-bloque-icon">🧵</span>
+        <div>
+          <h2>Costuras — gestión</h2>
+          <small id="gest-cost-count">cargando...</small>
+        </div>
+      </header>
+      <div id="gest-cost-list" class="midia-cards"><div class="midia-empty">Cargando...</div></div>
+      <div class="midia-actions" style="display:flex;flex-direction:column;gap:8px;">
+        <button class="midia-btn" style="background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;font-weight:700;" onclick="abrirModalEnvioCostura()">📦 Enviar pedido a costura</button>
+      </div>
+    </article>
+  `;
+}
+
+async function _miDiaCargarGestionCosturas() {
+  try {
+    const r = await fetch('/api/costureras/pendientes');
+    if (!r.ok) return;
+    const data = await r.json();
+    const cont = document.getElementById('gest-cost-list');
+    const cnt = document.getElementById('gest-cost-count');
+    if (!cont) return;
+    const n = data.pendientes.length;
+    if (cnt) cnt.textContent = n + ' lote' + (n !== 1 ? 's' : '') + ' en costura';
+    if (!n) {
+      cont.innerHTML = '<div class="midia-empty">Sin lotes en costura</div>';
+      return;
+    }
+    cont.innerHTML = data.pendientes.slice(0, 15).map(m => {
+      const urg = m.dias_en_costura >= 7;
+      return `<div class="midia-card" style="${urg ? 'border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.04);' : ''}">
+        <div class="midia-card-name">${esc(m.costurera_nombre)} — ${esc(m.equipo || '#' + m.id)}</div>
+        <div class="midia-card-meta">${esc(m.prenda || '-')} · ${m.cantidad_enviada} · ${m.dias_en_costura}d${m.confirmado_costurera ? ' · ✅ marco entrega' : ''}</div>
+        <button onclick="abrirModalRecibirCostura(${m.id})" style="margin-top:8px;width:100%;background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;padding:7px;border-radius:7px;font-weight:600;font-size:0.78rem;cursor:pointer;">✅ Recibí este lote</button>
+      </div>`;
+    }).join('');
+  } catch (e) { console.warn('[gest-cost]', e.message); }
+}
+
+// Modal: enviar pedido a costura
+function abrirModalEnvioCostura() {
+  const pedidos = (typeof window.pedidos !== 'undefined' ? window.pedidos : []) || [];
+  const candidatos = pedidos.filter(p => ['costura','calidad','listo','confirmado','enviado-calandra','llego-impresion','corte'].includes(p.estado));
+  const slug = (window.WS_PERSONA && window.WS_PERSONA.slug) || 'admin';
+
+  fetch('/api/costureras').then(r => r.json()).then(data => {
+    const costureras = data.costureras || [];
+    const m = document.createElement('div');
+    m.id = 'modal-envio-cost';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:#1a1d2e;border:1px solid rgba(16,185,129,0.3);border-radius:14px;padding:22px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <h3 style="margin:0;color:#10b981;">📦 Enviar a costura</h3>
+          <button onclick="document.getElementById('modal-envio-cost').remove()" style="background:none;border:none;color:#9ca3af;font-size:1.4rem;cursor:pointer;">×</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Pedido (opcional)</label>
+            <select id="env-cost-pedido" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.92rem;">
+              <option value="">— Sin asociar a un pedido —</option>
+              ${candidatos.map(p => `<option value="${p.id}" data-equipo="${esc(p.equipo || p.telefono || '')}">#${p.id} ${esc(p.equipo || p.telefono || '')} (${p.estado})</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Costurera <span style="color:#ef4444;">*</span></label>
+            <select id="env-cost-slug" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.92rem;">
+              <option value="">— Seleccionar —</option>
+              ${costureras.map(c => `<option value="${c.slug}">${esc(c.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+            <div>
+              <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Prenda</label>
+              <select id="env-cost-prenda" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.92rem;">
+                <option value="Camiseta">Camiseta</option>
+                <option value="Sudadera">Sudadera</option>
+                <option value="Pantalón">Pantalón</option>
+                <option value="Pantaloneta">Pantaloneta</option>
+                <option value="Chaqueta">Chaqueta</option>
+                <option value="Buso">Buso</option>
+                <option value="Uniforme completo">Uniforme completo</option>
+                <option value="Portero acolchado">Portero acolchado</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Cantidad <span style="color:#ef4444;">*</span></label>
+              <input type="number" id="env-cost-cant" min="1" placeholder="30" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.92rem;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Observaciones (opcional)</label>
+            <textarea id="env-cost-obs" rows="2" placeholder="Ej: urgente, especial, etc" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.88rem;resize:vertical;"></textarea>
+          </div>
+          <button onclick="enviarACostura('${slug}')" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:14px;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer;">📦 Enviar a costura</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
+  });
+}
+
+async function enviarACostura(enviadoPor) {
+  const pedido_id = parseInt(document.getElementById('env-cost-pedido').value || '0', 10) || null;
+  const costurera_slug = document.getElementById('env-cost-slug').value;
+  const prenda = document.getElementById('env-cost-prenda').value;
+  const cantidad = parseInt(document.getElementById('env-cost-cant').value || '0', 10);
+  const observaciones = document.getElementById('env-cost-obs').value.trim();
+
+  if (!costurera_slug) { toast('Falta seleccionar costurera', 'error'); return; }
+  if (!cantidad || cantidad < 1) { toast('Falta cantidad', 'error'); return; }
+
+  // Si hay pedido_id, agarrar el equipo
+  let equipo = '';
+  if (pedido_id) {
+    const opt = document.querySelector('#env-cost-pedido option[value="' + pedido_id + '"]');
+    if (opt) equipo = opt.getAttribute('data-equipo') || '';
+  }
+
+  try {
+    const r = await fetch('/api/costureras/envio', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id, costurera_slug, prenda, cantidad, observaciones, equipo, enviado_por: enviadoPor }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'falló');
+    toast('✅ Enviado a ' + costurera_slug, 'success');
+    document.getElementById('modal-envio-cost').remove();
+    _miDiaCargarGestionCosturas();
+    if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true);
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// Modal: marcar recepción de un lote
+function abrirModalRecibirCostura(movId) {
+  fetch('/api/costureras/pendientes').then(r => r.json()).then(data => {
+    const mov = (data.pendientes || []).find(x => x.id === movId);
+    if (!mov) { toast('No se encontró el lote', 'error'); return; }
+    const slug = (window.WS_PERSONA && window.WS_PERSONA.slug) || 'admin';
+    const m = document.createElement('div');
+    m.id = 'modal-recibir-cost';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:#1a1d2e;border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:22px;max-width:420px;width:100%;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;color:#86efac;">✅ Recibí este lote</h3>
+          <button onclick="document.getElementById('modal-recibir-cost').remove()" style="background:none;border:none;color:#9ca3af;font-size:1.4rem;cursor:pointer;">×</button>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);padding:12px;border-radius:9px;margin-bottom:14px;font-size:0.88rem;">
+          <div style="color:#fff;font-weight:600;margin-bottom:4px;">${esc(mov.costurera_nombre)}</div>
+          <div style="color:#9ca3af;font-size:0.78rem;">${esc(mov.equipo || '#' + movId)} · ${esc(mov.prenda || '-')} · enviadas ${mov.cantidad_enviada}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Cantidad recibida</label>
+            <input type="number" id="rec-cant" value="${mov.cantidad_enviada}" min="0" max="${mov.cantidad_enviada}" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.95rem;">
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Faltantes / Devolución</label>
+            <input type="number" id="rec-falt" value="0" min="0" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.95rem;">
+          </div>
+          <div>
+            <label style="font-size:0.78rem;color:#9ca3af;display:block;margin-bottom:4px;">Observaciones</label>
+            <textarea id="rec-obs" rows="2" style="width:100%;padding:10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:8px;font-size:0.88rem;resize:vertical;"></textarea>
+          </div>
+          <button onclick="marcarRecibidoCostura(${movId},'${slug}')" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;padding:13px;border-radius:10px;font-weight:700;font-size:0.98rem;cursor:pointer;">✅ Confirmar recepción</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
+  });
+}
+
+async function marcarRecibidoCostura(movId, recibidoPor) {
+  const cantidad_recibida = parseInt(document.getElementById('rec-cant').value || '0', 10);
+  const faltante = parseInt(document.getElementById('rec-falt').value || '0', 10);
+  const observaciones = document.getElementById('rec-obs').value.trim();
+  if (cantidad_recibida < 0) { toast('Cantidad inválida', 'error'); return; }
+  try {
+    const r = await fetch('/api/costureras/recepcion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movimiento_id: movId, cantidad_recibida, faltante, observaciones, recibido_por: recibidoPor }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'falló');
+    toast('✅ Recepción registrada', 'success');
+    document.getElementById('modal-recibir-cost').remove();
+    _miDiaCargarGestionCosturas();
+    if (typeof syncTodoConServidor === 'function') syncTodoConServidor(true);
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
 // Auto-refresh: cuando llega Mi Día arranca un loop que cada 60s vuelve
@@ -800,6 +1043,9 @@ function renderMiDia() {
     bloques.push(_miDiaBloqueArreglos(persona.nombre, false));
   }
   if (roles.includes('produccion')) bloques.push(_miDiaBloqueProduccion());
+  if (roles.includes('corte') || roles.includes('admin')) {
+    bloques.push(_miDiaBloqueGestionCosturas());
+  }
   if (roles.includes('corte')) {
     bloques.push(_miDiaBloqueCorte());
     // Lidermeyer (el de corte) ve TODOS los arreglos pendientes — él los gestiona
@@ -825,6 +1071,14 @@ function renderMiDia() {
     </header>
     <div class="midia-bloques">${bloques.join('')}</div>
   `;
+
+  // Disparar cargas AJAX de bloques que necesitan datos del servidor
+  if (roles.includes('corte') || roles.includes('admin')) {
+    setTimeout(_miDiaCargarGestionCosturas, 100);
+  }
+  if (roles.includes('costura')) {
+    setTimeout(_miDiaCargarLotesCostura, 100);
+  }
 }
 
 // Carga el roster desde /api/personas y dibuja una tarjeta por persona
@@ -5147,9 +5401,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (typeof renderMiDia === 'function') renderMiDia();
   } else if(hash === '#/tv') {
     activarModoTV();
-  } else if(hash === '#tablero-foto') {
-    showSection('tablero-foto', document.querySelector('[onclick*="tablero-foto"]'));
-    if (typeof renderTableroFoto === 'function') renderTableroFoto();
   } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
     // En móvil: si la persona ya está identificada, abre Mi Día. Si no, hub de selección.
     const slugIdent = (window.WS_PERSONA && window.WS_PERSONA.slug) || localStorage.getItem('ws_persona');
@@ -6021,99 +6272,6 @@ function toggleSubmenuMas() {
   s.style.display = s.style.display === 'none' ? 'block' : 'none';
 }
 
-function renderTableroFoto() {
-  const cont = document.getElementById('tablero-foto-content');
-  if (!cont) return;
-  cont.innerHTML =
-    '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;">' +
-      '<div style="display:flex;flex-direction:column;gap:14px;align-items:center;">' +
-        '<input type="file" id="tablero-input" accept="image/*" capture="environment" style="display:none;" onchange="onTableroFotoSeleccionada(event)">' +
-        '<button onclick="document.getElementById(\'tablero-input\').click()" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:14px 24px;font-size:1rem;font-weight:600;border:none;border-radius:10px;cursor:pointer;">📷 Tomar foto del tablero</button>' +
-        '<div style="font-size:0.78rem;color:var(--text-muted);">o seleccionar archivo</div>' +
-      '</div>' +
-    '</div>' +
-    '<div id="tablero-foto-preview" style="margin-top:18px;"></div>' +
-    '<div id="tablero-foto-resultado" style="margin-top:18px;"></div>';
-}
-
-async function onTableroFotoSeleccionada(ev) {
-  const file = ev.target.files && ev.target.files[0];
-  if (!file) return;
-  const preview = document.getElementById('tablero-foto-preview');
-  const resultado = document.getElementById('tablero-foto-resultado');
-  preview.innerHTML = '<div style="color:var(--text-muted);">Leyendo foto...</div>';
-  resultado.innerHTML = '';
-  try {
-    const reader = new FileReader();
-    const dataUrl = await new Promise((resolve, reject) => {
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    const base64 = dataUrl.split(',')[1];
-    const mimeType = (dataUrl.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
-    preview.innerHTML = '<img src="' + dataUrl + '" style="max-width:100%;max-height:300px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);">';
-    resultado.innerHTML = '<div style="color:var(--text-muted);">⏳ Procesando con Gemini... (puede tardar 10-20s)</div>';
-    const r = await fetch('/api/tablero/foto', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64, mimeType })
-    });
-    const data = await r.json();
-    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo procesamiento');
-    let html = '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:16px;">';
-    html += '<div style="font-weight:700;font-size:1rem;margin-bottom:10px;">✅ Tablero leído (' + data.total + ' entradas)</div>';
-    html += '<div style="font-size:0.88rem;line-height:1.7;">';
-    html += '✅ Ya estaban en la app: <strong>' + data.resultado.yaCorrectos.length + '</strong><br>';
-    html += '🔄 Movidos a su columna: <strong>' + data.resultado.movidos.length + '</strong><br>';
-    html += '🆕 Pedidos nuevos creados: <strong>' + data.resultado.creados.length + '</strong>';
-    html += '</div>';
-    if (data.resultado.movidos.length) {
-      html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.85rem;color:#a78bfa;">Ver movidos</summary><div style="margin-top:8px;font-size:0.8rem;line-height:1.6;">';
-      data.resultado.movidos.forEach(m => { html += '• #' + m.id + ' ' + esc(m.equipo) + ': ' + m.de + ' → ' + m.a + '<br>'; });
-      html += '</div></details>';
-    }
-    if (data.resultado.creados.length) {
-      html += '<details style="margin-top:8px;" open><summary style="cursor:pointer;font-size:0.85rem;color:#fbbf24;">Ver nuevos (revisar vendedora)</summary><div style="margin-top:8px;font-size:0.8rem;line-height:1.6;">';
-      data.resultado.creados.forEach(c => { html += '• #' + c.id + ' ' + esc(c.equipo) + ' (' + c.columna + ')<br>'; });
-      html += '</div></details>';
-    }
-    html += '<div style="margin-top:12px;font-size:0.78rem;color:var(--text-muted);">📲 Resumen enviado por Telegram</div>';
-    html += '</div>';
-
-    // Pedidos que NO están en la foto → ofrecer revisar uno por uno
-    const noEnTab = (data.resultado && Array.isArray(data.resultado.noEnTablero)) ? data.resultado.noEnTablero : [];
-    if (noEnTab.length) {
-      html += '<div style="margin-top:16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:16px;">';
-      html += '<div style="font-weight:700;font-size:0.95rem;margin-bottom:8px;color:#fcd34d;">🔍 ' + noEnTab.length + ' pedido(s) NO aparecen en el tablero</div>';
-      html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px;">Revisalos. Si ya se entregaron, marcalos como entregados (se archivan en Notion). Si no, dejalos activos.</div>';
-      html += '<div id="lista-no-en-tablero" style="display:flex;flex-direction:column;gap:8px;">';
-      noEnTab.forEach(p => {
-        const idAttr = 'no-tab-' + p.id;
-        html += '<div id="' + idAttr + '" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">';
-        html += '<div style="flex:1;min-width:200px;">';
-        html += '<div style="font-weight:600;font-size:0.88rem;">#' + p.id + ' ' + esc(p.equipo) + '</div>';
-        html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;">';
-        html += 'Estado: ' + p.estado;
-        if (p.vendedora) html += ' · 🛍️ ' + esc(p.vendedora);
-        if (p.disenadorAsignado) html += ' · 🎨 ' + esc(p.disenadorAsignado);
-        if (p.telefono) html += ' · ' + esc(p.telefono);
-        html += '</div></div>';
-        html += '<div style="display:flex;gap:6px;flex-shrink:0;">';
-        html += '<button onclick="dejarPedidoActivo(' + p.id + ',\'' + idAttr + '\')" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">↺ Dejar activo</button>';
-        html += '<button onclick="archivarPedidoUno(' + p.id + ',\'' + idAttr + '\')" class="btn btn-sm" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;padding:6px 10px;border-radius:6px;font-size:0.72rem;cursor:pointer;">✅ Ya entregado (archivar)</button>';
-        html += '</div></div>';
-      });
-      html += '</div></div>';
-    }
-
-    resultado.innerHTML = html;
-    if (typeof syncTodoConServidor === 'function') setTimeout(() => syncTodoConServidor(true), 1000);
-    if (typeof syncConServidor === 'function') setTimeout(() => syncConServidor(true), 1500);
-  } catch (e) {
-    resultado.innerHTML = '<div style="color:#fca5a5;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;">❌ Error: ' + esc(e.message) + '</div>';
-  }
-}
 
 // Archivar un pedido individual en Notion + borrar del servidor
 async function archivarPedidoUno(id, divId) {

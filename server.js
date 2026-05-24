@@ -458,175 +458,6 @@ Respuesta:`;
   }
 }
 
-// Lee una foto del tablero físico de producción de W&S.
-// El tablero tiene 4 columnas: APROBADOS, VENTAS, ENVIADOS, HACER DISEÑOS.
-// Devuelve JSON estructurado con las entradas de cada columna.
-async function analizarTableroConGemini(base64Img, mimeType) {
-  global._tableroUltimoError = null;
-  try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) { global._tableroUltimoError = 'no api key'; return null; }
-
-    const prompt = `Esta es una foto de un tablero blanco con escritura a mano de la empresa W&S Enterprise (uniformes deportivos, Colombia).
-El tablero tiene 4 columnas con los títulos:
-- APROBADOS (arriba izquierda)
-- VENTAS (arriba derecha)
-- ENVIADOS (abajo izquierda)
-- HACER DISEÑOS (abajo derecha)
-
-Cada columna tiene una lista de pedidos. Cada pedido puede ser:
-- Solo un nombre de equipo o cliente (ej: "Friens", "Casa Sport", "Niupy")
-- Un teléfono + nombre/equipo (ej: "3132210432 - Cristo", "311 8884276 - Niupi FC")
-- Combinación de cliente y descripción (ej: "Dago Chaquetas", "Fabian - Chaqueta")
-
-Devolveme SOLO un JSON con esta estructura, sin markdown, sin texto extra:
-{
-  "aprobados": [{"texto": "...", "telefono": "..." o null, "equipo": "..."}],
-  "ventas": [...],
-  "enviados": [...],
-  "hacerDisenos": [...]
-}
-
-- En "telefono" pon SOLO los 10 dígitos sin espacios ni guiones (ej: "3132210432"). null si no hay teléfono.
-- En "equipo" pon el nombre del equipo/cliente limpio (sin el teléfono).
-- En "texto" pon la línea completa tal cual aparece en el tablero.
-- Si una entrada es ambigua o ilegible, igual inclúyela con tu mejor lectura.
-
-Respuesta:`;
-
-    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
-    const body = {
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Img } }
-        ]
-      }],
-      generationConfig: { temperature: 0, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } }
-    };
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      const errText = await r.text();
-      global._tableroUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
-      return null;
-    }
-    const data = await r.json();
-    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
-    try {
-      return JSON.parse(limpio);
-    } catch (e) {
-      global._tableroUltimoError = `parse error: ${limpio.slice(0, 300)}`;
-      return null;
-    }
-  } catch (e) {
-    global._tableroUltimoError = `exception: ${e.message}`;
-    return null;
-  }
-}
-
-// Aplica la estructura leída del tablero a los pedidos:
-// - Si el equipo ya existe en la app, mueve estado a la columna correcta
-// - Si NO existe, crea pedido nuevo con vendedora "Sin asignar" para revisión
-// Devuelve { creados: [...], movidos: [...], yaCorrectos: [...] }
-function aplicarTableroAPedidos(estructura) {
-  const COLUMNA_A_ESTADO = {
-    aprobados: 'confirmado',
-    ventas: 'hacer-diseno',
-    enviados: 'enviado-final',
-    hacerDisenos: 'bandeja',
-  };
-  const pedidos = leerPedidos();
-  const ahora = new Date().toISOString();
-  const creados = [], movidos = [], yaCorrectos = [];
-  const idsTocados = new Set(); // IDs de pedidos que aparecieron en la foto
-  let nextId = leerNextId();
-
-  function nombresParecen(a, b) {
-    const na = nombreLimpio(a), nb = nombreLimpio(b);
-    if (!na || !nb) return false;
-    return na === nb || na.includes(nb) || nb.includes(na);
-  }
-
-  for (const [columna, estadoApp] of Object.entries(COLUMNA_A_ESTADO)) {
-    const items = Array.isArray(estructura[columna]) ? estructura[columna] : [];
-    for (const it of items) {
-      const equipo = String(it.equipo || it.texto || '').trim();
-      if (!equipo) continue;
-      const tel = String(it.telefono || '').replace(/\D/g, '');
-      // Buscar pedido existente: prioridad teléfono, luego nombre
-      let pd = null;
-      if (tel && tel.length >= 8) {
-        pd = pedidos.find(p => String(p.telefono || '').replace(/\D/g, '') === tel);
-      }
-      if (!pd) pd = pedidos.find(p => nombresParecen(p.equipo, equipo));
-      if (pd) {
-        idsTocados.add(pd.id);
-        if (pd.estado !== estadoApp) {
-          const estadoAnterior = pd.estado;
-          pd.estado = estadoApp;
-          pd.ultimoMovimiento = ahora;
-          movidos.push({ id: pd.id, equipo: pd.equipo, de: estadoAnterior, a: estadoApp });
-        } else {
-          yaCorrectos.push({ id: pd.id, equipo: pd.equipo });
-        }
-      } else {
-        // Crear nuevo
-        const nuevo = {
-          id: nextId,
-          equipo,
-          telefono: tel || '',
-          vendedora: 'Sin asignar',
-          disenadorAsignado: null,
-          tipoBandeja: 'venta',
-          estado: estadoApp,
-          creadoEn: ahora,
-          ultimoMovimiento: ahora,
-          items: [],
-          fechaEntrega: null,
-          notas: 'Creado desde foto del tablero (' + ahora.slice(0, 10) + ')',
-          arreglo: false,
-          archivosAlias: [],
-          pdfDriveListo: false,
-          wtListo: false,
-          origenTablero: true,
-        };
-        pedidos.push(nuevo);
-        idsTocados.add(nuevo.id);
-        creados.push({ id: nuevo.id, equipo, columna });
-        nextId++;
-      }
-    }
-  }
-
-  // Pedidos activos que NO están en la foto → candidatos a archivar
-  // Solo considerar pedidos con movimiento en los últimos 60 días (ignorar zombies viejos)
-  const hace60Dias = Date.now() - 60 * 24 * 60 * 60 * 1000;
-  const noEnTablero = pedidos
-    .filter(p => !idsTocados.has(p.id))
-    .filter(p => {
-      const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-      return t >= hace60Dias;
-    })
-    .map(p => ({
-      id: p.id,
-      equipo: p.equipo || '',
-      telefono: p.telefono || '',
-      vendedora: p.vendedora || '',
-      disenadorAsignado: p.disenadorAsignado || '',
-      estado: p.estado,
-      ultimoMovimiento: p.ultimoMovimiento || null,
-    }));
-
-  guardarPedidos(pedidos, nextId);
-  global._huerfanosCache = null;
-  return { creados, movidos, yaCorrectos, noEnTablero };
-}
 
 // Descarga la imagen base64 desde Evolution API.
 async function descargarImagenEvolution(instance, messageKey) {
@@ -1437,11 +1268,6 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /api/wa-status — estado simulado ────────────────────
-  if (req.method === 'GET' && req.url === '/api/wa-status') {
-    return json(res, 200, { ok: true, status: 'modo-local-habilitado' });
-  }
-
   // ── POST /api/venta — bot local crea cotización/pedido ─────
   if (req.method === 'POST' && req.url === '/api/venta') {
     let body = '';
@@ -1680,47 +1506,6 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── POST /api/tablero/foto — recibe foto del tablero físico, la procesa con Gemini ──
-  // Body JSON: { base64: "...", mimeType: "image/jpeg" }
-  // Aplica los cambios a pedidos y manda resumen por Telegram a Duvan.
-  if (req.method === 'POST' && req.url === '/api/tablero/foto') {
-    const chunks = [];
-    req.on('data', d => chunks.push(d));
-    req.on('end', async () => {
-      try {
-        const body = Buffer.concat(chunks).toString('utf8');
-        const { base64, mimeType } = JSON.parse(body);
-        if (!base64) return json(res, 400, { error: 'falta base64' });
-        const estructura = await analizarTableroConGemini(base64, mimeType || 'image/jpeg');
-        if (!estructura) {
-          return json(res, 500, { error: 'gemini fallo', detalle: global._tableroUltimoError });
-        }
-        const resultado = aplicarTableroAPedidos(estructura);
-        // Construir mensaje para Telegram
-        const total = (estructura.aprobados||[]).length + (estructura.ventas||[]).length + (estructura.enviados||[]).length + (estructura.hacerDisenos||[]).length;
-        let msg = `📋 *Tablero leído* (${total} entradas)\n\n`;
-        msg += `✅ Ya estaban en la app: ${resultado.yaCorrectos.length}\n`;
-        msg += `🔄 Movidos a su columna: ${resultado.movidos.length}\n`;
-        msg += `🆕 Pedidos nuevos creados: ${resultado.creados.length}\n`;
-        if (resultado.movidos.length) {
-          msg += `\n*Movidos:*\n`;
-          resultado.movidos.slice(0, 10).forEach(m => { msg += `• #${m.id} ${m.equipo}: ${m.de} → ${m.a}\n`; });
-          if (resultado.movidos.length > 10) msg += `...y ${resultado.movidos.length - 10} más\n`;
-        }
-        if (resultado.creados.length) {
-          msg += `\n*Nuevos (revisar vendedora):*\n`;
-          resultado.creados.slice(0, 10).forEach(c => { msg += `• #${c.id} ${c.equipo} (${c.columna})\n`; });
-          if (resultado.creados.length > 10) msg += `...y ${resultado.creados.length - 10} más\n`;
-        }
-        notificarTelegramDuvan(msg).catch(() => {});
-        return json(res, 200, { ok: true, estructura, resultado, total });
-      } catch (e) {
-        console.error('[tablero] error', e);
-        return json(res, 500, { error: e.message });
-      }
-    });
-    return;
-  }
 
   // ── POST /api/evolution-webhook — Webhook principal para Evolution API ──
   if (req.method === 'POST' && req.url.startsWith('/api/evolution-webhook')) {
@@ -3280,11 +3065,6 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /api/wa-status — el bot corre local, no en Railway ──
-  if (req.method === 'GET' && req.url === '/api/wa-status') {
-    return json(res, 200, { ok: true, status: 'bot-local' });
-  }
-
   // ── Notificaciones compartidas (campana) ───────────────────────
   // Todos los dispositivos ven las mismas notificaciones
   const leerNotifs = () => db.leerNotifs();
@@ -3384,6 +3164,247 @@ http.createServer(async (req, res) => {
   // ── GET /api/personas — roster completo (slug, nombre, roles, color, vistaInicial) ──
   if (req.method === 'GET' && req.url === '/api/personas') {
     return json(res, 200, { personas: PERSONAS });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // COSTUREsRAS — registro envio/recepcion de lotes
+  // ═══════════════════════════════════════════════════════════════════
+  // Roster de costureras (filtradas de PERSONAS por rol 'costura')
+  // y sus links personales /c/<slug>.
+
+  // ── GET /api/costureras — listado de costureras activas ──
+  if (req.method === 'GET' && req.url === '/api/costureras') {
+    const costureras = PERSONAS.filter(p => p.roles.includes('costura'))
+      .map(p => ({ slug: p.slug, nombre: p.nombre, link: `/c/${p.slug}` }));
+    return json(res, 200, { costureras });
+  }
+
+  // ── POST /api/costureras/envio — Lidermeyer registra envio a una costurera ──
+  // Body: { pedido_id, costurera_slug, prenda, cantidad, observaciones, enviado_por }
+  if (req.method === 'POST' && req.url === '/api/costureras/envio') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { pedido_id, costurera_slug, prenda, cantidad, observaciones, enviado_por } = data;
+        if (!costurera_slug || !cantidad) return json(res, 400, { error: 'falta costurera_slug o cantidad' });
+        const costu = PERSONAS.find(p => p.slug === costurera_slug && p.roles.includes('costura'));
+        if (!costu) return json(res, 400, { error: 'costurera no encontrada' });
+
+        // Buscar pedido para tomar equipo (si existe)
+        let equipo = data.equipo || '';
+        if (pedido_id) {
+          const p = leerPedidos().find(x => x.id === pedido_id);
+          if (p) {
+            equipo = equipo || p.equipo || p.telefono || '';
+            // Avanzar pedido a 'en-satelite' y asignar costurera
+            p.estado = 'en-satelite';
+            p.satelite = costu.nombre;
+            p.ultimoMovimiento = new Date().toISOString();
+            p.historial = p.historial || [];
+            p.historial.push({
+              fecha: new Date().toISOString(),
+              por: enviado_por || 'app',
+              accion: 'enviar-costura',
+              nota: `Enviado a ${costu.nombre}: ${cantidad} ${prenda || 'prendas'}`,
+            });
+            const todos = leerPedidos();
+            const idx = todos.findIndex(x => x.id === pedido_id);
+            if (idx >= 0) { todos[idx] = p; db.guardarPedidos(todos); }
+          }
+        }
+
+        const id = db.crearMovimientoCostura({
+          pedido_id: pedido_id || null,
+          costurera_slug,
+          costurera_nombre: costu.nombre,
+          equipo,
+          prenda: prenda || null,
+          cantidad_enviada: parseInt(cantidad, 10),
+          enviado_por: enviado_por || null,
+          observaciones: observaciones || null,
+        });
+
+        // Notif WA a la costurera (si tiene numero configurado)
+        const link = `${process.env.APP_BASE_URL || 'https://ws-app-interna-production.up.railway.app'}/c/${costurera_slug}`;
+        const msg = `🧵 *Nuevo lote para ti*\n\n` +
+          (equipo ? `👕 Equipo: ${equipo}\n` : '') +
+          (prenda ? `🪡 Prenda: ${prenda}\n` : '') +
+          `📊 Cantidad: ${cantidad}\n` +
+          (observaciones ? `📝 Nota: ${observaciones}\n` : '') +
+          `\n👉 Ver tus lotes pendientes: ${link}`;
+        notificarWAPersona(costu.nombre, msg).catch(()=>{});
+
+        return json(res, 200, { ok: true, id });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/costureras/recepcion — Lidermeyer marca recepcion del lote ──
+  // Body: { movimiento_id, cantidad_recibida, faltante, observaciones, recibido_por }
+  if (req.method === 'POST' && req.url === '/api/costureras/recepcion') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const { movimiento_id, cantidad_recibida, faltante, observaciones, recibido_por } = data;
+        if (!movimiento_id || cantidad_recibida == null) {
+          return json(res, 400, { error: 'falta movimiento_id o cantidad_recibida' });
+        }
+        const mov = db.leerMovimientoCostura(movimiento_id);
+        if (!mov) return json(res, 404, { error: 'movimiento no encontrado' });
+
+        db.recibirMovimientoCostura(movimiento_id, {
+          cantidad_recibida: parseInt(cantidad_recibida, 10),
+          faltante: parseInt(faltante || 0, 10),
+          recibido_por: recibido_por || null,
+          observaciones: observaciones || null,
+        });
+
+        // Avanzar pedido a 'calidad'
+        if (mov.pedido_id) {
+          const todos = leerPedidos();
+          const idx = todos.findIndex(x => x.id === mov.pedido_id);
+          if (idx >= 0) {
+            todos[idx].estado = 'calidad';
+            todos[idx].ultimoMovimiento = new Date().toISOString();
+            todos[idx].historial = todos[idx].historial || [];
+            todos[idx].historial.push({
+              fecha: new Date().toISOString(),
+              por: recibido_por || 'app',
+              accion: 'recibir-costura',
+              nota: `Recibido de ${mov.costurera_nombre}: ${cantidad_recibida}/${mov.cantidad_enviada}` +
+                    (faltante > 0 ? ` (FALTAN ${faltante})` : ''),
+            });
+            db.guardarPedidos(todos);
+          }
+        }
+
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/costureras/confirmar — costurera marca desde su mini-app que entrego ──
+  // Body: { movimiento_id, costurera_slug }
+  if (req.method === 'POST' && req.url === '/api/costureras/confirmar') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { movimiento_id, costurera_slug } = JSON.parse(body);
+        if (!movimiento_id || !costurera_slug) return json(res, 400, { error: 'faltan params' });
+        db.confirmarRecibidoCostura(movimiento_id, costurera_slug);
+        // Avisar a Lidermeyer por WA
+        const mov = db.leerMovimientoCostura(movimiento_id);
+        if (mov) {
+          const msg = `🧵 *${mov.costurera_nombre} marco entrega*\n\n` +
+            `Lote: ${mov.equipo || '#' + mov.pedido_id}\n` +
+            `Prenda: ${mov.prenda || '-'}\n` +
+            `Cantidad: ${mov.cantidad_enviada}\n\n` +
+            `Confirma recepcion desde tu app cuando llegue.`;
+          notificarWAPersona('Lidermeyer', msg).catch(()=>{});
+        }
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/costureras/pendientes — Lidermeyer ve lotes sin recibir ──
+  if (req.method === 'GET' && req.url === '/api/costureras/pendientes') {
+    try {
+      const pendientes = db.leerMovimientosCosturaPendientes();
+      const ahora = Date.now();
+      const enriched = pendientes.map(m => {
+        const ts = new Date(m.fecha_envio).getTime();
+        const dias = Math.floor((ahora - ts) / 86400000);
+        return { ...m, dias_en_costura: dias };
+      });
+      return json(res, 200, { pendientes: enriched, total: enriched.length });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/costureras/historial?slug=wilson&limit=50 — historial por costurera ──
+  if (req.method === 'GET' && req.url.startsWith('/api/costureras/historial')) {
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const slug = u.searchParams.get('slug');
+      const limit = parseInt(u.searchParams.get('limit') || '50', 10);
+      if (!slug) return json(res, 400, { error: 'falta slug' });
+      const movs = db.leerMovimientosCostureraPorSlug(slug, limit);
+      return json(res, 200, { movimientos: movs });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/costureras/cuadre-semanal — cuadre actual de la semana en curso ──
+  if (req.method === 'GET' && req.url === '/api/costureras/cuadre-semanal') {
+    try {
+      const ahora = new Date();
+      const desde = new Date(ahora);
+      desde.setDate(desde.getDate() - 6); // ultimos 7 dias
+      desde.setHours(0, 0, 0, 0);
+      const movs = db.leerMovimientosCosturaSemana(desde.toISOString(), ahora.toISOString());
+      const porCostu = {};
+      for (const m of movs) {
+        const k = m.costurera_slug;
+        if (!porCostu[k]) {
+          porCostu[k] = { slug: k, nombre: m.costurera_nombre, total_prendas: 0, lotes: 0, faltantes: 0, detalle: {} };
+        }
+        const cant = m.cantidad_recibida || 0;
+        porCostu[k].total_prendas += cant;
+        porCostu[k].faltantes += (m.faltante || 0);
+        porCostu[k].lotes += 1;
+        const prenda = m.prenda || 'sin especificar';
+        porCostu[k].detalle[prenda] = (porCostu[k].detalle[prenda] || 0) + cant;
+      }
+      return json(res, 200, {
+        desde: desde.toISOString(),
+        hasta: ahora.toISOString(),
+        cuadre: Object.values(porCostu),
+        total_movimientos: movs.length,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /c/:slug — mini-app para la costurera (vista personal de sus lotes) ──
+  if (req.method === 'GET' && req.url.startsWith('/c/')) {
+    const slug = req.url.split('/')[2].split('?')[0];
+    const costu = PERSONAS.find(p => p.slug === slug && p.roles.includes('costura'));
+    if (!costu) {
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      return res.end('<h1>Costurera no encontrada</h1>');
+    }
+    return fs.readFile(path.join(__dirname, 'public', 'costurera.html'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
+  }
+
+  // ── GET /api/c/:slug/lotes — lotes pendientes para una costurera ──
+  if (req.method === 'GET' && req.url.startsWith('/api/c/') && req.url.endsWith('/lotes')) {
+    const slug = req.url.split('/')[3];
+    const costu = PERSONAS.find(p => p.slug === slug && p.roles.includes('costura'));
+    if (!costu) return json(res, 404, { error: 'costurera no encontrada' });
+    const pendientes = db.leerMovimientosCostureraPendientes(slug);
+    return json(res, 200, { costurera: { slug, nombre: costu.nombre }, pendientes });
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -4370,6 +4391,118 @@ setInterval(cronBackupTick, 30 * 60 * 1000);
 // Tick inicial 5 min después de arrancar
 setTimeout(cronBackupTick, 5 * 60 * 1000);
 console.log('[backup] activado — backup diario 2 AM Bogotá a Drive');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Costureras — cada 6 horas avisa lotes con +7 dias sin recepcion
+// ═══════════════════════════════════════════════════════════════════
+async function cronCostureras7DiasTick() {
+  try {
+    const horaBogota = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBogota < 8 || horaBogota > 19) return; // solo horario laboral
+    const limite = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const atrasados = db.leerMovimientosCosturaSinAviso7Dias(limite);
+    if (!atrasados.length) return;
+    for (const m of atrasados) {
+      const dias = Math.floor((Date.now() - new Date(m.fecha_envio).getTime()) / 86400000);
+      const msg = `⏰ *Lote +${dias} dias en costura*\n\n` +
+        `Costurera: ${m.costurera_nombre}\n` +
+        (m.equipo ? `Equipo: ${m.equipo}\n` : '') +
+        (m.prenda ? `Prenda: ${m.prenda}\n` : '') +
+        `Cantidad: ${m.cantidad_enviada}\n` +
+        `Enviado: ${new Date(m.fecha_envio).toLocaleDateString('es-CO')}\n\n` +
+        `Confirma desde la app si ya volvio o sigue allá.`;
+      try {
+        await notificarWAPersona('Lidermeyer', msg);
+        db.marcarAviso7DiasCostura(m.id);
+        console.log(`[cron-cost-7d] aviso enviado para mov #${m.id} (${m.costurera_nombre}, ${dias}d)`);
+      } catch (e) { console.error('[cron-cost-7d msg]', e.message); }
+    }
+  } catch (e) {
+    console.error('[cron-cost-7d error]', e.message);
+  }
+}
+setInterval(cronCostureras7DiasTick, 6 * 60 * 60 * 1000);
+setTimeout(cronCostureras7DiasTick, 3 * 60 * 1000);
+console.log('[cron-cost-7d] activado — avisa lotes +7d cada 6 horas (horario laboral)');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Cuadre Costureras — domingo 8 PM Bogota → WA a Duvan
+// ═══════════════════════════════════════════════════════════════════
+const CUADRE_COST_FILE = path.join(__dirname, 'data', 'cuadre_cost_ultimo.json');
+function _yaCuadreCostHoy() {
+  try {
+    if (!fs.existsSync(CUADRE_COST_FILE)) return false;
+    const ultimo = JSON.parse(fs.readFileSync(CUADRE_COST_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ultimo.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcarCuadreCostHoy() {
+  try {
+    fs.mkdirSync(path.dirname(CUADRE_COST_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(CUADRE_COST_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now() }));
+  } catch (e) { console.error('[cuadre-cost] no se pudo marcar:', e.message); }
+}
+async function cronCuadreCostuTick() {
+  try {
+    // Solo domingo 20h (8 PM) Bogotá
+    const ahoraBog = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+    if (ahoraBog.getDay() !== 0) return; // 0 = domingo
+    if (ahoraBog.getHours() !== 20) return;
+    if (_yaCuadreCostHoy()) return;
+
+    const desde = new Date(ahoraBog);
+    desde.setDate(desde.getDate() - 6);
+    desde.setHours(0, 0, 0, 0);
+    const movs = db.leerMovimientosCosturaSemana(desde.toISOString(), ahoraBog.toISOString());
+    if (!movs.length) {
+      _marcarCuadreCostHoy();
+      console.log('[cuadre-cost] sin movimientos esta semana, silencio');
+      return;
+    }
+
+    const porCostu = {};
+    let totalPrendas = 0, totalFaltantes = 0;
+    for (const m of movs) {
+      const k = m.costurera_slug;
+      if (!porCostu[k]) {
+        porCostu[k] = { nombre: m.costurera_nombre, total: 0, faltantes: 0, lotes: 0, detalle: {} };
+      }
+      const cant = m.cantidad_recibida || 0;
+      porCostu[k].total += cant;
+      porCostu[k].faltantes += (m.faltante || 0);
+      porCostu[k].lotes += 1;
+      const prenda = m.prenda || 'sin especificar';
+      porCostu[k].detalle[prenda] = (porCostu[k].detalle[prenda] || 0) + cant;
+      totalPrendas += cant;
+      totalFaltantes += (m.faltante || 0);
+    }
+
+    let msg = `🧵 *Cuadre costureras — semana ${ahoraBog.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}*\n\n`;
+    for (const k of Object.keys(porCostu)) {
+      const c = porCostu[k];
+      msg += `*${c.nombre}* — ${c.total} prendas (${c.lotes} lote${c.lotes > 1 ? 's' : ''})\n`;
+      for (const [prenda, cant] of Object.entries(c.detalle)) {
+        msg += `  • ${prenda}: ${cant}\n`;
+      }
+      if (c.faltantes > 0) msg += `  ⚠️ Faltantes: ${c.faltantes}\n`;
+      msg += '\n';
+    }
+    msg += `📊 *TOTAL prendas:* ${totalPrendas}\n`;
+    if (totalFaltantes > 0) msg += `⚠️ *Total faltantes:* ${totalFaltantes}\n`;
+
+    await notificarTelegramDuvan(msg);
+    await notificarWAPersona('Duvan', msg).catch(()=>{});
+    _marcarCuadreCostHoy();
+    console.log('[cuadre-cost] cuadre semanal enviado');
+  } catch (e) {
+    console.error('[cuadre-cost error]', e.message);
+  }
+}
+setInterval(cronCuadreCostuTick, 30 * 60 * 1000);
+setTimeout(cronCuadreCostuTick, 60 * 1000);
+console.log('[cuadre-cost] activado — cuadre semanal domingo 8 PM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)

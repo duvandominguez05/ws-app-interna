@@ -179,11 +179,6 @@
             <strong>Producción</strong>
             <small>Lista de trabajo, urgencias y acciones grandes.</small>
           </button>
-          <button class="mobile-role-card costura" onclick="abrirRolMovil('satelites')">
-            <span class="mobile-role-icon">🧵</span>
-            <strong>Costura</strong>
-            <small>Encargado reparte y cada costurera tiene su link.</small>
-          </button>
           <button class="mobile-role-card admin" onclick="abrirRolMovil('admin')">
             <span class="mobile-role-icon">👑</span>
             <strong>Admin</strong>
@@ -308,15 +303,10 @@
           </div>
         </div>
 
-        <!-- Panel: Satélites -->
-        <div class="dash-panel">
-          <div class="dash-panel-title">
-            🧵 Satélites — pendientes
-            <a onclick="showSection('satelites', document.querySelector('[onclick*=satelites]'))">Ver detalle →</a>
-          </div>
-          <div id="dash-satelites">
-            <div class="dash-empty">Sin movimientos</div>
-          </div>
+        <!-- Panel: Satélites — OCULTO (pendiente flujo costureras) -->
+        <div class="dash-panel" style="display:none;">
+          <div class="dash-panel-title">🧵 Satélites — pendientes</div>
+          <div id="dash-satelites"><div class="dash-empty">Sin movimientos</div></div>
         </div>
 
         <!-- Panel: Calandra -->
@@ -350,22 +340,6 @@
         <button class="btn btn-orange btn-sm" onclick="renderTorreControl()" title="Actualizar ahora">🔄 Actualizar</button>
       </div>
       <div id="torre-content"></div>
-    </section>
-
-    <!-- ─── TABLERO (FOTO) ─────────────────────────────────────── -->
-    <section id="tablero-foto" class="section-content section-bg">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-        <h2 style="margin:0;font-family:'Outfit',sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:0.5px;">📸 Lector del tablero</h2>
-      </div>
-      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:18px;line-height:1.5;">
-        Tomá una foto del tablero blanco de producción. La app la lee con Gemini y:
-        <ul style="margin:8px 0 0 18px;padding:0;">
-          <li>Mueve los pedidos existentes a la columna correcta</li>
-          <li>Crea pedidos nuevos para los que no estaban en la app</li>
-          <li>Te manda el resumen por Telegram</li>
-        </ul>
-      </div>
-      <div id="tablero-foto-content"></div>
     </section>
 
     <!-- ─── PDFs SIN ASIGNAR ───────────────────────────────────── -->
@@ -459,12 +433,6 @@
             <div style="display:flex; width:100%; justify-content:space-between; align-items:center;">
               <div class="kanban-col-title">Costura & Satélites</div>
               <div class="kanban-col-count" id="cnt-costura">0</div>
-            </div>
-            <!-- Integración de formulario y Dash de satélites rápido -->
-            <div style="width:100%; display:flex; gap:6px;">
-               <button class="btn btn-success btn-xs" style="flex:1;" onclick="abrirFormSat('entrega'); showSection('satelites', null)">📦 Entregar</button>
-               <button class="btn btn-glass btn-xs" style="flex:1;" onclick="abrirFormSat('recepcion'); showSection('satelites', null)">✅ Recibir</button>
-               <button class="btn btn-glass btn-xs" style="flex:1;" onclick="showSection('satelites', null)">🧵 Dash</button>
             </div>
           </div>
           <div class="kanban-cards" id="col-costura"></div>
@@ -574,8 +542,8 @@
     <!-- ─── CALANDRA (METRAJE) ───────────────────────────────────── -->
       <!-- Estos IDs listos para ser consumidos por app.js pero los he movido arriba al bloque embebido de calandra -->
 
-    <!-- ─── SATÉLITES DE COSTURA ──────────────────────────────────── -->
-    <section id="satelites" class="section-content">
+    <!-- ─── SATÉLITES DE COSTURA — OCULTA (pendiente flujo costureras) -->
+    <section id="satelites" class="section-content" style="display:none;">
       <div class="section-heading">
         <span class="dot" style="background:#10b981;box-shadow:0 0 6px #10b981;"></span>
         Centro de Control de Costura

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mis lotes — W&S</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#10b981">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 100%);
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 18px 14px 80px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .header .saludo { font-size: 0.85rem; color: #9ca3af; }
+    .header .nombre {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin: 6px 0;
+      background: linear-gradient(135deg, #10b981, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header .info { font-size: 0.78rem; color: #9ca3af; }
+    .lote-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .lote-card.urgente {
+      border-color: rgba(239,68,68,0.5);
+      background: rgba(239,68,68,0.06);
+    }
+    .lote-equipo {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .lote-detalles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+      margin-bottom: 16px;
+    }
+    .lote-detalles .label { font-size: 0.65rem; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.5px; }
+    .lote-detalles .value { font-size: 0.95rem; font-weight: 600; color: #f3f4f6; margin-top: 2px; }
+    .lote-obs {
+      background: rgba(251,191,36,0.08);
+      border: 1px solid rgba(251,191,36,0.25);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      color: #fcd34d;
+      margin-bottom: 14px;
+    }
+    .btn-entregue {
+      width: 100%;
+      background: linear-gradient(135deg, #10b981, #059669);
+      border: none;
+      color: white;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+    }
+    .btn-entregue:active { transform: scale(0.98); }
+    .btn-entregue.confirmado {
+      background: rgba(16,185,129,0.15);
+      border: 1px solid rgba(16,185,129,0.4);
+      color: #6ee7b7;
+      cursor: default;
+      box-shadow: none;
+    }
+    .dias-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.05);
+      color: #d1d5db;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .dias-badge.urgente {
+      background: rgba(239,68,68,0.2);
+      color: #fca5a5;
+    }
+    .empty {
+      text-align: center;
+      padding: 50px 20px;
+      color: #9ca3af;
+      font-size: 0.95rem;
+    }
+    .empty .icon { font-size: 4rem; margin-bottom: 12px; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #10b981;
+      color: white;
+      padding: 12px 22px;
+      border-radius: 99px;
+      font-weight: 600;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .toast.visible { opacity: 1; }
+    .toast.error { background: #ef4444; }
+    .loader {
+      text-align: center;
+      padding: 30px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="saludo">👋 Hola</div>
+    <div class="nombre" id="nombre-costurera">...</div>
+    <div class="info">Estos son los lotes pendientes que tienes</div>
+  </div>
+
+  <div id="lista-lotes" class="loader">Cargando tus lotes...</div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const slug = window.location.pathname.split('/').filter(Boolean)[1];
+    if (!slug) { document.body.innerHTML = '<div class="empty">URL inválida</div>'; }
+
+    function toast(msg, tipo) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast visible' + (tipo === 'error' ? ' error' : '');
+      setTimeout(() => t.classList.remove('visible'), 3000);
+    }
+
+    function fmtFecha(iso) {
+      try {
+        return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+      } catch { return iso; }
+    }
+
+    function diasDesde(iso) {
+      try {
+        return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+      } catch { return 0; }
+    }
+
+    async function cargar() {
+      try {
+        const r = await fetch('/api/c/' + slug + '/lotes');
+        if (!r.ok) {
+          document.getElementById('lista-lotes').innerHTML = '<div class="empty"><div class="icon">❌</div>No se pudo cargar</div>';
+          return;
+        }
+        const data = await r.json();
+        document.getElementById('nombre-costurera').textContent = data.costurera.nombre;
+        const cont = document.getElementById('lista-lotes');
+        if (!data.pendientes.length) {
+          cont.innerHTML = '<div class="empty"><div class="icon">🎉</div>No tienes lotes pendientes<br><small style="opacity:0.7;">Buen trabajo!</small></div>';
+          return;
+        }
+        let html = '';
+        for (const m of data.pendientes) {
+          const dias = diasDesde(m.fecha_envio);
+          const urgente = dias >= 7;
+          const yaConfirmo = m.confirmado_costurera == 1;
+          html += '<div class="lote-card' + (urgente ? ' urgente' : '') + '">';
+          html += '  <div class="lote-equipo">' + escapeHtml(m.equipo || 'Lote #' + m.id) + '</div>';
+          html += '  <div style="font-size:0.78rem;color:#9ca3af;">Enviado ' + fmtFecha(m.fecha_envio) +
+                  '<span class="dias-badge' + (urgente ? ' urgente' : '') + '">' + dias + ' día' + (dias !== 1 ? 's' : '') + '</span></div>';
+          html += '  <div class="lote-detalles">';
+          html += '    <div><div class="label">Prenda</div><div class="value">' + escapeHtml(m.prenda || '-') + '</div></div>';
+          html += '    <div><div class="label">Cantidad</div><div class="value">' + m.cantidad_enviada + '</div></div>';
+          html += '  </div>';
+          if (m.observaciones) {
+            html += '  <div class="lote-obs">📝 ' + escapeHtml(m.observaciones) + '</div>';
+          }
+          if (yaConfirmo) {
+            html += '  <button class="btn-entregue confirmado">✅ Ya marcaste como entregado</button>';
+          } else {
+            html += '  <button class="btn-entregue" onclick="confirmar(' + m.id + ')">✅ Ya lo entregué</button>';
+          }
+          html += '</div>';
+        }
+        cont.innerHTML = html;
+      } catch (e) {
+        document.getElementById('lista-lotes').innerHTML = '<div class="empty"><div class="icon">❌</div>Error: ' + e.message + '</div>';
+      }
+    }
+
+    async function confirmar(id) {
+      if (!confirm('¿Confirmar que ya entregaste este lote?')) return;
+      try {
+        const r = await fetch('/api/costureras/confirmar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movimiento_id: id, costurera_slug: slug }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'falló');
+        toast('✅ Marcado. Avisamos al taller.');
+        setTimeout(cargar, 800);
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    cargar();
+    // Auto-refresh cada 60s
+    setInterval(cargar, 60000);
+  </script>
+</body>
+</html>

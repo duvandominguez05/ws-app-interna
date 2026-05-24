@@ -32,6 +32,7 @@ const PERSONAS = [
   { slug: 'cristina',   nombre: 'Cristina',   roles: ['costura'],                  emoji: '🧵', color: '#8b5cf6', vistaInicial: '/#/mi-dia' },
   { slug: 'wilson',     nombre: 'Wilson',     roles: ['costura'],                  emoji: '🧵', color: '#3b82f6', vistaInicial: '/#/mi-dia' },
   { slug: 'yamile',     nombre: 'Yamile',     roles: ['costura'],                  emoji: '🧵', color: '#06b6d4', vistaInicial: '/#/mi-dia' },
+  { slug: 'nicol',      nombre: 'Nicol',      roles: ['costura'],                  emoji: '🧵', color: '#10b981', vistaInicial: '/#/mi-dia' },
 ];
 
 const PERSONAS_BY_SLUG = Object.fromEntries(PERSONAS.map(p => [p.slug, p]));
