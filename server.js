@@ -163,7 +163,7 @@ async function notificarWAVendedora(vendedora, texto) {
       // Cada vendedora recibe el resumen en su propio WA personal.
       // Si el número no está mapeado, no se manda nada.
       'betty': process.env.WA_BETTY || '573506974711',
-      'ney':   process.env.WA_NEY   || '573106639430',
+      'ney':   process.env.WA_NEY   || '573016639430',
       'wendy': process.env.WA_WENDY || '573118287892',
       'paola': process.env.WA_PAOLA || '573026027865',
     };
@@ -189,7 +189,7 @@ async function notificarWAVendedora(vendedora, texto) {
 const WA_NUMS_PERSONA = {
   // Hardcoded — sobrescribibles con env WA_<SLUG_UPPER>
   betty:      '573506974711',
-  ney:        '573106639430',
+  ney:        '573016639430',
   wendy:      '573118287892',
   paola:      '573026027865',
   camilo:     '573124858901',
