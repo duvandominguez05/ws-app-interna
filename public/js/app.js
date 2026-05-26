@@ -5839,13 +5839,16 @@ function renderTorreUnificada() {
   html += '<div class="torre-section">';
   html += '<div class="torre-section-title">📈 Pipeline de producción</div>';
   html += '<div class="torre-pipeline">';
-  html += pipelineStep('HACER DISEÑOS', pipeline.hd, 'rgba(96,165,250,0.6)');
+  // Pipeline en orden cronologico (flujo del pedido en el tiempo)
+  html += pipelineStep('COTIZACIONES', pipeline.hd, 'rgba(96,165,250,0.6)');
   html += pipelineArrow();
-  html += pipelineStep('VENTAS', pipeline.v, 'rgba(34,197,94,0.6)');
+  html += pipelineStep('EN DISEÑO', pipeline.v, 'rgba(34,197,94,0.6)');
   html += pipelineArrow();
   html += pipelineStep('APROBADOS', pipeline.a, 'rgba(168,85,247,0.6)');
   html += pipelineArrow();
-  html += pipelineStep('ENVIADOS', pipeline.e, 'rgba(148,163,184,0.6)');
+  html += pipelineStep('PRODUCCIÓN', pipeline.p || 0, 'rgba(251,146,60,0.6)');
+  html += pipelineArrow();
+  html += pipelineStep('ENTREGADOS', pipeline.e, 'rgba(148,163,184,0.6)');
   html += '</div></div>';
 
   // Ranking vendedoras
@@ -5899,12 +5902,15 @@ function renderTableroPrincipal() {
   try {
   const cont = document.getElementById('tab-principal-content');
   if (!cont) return;
+  // Orden invertido: lo entregado primero (a la izquierda) → cotizaciones al final
+  // Nombres claros que coinciden con el flujo real de W&S Textil:
+  //   ENTREGADOS (cliente recibio) ← PRODUCCION ← APROBADOS ← EN DISEÑO ← COTIZACIONES (cotizo sin pago)
   const cols = {
-    'hacer-disenos': { titulo: 'HACER DISEÑOS', clase: 'tab-col-hacer-disenos', items: [] },
-    'ventas':        { titulo: 'VENTAS',        clase: 'tab-col-ventas',        items: [] },
-    'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
+    'enviados':      { titulo: 'ENTREGADOS',    clase: 'tab-col-enviados',      items: [] },
     'produccion':    { titulo: 'PRODUCCIÓN',    clase: 'tab-col-produccion',    items: [] },
-    'enviados':      { titulo: 'ENVIADOS',      clase: 'tab-col-enviados',      items: [] },
+    'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
+    'ventas':        { titulo: 'EN DISEÑO',     clase: 'tab-col-ventas',        items: [] },
+    'hacer-disenos': { titulo: 'COTIZACIONES',  clase: 'tab-col-hacer-disenos', items: [] },
   };
   const q = _tabPrincipalFiltro;
   const disFiltro = _tabPrincipalDisFiltro;
