@@ -5902,15 +5902,15 @@ function renderTableroPrincipal() {
   try {
   const cont = document.getElementById('tab-principal-content');
   if (!cont) return;
-  // Orden invertido: lo entregado primero (a la izquierda) → cotizaciones al final
-  // Nombres claros que coinciden con el flujo real de W&S Textil:
-  //   ENTREGADOS (cliente recibio) ← PRODUCCION ← APROBADOS ← EN DISEÑO ← COTIZACIONES (cotizo sin pago)
+  // Orden CRONOLOGICO natural: se lee izquierda → derecha siguiendo el tiempo del pedido
+  //   COTIZACIONES (cliente cotizo) → EN DISEÑO (pago, falta disenar) → APROBADOS (diseno OK)
+  //   → PRODUCCION (calandra/corte/costura) → ENTREGADOS (cliente recibio)
   const cols = {
-    'enviados':      { titulo: 'ENTREGADOS',    clase: 'tab-col-enviados',      items: [] },
-    'produccion':    { titulo: 'PRODUCCIÓN',    clase: 'tab-col-produccion',    items: [] },
-    'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
-    'ventas':        { titulo: 'EN DISEÑO',     clase: 'tab-col-ventas',        items: [] },
     'hacer-disenos': { titulo: 'COTIZACIONES',  clase: 'tab-col-hacer-disenos', items: [] },
+    'ventas':        { titulo: 'EN DISEÑO',     clase: 'tab-col-ventas',        items: [] },
+    'aprobados':     { titulo: 'APROBADOS',     clase: 'tab-col-aprobados',     items: [] },
+    'produccion':    { titulo: 'PRODUCCIÓN',    clase: 'tab-col-produccion',    items: [] },
+    'enviados':      { titulo: 'ENTREGADOS',    clase: 'tab-col-enviados',      items: [] },
   };
   const q = _tabPrincipalFiltro;
   const disFiltro = _tabPrincipalDisFiltro;
