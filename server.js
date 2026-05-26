@@ -1506,6 +1506,32 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /api/admin/limpiar-tombstone — saca un pedido archivado para revivirlo ──
+  // Body: { id: 219 }
+  if (req.method === 'POST' && req.url === '/api/admin/limpiar-tombstone') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { id } = JSON.parse(body);
+        if (!id) return json(res, 400, { error: 'falta id' });
+        const lista = leerTombstones();
+        const antes = lista.length;
+        const nueva = lista.filter(t => t.id !== id);
+        guardarTombstones(nueva);
+        return json(res, 200, { ok: true, removed: antes - nueva.length, totalAhora: nueva.length });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/admin/tombstones — listar todos los archivados (debug) ──
+  if (req.method === 'GET' && req.url === '/api/admin/tombstones') {
+    return json(res, 200, { tombstones: leerTombstones() });
+  }
+
   // ── POST /api/test/reprocesar-imagen — reprocesa un mensaje de Evolution con el flujo COMPLETO ──
   // Body: { instance, jid, id, vendedora?, simularPedido?, simularWA? }
   // Toma una imagen ya recibida via Evolution → Gemini → si comprobante: crear pedido + WA
