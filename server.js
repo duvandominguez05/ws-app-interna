@@ -1506,6 +1506,43 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── GET /api/test/imagenes-recientes?dias=7 — lista todas las imagenes entrantes ──
+  // Recorre los evolution_events buscando messageType=imageMessage con fromMe=false.
+  // Devuelve datos para identificar cada una.
+  if (req.method === 'GET' && req.url.startsWith('/api/test/imagenes-recientes')) {
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const dias = parseInt(u.searchParams.get('dias') || '7', 10);
+      const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY fecha DESC, id DESC').all(desde);
+      const imgs = [];
+      for (const row of rows) {
+        try {
+          const ev = JSON.parse(row.data);
+          const p = ev.payload || {};
+          const d = p.data || {};
+          if (d.messageType !== 'imageMessage') continue;
+          const k = d.key || {};
+          if (k.fromMe === true) continue; // solo entrantes
+          const im = d.message?.imageMessage || {};
+          imgs.push({
+            fecha: row.fecha,
+            ts: ev.date_time || d.messageTimestamp,
+            instance: p.instance,
+            pushName: d.pushName || '',
+            telefono: (k.remoteJid || '').replace('@s.whatsapp.net', '').replace('@g.us', ''),
+            remoteJid: k.remoteJid,
+            id: k.id,
+            caption: (im.caption || '').slice(0, 100),
+          });
+        } catch {}
+      }
+      return json(res, 200, { total: imgs.length, dias, imagenes: imgs.slice(0, 200) });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/test/comprobante — prueba end-to-end con imagen real ──
   // Body: { imageUrl: "https://...", vendedora: "Betty", telefonoCliente: "573...", nombreCliente?: "Maria",
   //         simularPedido?: bool, simularWA?: bool }
