@@ -12,12 +12,73 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="/js/persona-shim.js"></script>
   <link rel='stylesheet' href='/css/style.css'>
+  <link rel='stylesheet' href='/css/style-v2.css'>
 </head>
 <body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SPLASH SCREEN — aparece al cargar, se desvanece a los 1.2s
+═══════════════════════════════════════════════════════════ -->
+<div id="ws-splash" style="
+  position: fixed; inset: 0; z-index: 99999;
+  background: #000;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1);">
+  <div style="
+    font-family: 'Inter', sans-serif;
+    font-weight: 900;
+    font-size: 3.2rem;
+    letter-spacing: -0.05em;
+    background: linear-gradient(135deg, #fff 0%, #888 50%, #fff 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: splash-shimmer 1.6s ease-in-out infinite;
+    display: flex; align-items: center; gap: 8px;">
+    <span style="color:#8b5cf6; filter: drop-shadow(0 0 20px rgba(139,92,246,0.6));">⚡</span>W<span style="color:#f97316; filter: drop-shadow(0 0 12px rgba(249,115,22,0.5));">&</span>S
+  </div>
+  <div style="
+    margin-top: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 4px;
+    color: #555;
+    font-weight: 700;
+    text-transform: uppercase;">TEXTIL · ENTERPRISE</div>
+  <div style="
+    margin-top: 32px;
+    width: 24px; height: 24px;
+    border: 2px solid rgba(255,255,255,0.1);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    animation: splash-spin 700ms linear infinite;"></div>
+  <style>
+    @keyframes splash-shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    @keyframes splash-spin { to { transform: rotate(360deg); } }
+    #ws-splash.fade { opacity: 0; pointer-events: none; }
+  </style>
+</div>
+<script>
+  // Esconder splash apenas la pagina cargue + 800ms minimo de marca
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const sp = document.getElementById('ws-splash');
+      if (sp) {
+        sp.classList.add('fade');
+        setTimeout(() => sp.remove(), 700);
+      }
+    }, 800);
+  });
+</script>
 
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
