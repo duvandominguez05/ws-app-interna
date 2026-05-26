@@ -1506,6 +1506,114 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /api/test/reprocesar-imagen — reprocesa un mensaje de Evolution con el flujo COMPLETO ──
+  // Body: { instance, jid, id, vendedora?, simularPedido?, simularWA? }
+  // Toma una imagen ya recibida via Evolution → Gemini → si comprobante: crear pedido + WA
+  if (req.method === 'POST' && req.url === '/api/test/reprocesar-imagen') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      const log = [];
+      try {
+        const data = JSON.parse(body);
+        const { instance, jid, id, vendedora: vendOverride, simularPedido, simularWA } = data;
+        if (!instance || !jid || !id) return json(res, 400, { error: 'faltan params instance/jid/id' });
+        const vendedora = vendOverride || vendedoraDeInstancia(instance);
+
+        log.push(`[1/5] Descargando imagen desde Evolution...`);
+        const inicio = Date.now();
+        const img = await descargarImagenEvolution(instance, { remoteJid: jid, fromMe: false, id });
+        if (!img || !img.base64) {
+          log.push(`[1/5] FALLO: no se pudo descargar`);
+          return json(res, 500, { ok: false, error: 'descarga fallo', log });
+        }
+        log.push(`[1/5] OK — ${(img.base64.length/1024).toFixed(1)} KB base64`);
+
+        log.push(`[2/5] Analizando con Gemini...`);
+        const tIni = Date.now();
+        const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
+        log.push(`[2/5] ${Date.now()-tIni}ms — ${JSON.stringify(analisis)}`);
+
+        if (!analisis?.esComprobante) {
+          return json(res, 200, { ok: true, analisis, pedidoCreado: null, waEnviado: false, log });
+        }
+
+        const telefonoCliente = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').split('-')[0];
+        const { nombre: nombreCliente } = await resolverCliente(jid, telefonoCliente, '');
+        log.push(`[2.5] Cliente resuelto: ${nombreCliente}`);
+
+        let pedidoCreado = null;
+        if (simularPedido !== false && analisis.confianza !== 'baja') {
+          log.push(`[3/5] Creando pedido en bandeja para ${vendedora}...`);
+          const resCrear = crearVentaInterna('pedido', vendedora, telefonoCliente, 'test-' + id, nombreCliente);
+          if (resCrear.ok && !resCrear.duplicado) {
+            pedidoCreado = resCrear.id;
+            const pps = leerPedidos();
+            const pp = pps.find(x => x.id === pedidoCreado);
+            if (pp) {
+              pp.origenComprobante = true;
+              pp.montoComprobante = analisis.monto;
+              pp.bancoComprobante = analisis.banco;
+              pp.testMode = true;
+              guardarPedidos(pps, leerNextId());
+            }
+            log.push(`[3/5] OK — pedido #${pedidoCreado}`);
+          } else {
+            log.push(`[3/5] ${resCrear.duplicado ? 'DUPLICADO existente: #' + resCrear.id : 'FALLO: ' + resCrear.error}`);
+            pedidoCreado = resCrear.id || null;
+          }
+        }
+
+        log.push(`[4/5] Guardando comprobante...`);
+        guardarComprobanteDetectado({
+          messageId: id,
+          vendedora,
+          telefono: telefonoCliente,
+          cliente: nombreCliente,
+          monto: analisis.monto,
+          banco: analisis.banco,
+          confianza: analisis.confianza,
+          ts: new Date().toISOString(),
+          pedidoAutoCreado: pedidoCreado,
+          stickerEnviado: false,
+          testMode: true,
+        });
+
+        let waEnviado = false;
+        if (simularWA !== false) {
+          log.push(`[5/5] Mandando WA a ${vendedora} desde ws-duvan...`);
+          try {
+            const montoTxt = analisis.monto ? `$${Number(analisis.monto).toLocaleString('es-CO')}` : 'monto no detectado';
+            const bancoTxt = analisis.banco && analisis.banco !== 'desconocido' ? ` por ${analisis.banco}` : '';
+            const pedidoTxt = pedidoCreado ? `📋 Pedido #${pedidoCreado} creado en bandeja\n` : '';
+            const rDia = resumenDiaVendedora(vendedora);
+            const msg = `🧪 *PRUEBA REAL — Pago detectado* ${montoTxt}${bancoTxt}\n\n` +
+              `👤 ${nombreCliente}\n` +
+              `📱 ${telefonoCliente}\n` +
+              pedidoTxt +
+              `\n📊 *TU DIA HASTA AHORA:*\n` +
+              `✅ ${rDia.conSticker} con sticker\n` +
+              `⚠️ ${rDia.sinSticker} SIN sticker (este incluido)\n` +
+              `💰 Detectado: ${_formatearMontoCOP(rDia.totalMonto)}\n\n` +
+              `👉 *Pasa el sticker 💰 al chat del cliente* para oficializar.\n\n` +
+              `_Este es un TEST con un comprobante REAL del ${analisis.fecha || 'pasado'}. Ignora si ya lo procesaste antes._`;
+            await notificarWAVendedora(vendedora, msg);
+            waEnviado = true;
+            log.push(`[5/5] OK — WA enviado a ${vendedora}`);
+          } catch (e) {
+            log.push(`[5/5] FALLO WA: ${e.message}`);
+          }
+        }
+
+        return json(res, 200, { ok: true, analisis, vendedora, cliente: nombreCliente, telefono: telefonoCliente, pedidoCreado, waEnviado, tiempo_ms: Date.now()-inicio, log });
+      } catch (e) {
+        log.push(`ERROR: ${e.message}`);
+        return json(res, 500, { error: e.message, log });
+      }
+    });
+    return;
+  }
+
   // ── GET /api/test/imagenes-recientes?dias=7 — lista todas las imagenes entrantes ──
   // Recorre los evolution_events buscando messageType=imageMessage con fromMe=false.
   // Devuelve datos para identificar cada una.
