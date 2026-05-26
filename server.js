@@ -140,8 +140,8 @@ async function notificarTelegramDuvan(texto) {
 async function notificarWhatsappTrabajoFamilia(texto) {
   try {
     const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
     const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
@@ -171,9 +171,11 @@ async function notificarWAVendedora(vendedora, texto) {
     if (!numero) { console.log(`[wa-vendedora] sin número para ${vendedora}`); return; }
 
     const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
-    // Usamos la instancia de ventas (Betty) como remitente del recordatorio interno.
-    const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
+    // Las notificaciones administrativas salen desde el WA de Camilo (ws-duvan) — el jefe.
+    // Si esa instancia no está configurada, fallback a ws-ventas (Betty).
+    // CRITICO para Betty: si remitente == destinatario, WA se manda a sí mismo y no se ve.
+    const instance = process.env.WA_NOTIF_INSTANCE || 'ws-ventas';
+    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
@@ -254,8 +256,9 @@ async function notificarWAPersona(slugOrNombre, texto) {
     const numero = _numeroPersona(slugOrNombre);
     if (!numero) { console.log(`[wa-persona] sin número para ${slugOrNombre}`); return false; }
     const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    // Camilo notifica desde su WA (ws-duvan). Token propio de ws-duvan via WA_NOTIF_APIKEY.
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
