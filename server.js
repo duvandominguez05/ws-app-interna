@@ -1506,6 +1506,130 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /api/test/comprobante — prueba end-to-end con imagen real ──
+  // Body: { imageUrl: "https://...", vendedora: "Betty", telefonoCliente: "573...", nombreCliente?: "Maria",
+  //         simularPedido?: bool, simularWA?: bool }
+  // Ejecuta: descargar → Gemini → si es comprobante crear pedido y mandar WA a vendedora.
+  // Devuelve trazabilidad completa de cada paso.
+  if (req.method === 'POST' && req.url === '/api/test/comprobante') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      const log = [];
+      try {
+        const data = JSON.parse(body);
+        const { imageUrl, vendedora, telefonoCliente, nombreCliente, simularPedido, simularWA } = data;
+        if (!imageUrl) return json(res, 400, { error: 'falta imageUrl' });
+        if (!vendedora) return json(res, 400, { error: 'falta vendedora' });
+        if (!telefonoCliente) return json(res, 400, { error: 'falta telefonoCliente' });
+
+        log.push(`[1/5] Descargando imagen: ${imageUrl}`);
+        const inicio = Date.now();
+        const r1 = await fetch(imageUrl);
+        if (!r1.ok) return json(res, 400, { error: 'no se pudo descargar imagen', status: r1.status, log });
+        const buffer = Buffer.from(await r1.arrayBuffer());
+        const base64 = buffer.toString('base64');
+        const mimeType = r1.headers.get('content-type') || 'image/jpeg';
+        log.push(`[1/5] OK — ${(buffer.length/1024).toFixed(1)} KB, mime=${mimeType}, ${Date.now()-inicio}ms`);
+
+        log.push(`[2/5] Analizando con Gemini...`);
+        const tIni = Date.now();
+        const analisis = await analizarImagenConGemini(base64, mimeType);
+        log.push(`[2/5] Gemini respondio en ${Date.now()-tIni}ms`);
+        log.push(`     esComprobante: ${analisis?.esComprobante}`);
+        log.push(`     banco: ${analisis?.banco}, monto: ${analisis?.monto}, confianza: ${analisis?.confianza}`);
+        log.push(`     ultimoError: ${global._geminiUltimoError || 'ninguno'}`);
+
+        if (!analisis?.esComprobante) {
+          log.push(`[3/5] NO es comprobante — flujo termina aqui`);
+          return json(res, 200, { ok: true, analisis, log, pedidoCreado: null, waEnviado: false });
+        }
+
+        let pedidoCreado = null;
+        if (simularPedido !== false && analisis.confianza !== 'baja') {
+          log.push(`[3/5] Creando pedido para ${vendedora}...`);
+          const resCrear = crearVentaInterna('pedido', vendedora, telefonoCliente, 'test-' + Date.now(), nombreCliente || `Cliente +57 ${telefonoCliente}`);
+          if (resCrear.ok && !resCrear.duplicado) {
+            pedidoCreado = resCrear.id;
+            const pps = leerPedidos();
+            const pp = pps.find(x => x.id === pedidoCreado);
+            if (pp) {
+              pp.origenComprobante = true;
+              pp.montoComprobante = analisis.monto;
+              pp.bancoComprobante = analisis.banco;
+              pp.testMode = true;
+              guardarPedidos(pps, leerNextId());
+            }
+            log.push(`[3/5] OK — pedido #${pedidoCreado} creado`);
+          } else {
+            log.push(`[3/5] FALLO — ${resCrear.error || 'duplicado'}`);
+          }
+        } else {
+          log.push(`[3/5] SKIP creacion pedido (simularPedido=false o confianza baja)`);
+        }
+
+        log.push(`[4/5] Guardando comprobante en DB...`);
+        const registro = {
+          messageId: 'test-' + Date.now(),
+          vendedora,
+          telefono: telefonoCliente,
+          cliente: nombreCliente || `Cliente +57 ${telefonoCliente}`,
+          monto: analisis.monto,
+          banco: analisis.banco,
+          confianza: analisis.confianza,
+          ts: new Date().toISOString(),
+          pedidoAutoCreado: pedidoCreado,
+          stickerEnviado: false,
+          testMode: true,
+        };
+        guardarComprobanteDetectado(registro);
+        log.push(`[4/5] OK`);
+
+        let waEnviado = false;
+        if (simularWA !== false) {
+          log.push(`[5/5] Mandando WA a ${vendedora} desde ws-duvan...`);
+          try {
+            const montoTxt = analisis.monto ? `$${Number(analisis.monto).toLocaleString('es-CO')}` : 'monto no detectado';
+            const bancoTxt = analisis.banco && analisis.banco !== 'desconocido' ? ` por ${analisis.banco}` : '';
+            const pedidoTxt = pedidoCreado ? `📋 Pedido #${pedidoCreado} creado en bandeja\n` : '';
+            const rDia = resumenDiaVendedora(vendedora);
+            const totalDiaTxt = rDia.totalMonto > 0 ? _formatearMontoCOP(rDia.totalMonto) : '$0';
+            const msg = `🧪 *PRUEBA REAL — Pago detectado* ${montoTxt}${bancoTxt}\n\n` +
+              `👤 ${nombreCliente || telefonoCliente}\n` +
+              `📱 ${telefonoCliente}\n` +
+              pedidoTxt +
+              `\n📊 *TU DIA HASTA AHORA:*\n` +
+              `✅ ${rDia.conSticker} con sticker\n` +
+              `⚠️ ${rDia.sinSticker} SIN sticker (este incluido)\n` +
+              `💰 Detectado: ${totalDiaTxt}\n\n` +
+              `👉 *Pasa el sticker 💰 al chat del cliente* para oficializar.\n\n` +
+              `_(Este es un TEST — ignora si no era una venta real)_`;
+            await notificarWAVendedora(vendedora, msg);
+            waEnviado = true;
+            log.push(`[5/5] OK — WA enviado a ${vendedora}`);
+          } catch (e) {
+            log.push(`[5/5] FALLO WA: ${e.message}`);
+          }
+        } else {
+          log.push(`[5/5] SKIP envio WA (simularWA=false)`);
+        }
+
+        return json(res, 200, {
+          ok: true,
+          analisis,
+          pedidoCreado,
+          waEnviado,
+          tiempo_total_ms: Date.now() - inicio,
+          log,
+        });
+      } catch (e) {
+        log.push(`ERROR: ${e.message}`);
+        return json(res, 500, { error: e.message, log });
+      }
+    });
+    return;
+  }
+
   // ── GET /api/test/gemini — diagnóstico: verifica que la API key de Gemini funcione ──
   if (req.method === 'GET' && req.url.startsWith('/api/test/gemini')) {
     (async () => {
