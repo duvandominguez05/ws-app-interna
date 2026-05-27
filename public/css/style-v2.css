@@ -606,3 +606,147 @@ input:focus, select:focus, textarea:focus {
 
 /* Sidebar persona info: solo cuando hay alguien identificado */
 #sidebar-persona-info[data-active="true"] { display: block !important; }
+
+/* ── 27. TABLERO PC — headers sticky + colores marcados por columna ──── */
+.tab-principal-col {
+  background: rgba(255,255,255,0.015) !important;
+  border: 1px solid rgba(255,255,255,0.05) !important;
+  border-radius: 12px !important;
+  overflow: visible;
+}
+.tab-principal-col-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: linear-gradient(180deg, rgba(15,18,28,0.98), rgba(15,18,28,0.92));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px 12px 0 0;
+  padding: 10px 12px !important;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+/* Strip de color por columna en el header */
+.tab-principal-col-header::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 3px;
+  border-radius: 12px 12px 0 0;
+  background: var(--col-color, #a78bfa);
+}
+.tab-col-hacer-disenos { --col-color: #60a5fa; }
+.tab-col-ventas        { --col-color: #34d399; }
+.tab-col-aprobados     { --col-color: #a855f7; }
+.tab-col-produccion    { --col-color: #06b6d4; }
+.tab-col-enviados      { --col-color: #94a3b8; }
+
+.tab-principal-col-title {
+  font-size: 0.72rem !important;
+  letter-spacing: 1.5px !important;
+  color: var(--text-bright) !important;
+}
+.tab-principal-col-count {
+  background: var(--col-color, #a78bfa) !important;
+  color: #0a0b0f !important;
+  font-weight: 800 !important;
+  font-size: 0.7rem !important;
+  padding: 2px 9px !important;
+  border-radius: 99px !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--col-color, #a78bfa) 40%, transparent);
+}
+
+.tab-card {
+  background: rgba(255,255,255,0.025) !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+  border-left: 3px solid transparent !important;
+  border-radius: 9px !important;
+  padding: 11px 12px !important;
+  transition: all 200ms ease !important;
+  margin: 0 6px 8px !important;
+}
+.tab-card:hover {
+  background: rgba(124,58,237,0.08) !important;
+  border-color: rgba(124,58,237,0.3) !important;
+  border-left-color: #a78bfa !important;
+  transform: translateY(-1px);
+}
+/* Card sin diseñador: borde rojo prominente */
+.tab-card-sin-dis {
+  border-left: 3px solid #ef4444 !important;
+  background: rgba(239,68,68,0.04) !important;
+}
+.tab-card-sin-dis:hover {
+  background: rgba(239,68,68,0.08) !important;
+  border-color: rgba(239,68,68,0.35) !important;
+}
+
+.tab-card-eq {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 0.95rem !important;
+  letter-spacing: -0.015em;
+}
+.tab-card-tel {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.74rem !important;
+  color: var(--text-muted) !important;
+  margin: 3px 0 6px !important;
+}
+.tab-card-personas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.72rem;
+}
+.tab-card-ven, .tab-card-dis, .tab-card-sindis {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.04);
+  font-weight: 600;
+}
+.tab-card-sindis {
+  background: rgba(239,68,68,0.15) !important;
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #fca5a5 !important;
+}
+.tab-card-badge {
+  font-weight: 700 !important;
+  letter-spacing: 0.3px;
+}
+.tab-card-badge.urgente-vencido {
+  background: linear-gradient(135deg,#ef4444,#dc2626) !important;
+  color: white !important;
+  box-shadow: 0 0 12px rgba(239,68,68,0.4);
+  animation: pulse-urgent 2s ease-in-out infinite;
+}
+@keyframes pulse-urgent {
+  0%, 100% { box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+  50%      { box-shadow: 0 0 18px rgba(239,68,68,0.6); }
+}
+
+.tab-card-accion {
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  letter-spacing: -0.005em;
+  border: none !important;
+  color: white !important;
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 12px !important;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.tab-card-accion:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.tab-card-accion:active { transform: translateY(0); }
+
+/* Empty state mejorado en columnas */
+.tab-empty {
+  text-align: center;
+  color: var(--text-subtle) !important;
+  padding: 24px 8px !important;
+  font-size: 0.78rem !important;
+  font-style: italic;
+  opacity: 0.6;
+}
