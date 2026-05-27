@@ -1603,18 +1603,18 @@ http.createServer(async (req, res) => {
       let conImagen = 0;
       let imagenesEntrantes = 0;
       const muestraImg = [];
-      const allRows = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 500').all();
+      const allRows = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 5000').all();
       for (const r of allRows) {
         try {
           const ev = JSON.parse(r.data);
-          const d = ev.payload?.data || {};
+          const d = ev.data || ev.payload?.data || {};
           const t = d.messageType || ev.event || 'desconocido';
           tipos[t] = (tipos[t] || 0) + 1;
           if (d.messageType === 'imageMessage') {
             conImagen++;
             if (d.key?.fromMe === false) {
               imagenesEntrantes++;
-              if (muestraImg.length < 5) muestraImg.push({ fecha: r.fecha, instance: ev.payload?.instance, jid: d.key?.remoteJid, id: d.key?.id, pushName: d.pushName });
+              if (muestraImg.length < 5) muestraImg.push({ fecha: r.fecha, instance: ev.instance, jid: d.key?.remoteJid, id: d.key?.id, pushName: d.pushName });
             }
           }
         } catch {}
@@ -1753,8 +1753,7 @@ http.createServer(async (req, res) => {
       for (const row of rows) {
         try {
           const ev = JSON.parse(row.data);
-          const p = ev.payload || {};
-          const d = p.data || {};
+          const d = ev.data || ev.payload?.data || {};
           if (d.messageType !== 'imageMessage') continue;
           const k = d.key || {};
           if (k.fromMe === true) continue; // solo entrantes
@@ -1762,7 +1761,7 @@ http.createServer(async (req, res) => {
           imgs.push({
             fecha: row.fecha,
             ts: ev.date_time || d.messageTimestamp,
-            instance: p.instance,
+            instance: ev.instance || ev.payload?.instance,
             pushName: d.pushName || '',
             telefono: (k.remoteJid || '').replace('@s.whatsapp.net', '').replace('@g.us', ''),
             remoteJid: k.remoteJid,
