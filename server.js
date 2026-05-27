@@ -637,6 +637,282 @@ async function buscarContactoChatwoot(telefono) {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════
+// BOT CONVERSACIONAL DE VENTAS POR CONFIRMAR (resumen WA + respuestas)
+// ─────────────────────────────────────────────────────────────────
+// Snapshot diario que el jefe revisa por WA: lista numerada de comprobantes
+// que fueron descartados por la validacion (destinatario raro, etc) pero
+// podrian ser ventas reales. Camilo responde "1 si betty" / "2 no" / "ver".
+// ═════════════════════════════════════════════════════════════════
+
+const TELEFONO_JEFE = (process.env.WA_DUVAN || process.env.WA_CAMILO || '573124858901').replace(/\D/g, '');
+
+// Devuelve URL al chat de Chatwoot del cliente, o null si no se puede construir.
+async function obtenerChatwootConvUrl(telefono) {
+  try {
+    const url = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    if (!url || !accountId || !apiKey) return null;
+    const contacto = await buscarContactoChatwoot(telefono);
+    if (!contacto?.id) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+      headers: { 'api_access_token': apiKey },
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!r.ok) return null;
+    const data = await r.json();
+    const conv = (data.payload || [])[0];
+    if (!conv?.id) return null;
+    return `${url}/app/accounts/${accountId}/conversations/${conv.id}`;
+  } catch (e) { return null; }
+}
+
+// Devuelve lista de candidatos para subir como venta.
+// Tipo 1: comprobantes Gemini detectados pero descartados (destinatario raro)
+// Tipo 2: comprobantes con pedidoAutoCreado pero pedido fue borrado
+function detectarCandidatosVentas() {
+  const comps = db.leerComprobantes();
+  const pedidosActuales = leerPedidos();
+  const idsPedidos = new Set(pedidosActuales.map(p => p.id));
+  const ahora = Date.now();
+  const hace48h = ahora - (48 * 60 * 60 * 1000);
+  const candidatos = [];
+  const dedupTelefono = new Set();
+
+  for (const c of comps) {
+    const ts = c.ts ? new Date(c.ts).getTime() : 0;
+    if (ts < hace48h) continue; // solo ultimas 48h
+    if (!c.messageId) continue;
+    // Ya decidido manualmente
+    const decision = db.leerDecisionVenta(c.messageId);
+    if (decision) continue;
+
+    let tipo = null;
+    let motivo = null;
+
+    if (c.descartado === true) {
+      tipo = 'comprobante-descartado';
+      motivo = c.motivoDescarte || 'destinatario fuera de W&S';
+    } else if (c.pedidoAutoCreado && !idsPedidos.has(c.pedidoAutoCreado)) {
+      tipo = 'pedido-perdido';
+      motivo = `pedido #${c.pedidoAutoCreado} fue borrado`;
+    } else {
+      continue;
+    }
+
+    // Dedup por telefono para no listar 5 comprobantes del mismo cliente
+    const telKey = String(c.telefono || '').replace(/\D/g, '');
+    if (telKey && dedupTelefono.has(telKey)) continue;
+    if (telKey) dedupTelefono.add(telKey);
+
+    candidatos.push({
+      messageId: c.messageId,
+      tipo,
+      motivo,
+      telefono: c.telefono,
+      cliente: c.cliente || c.pushName || 'Sin nombre',
+      vendedoraSugerida: c.vendedora,
+      monto: c.monto,
+      banco: c.banco,
+      destinatario: c.destinatario,
+      ts: c.ts,
+      pedidoOriginal: c.pedidoAutoCreado,
+    });
+  }
+  // Ordenar por ts desc (mas recientes primero)
+  candidatos.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  return candidatos.slice(0, 15); // max 15 candidatos por mensaje
+}
+
+// Genera un snapshot, lo guarda en config y devuelve el snapshot.
+function generarSnapshotVentas() {
+  const candidatos = detectarCandidatosVentas();
+  const snapshot = {
+    id: 'snap-' + Date.now(),
+    fechaGenerado: new Date().toISOString(),
+    candidatos: candidatos.map((c, i) => ({ numero: i + 1, ...c })),
+  };
+  db.guardarConfig('ventas_snapshot_actual', snapshot);
+  return snapshot;
+}
+
+// Construye el mensaje WA con la lista numerada
+async function construirMensajeSnapshot(snapshot) {
+  if (!snapshot.candidatos.length) {
+    return `✅ *W&S — Sin ventas por confirmar*\n\nNo hay candidatos para revisar.\n\nMañana 7 PM te aviso de nuevo.`;
+  }
+  const fechaCorta = new Date().toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' });
+  let txt = `🔔 *W&S — Ventas por confirmar* (${fechaCorta})\n\n`;
+  txt += `${snapshot.candidatos.length} candidato${snapshot.candidatos.length > 1 ? 's' : ''} de las últimas 48h:\n\n`;
+
+  // Construir chatwoot URLs en paralelo (con tope)
+  const urls = await Promise.all(snapshot.candidatos.map(c => obtenerChatwootConvUrl(c.telefono).catch(() => null)));
+
+  for (let i = 0; i < snapshot.candidatos.length; i++) {
+    const c = snapshot.candidatos[i];
+    txt += `*${c.numero}️⃣* ${c.cliente}\n`;
+    txt += `   📞 ${c.telefono || 'sin tel'}`;
+    if (c.monto) txt += ` · 💰 $${Number(c.monto).toLocaleString('es-CO')}`;
+    if (c.banco && c.banco !== 'desconocido') txt += ` ${c.banco}`;
+    txt += '\n';
+    if (c.destinatario) txt += `   ↪️ Para: "${c.destinatario.slice(0, 40)}"\n`;
+    if (urls[i]) txt += `   🔗 ${urls[i]}\n`;
+    txt += '\n';
+  }
+
+  txt += `*Respondé acá:*\n`;
+  txt += `• \`1 si betty\` → crea venta\n`;
+  txt += `• \`1 no\` → descartar\n`;
+  txt += `• \`1 si ney 250000\` → corregir monto\n`;
+  txt += `• \`ver\` → ver lista de nuevo\n`;
+  return txt;
+}
+
+async function enviarSnapshotWA(snapshot) {
+  const texto = await construirMensajeSnapshot(snapshot);
+  try {
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '3506974711';
+    const r = await fetch(`${url}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ number: TELEFONO_JEFE, text: texto }),
+    });
+    if (!r.ok) console.error('[snapshot-wa] status', r.status);
+    return r.ok;
+  } catch (e) { console.error('[snapshot-wa err]', e.message); return false; }
+}
+
+async function responderJefe(texto) {
+  try {
+    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
+    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '3506974711';
+    await fetch(`${url}/message/sendText/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+      body: JSON.stringify({ number: TELEFONO_JEFE, text: texto }),
+    });
+  } catch (e) { console.error('[responder-jefe err]', e.message); }
+}
+
+// Parsea respuesta del jefe. Formatos validos:
+//   "ver" → muestra lista de nuevo
+//   "<n> si"           → crea pedido con vendedora sugerida
+//   "<n> si <vend>"    → crea pedido con vendedora elegida
+//   "<n> si <vend> <monto>" → crea pedido con vendedora y monto corregido
+//   "<n> no"           → descartar (no es venta)
+// Devuelve { ok, mensajeRespuesta }
+async function procesarRespuestaJefe(texto) {
+  const norm = String(texto || '').trim().toLowerCase();
+  if (!norm) return { ok: false };
+
+  // "ver" → mostrar snapshot actual (o uno nuevo si no hay)
+  if (norm === 'ver' || norm === 'lista' || norm === 'list') {
+    let snap = db.leerConfig().ventas_snapshot_actual;
+    if (!snap || !snap.candidatos?.length) snap = generarSnapshotVentas();
+    await responderJefe(await construirMensajeSnapshot(snap));
+    return { ok: true };
+  }
+
+  // Patron: "<n> si|no [vendedora] [monto]"
+  const m = norm.match(/^(\d+)\s+(si|no|sí)(\s+([a-záéíóúñ]+))?(\s+(\d[\d.]*[k]?))?/i);
+  if (!m) return { ok: false };
+
+  const numero = parseInt(m[1], 10);
+  const accion = (m[2] === 'si' || m[2] === 'sí') ? 'si' : 'no';
+  const vendedoraTxt = m[4] || null;
+  let montoTxt = m[6] || null;
+
+  // Convertir monto (acepta "250k", "250000", "250.000")
+  let montoCorregido = null;
+  if (montoTxt) {
+    montoTxt = montoTxt.replace(/\./g, '');
+    if (montoTxt.endsWith('k')) montoCorregido = parseInt(montoTxt.slice(0, -1), 10) * 1000;
+    else montoCorregido = parseInt(montoTxt, 10);
+    if (isNaN(montoCorregido)) montoCorregido = null;
+  }
+
+  const snap = db.leerConfig().ventas_snapshot_actual;
+  if (!snap || !snap.candidatos?.length) {
+    await responderJefe('⚠️ No hay snapshot activo. Escribí *ver* para generar uno nuevo.');
+    return { ok: true };
+  }
+  const cand = snap.candidatos.find(c => c.numero === numero);
+  if (!cand) {
+    await responderJefe(`⚠️ No existe el candidato #${numero} en la lista actual. Escribí *ver* para ver la lista actual.`);
+    return { ok: true };
+  }
+
+  // Ya decidido?
+  const yaDec = db.leerDecisionVenta(cand.messageId);
+  if (yaDec) {
+    await responderJefe(`ℹ️ El #${numero} (${cand.cliente}) ya fue procesado: *${yaDec.decision}*${yaDec.pedido_id ? ' (pedido #' + yaDec.pedido_id + ')' : ''}.`);
+    return { ok: true };
+  }
+
+  if (accion === 'no') {
+    db.guardarDecisionVenta({ candidatoKey: cand.messageId, decision: 'no' });
+    await responderJefe(`❌ *#${numero} descartado* — ${cand.cliente} no se va a subir como venta.\n\n_${faltantesPendientes(snap)}_`);
+    return { ok: true };
+  }
+
+  // accion === 'si' → crear pedido
+  const vendedora = (vendedoraTxt || cand.vendedoraSugerida || '').trim();
+  if (!vendedora) {
+    await responderJefe(`⚠️ Falta vendedora. Escribí: *${numero} si <nombre vendedora>* (betty, ney, wendy, paola, graciela).`);
+    return { ok: true };
+  }
+  const vendNorm = vendedora.toLowerCase();
+  const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+  if (!VENDEDORAS_VALIDAS.includes(vendNorm)) {
+    await responderJefe(`⚠️ Vendedora "${vendedora}" no reconocida. Usa: betty, ney, wendy, paola o graciela.`);
+    return { ok: true };
+  }
+
+  const montoFinal = montoCorregido || cand.monto || 0;
+  const resCrear = crearVentaInterna('pedido', vendNorm, cand.telefono || '', 'manual-' + cand.messageId, cand.cliente || `Cliente +57 ${cand.telefono || '?'}`);
+  if (!resCrear.ok) {
+    await responderJefe(`❌ Error creando pedido: ${resCrear.error}`);
+    return { ok: true };
+  }
+  // Anotar metadatos
+  if (resCrear.id && !resCrear.duplicado) {
+    const pps = leerPedidos();
+    const pp = pps.find(x => x.id === resCrear.id);
+    if (pp) {
+      pp.origenComprobante = true;
+      pp.montoComprobante = montoFinal;
+      pp.bancoComprobante = cand.banco || null;
+      pp.notas = (pp.notas || '') + ` [subido manual desde panel WA por jefe]`;
+      guardarPedidos(pps, leerNextId());
+    }
+  }
+  db.guardarDecisionVenta({
+    candidatoKey: cand.messageId,
+    decision: 'si',
+    pedidoId: resCrear.id,
+    vendedora: vendNorm,
+    monto: montoFinal,
+  });
+
+  const dup = resCrear.duplicado ? ' (ya existía como duplicado, no recreado)' : '';
+  const montoTxt2 = montoFinal ? `\n💰 $${montoFinal.toLocaleString('es-CO')}` : '';
+  await responderJefe(`✅ *Pedido #${resCrear.id} creado*${dup}\n👤 ${cand.cliente}\n📞 ${cand.telefono}\n🛍️ Vendedora: ${vendNorm}${montoTxt2}\n\n_${faltantesPendientes(snap)}_`);
+  return { ok: true };
+}
+
+function faltantesPendientes(snap) {
+  if (!snap?.candidatos) return '';
+  const pendientes = snap.candidatos.filter(c => !db.leerDecisionVenta(c.messageId));
+  if (!pendientes.length) return 'Todos los candidatos del snapshot ya fueron procesados ✓';
+  return `Quedan ${pendientes.length} por confirmar.`;
+}
+
 // Consulta Evolution para obtener el nombre del contacto desde su JID.
 // Devuelve el nombre limpio o null si no encuentra.
 async function obtenerNombreContactoEvolution(remoteJid) {
@@ -1607,6 +1883,49 @@ http.createServer(async (req, res) => {
   // ── GET /api/admin/tombstones — listar todos los archivados (debug) ──
   if (req.method === 'GET' && req.url === '/api/admin/tombstones') {
     return json(res, 200, { tombstones: leerTombstones() });
+  }
+
+  // ── POST /api/admin/disparar-snapshot-ventas — fuerza envio WA al jefe AHORA ──
+  if (req.method === 'POST' && req.url === '/api/admin/disparar-snapshot-ventas') {
+    (async () => {
+      try {
+        const snap = generarSnapshotVentas();
+        const ok = await enviarSnapshotWA(snap);
+        return json(res, 200, { ok, candidatos: snap.candidatos.length, snapshot: snap });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
+  // ── GET /api/admin/snapshot-ventas-actual — ver snapshot actual + decisiones ──
+  if (req.method === 'GET' && req.url === '/api/admin/snapshot-ventas-actual') {
+    try {
+      const snap = db.leerConfig().ventas_snapshot_actual || null;
+      const decisiones = db.listarDecisionesVentas();
+      return json(res, 200, { snapshot: snap, decisiones });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/admin/test-respuesta-jefe — simula respuesta del jefe sin pasar por WA ──
+  // Body: { texto: "1 si betty" }
+  if (req.method === 'POST' && req.url === '/api/admin/test-respuesta-jefe') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const { texto } = JSON.parse(body || '{}');
+        if (!texto) return json(res, 400, { error: 'falta texto' });
+        const r = await procesarRespuestaJefe(texto);
+        return json(res, 200, { procesado: r });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
   }
 
   // ── GET /api/admin/diag-stickers — lista stickers enviados hoy con hash y fromMe ──
@@ -2782,6 +3101,39 @@ http.createServer(async (req, res) => {
             }
           } catch (errImg) {
             console.error('[imagen error]', errImg);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // LISTENER COMANDO DEL JEFE — mensajes de texto que Camilo se envia a si mismo
+        // en el chat de ws-duvan (Note to self). Patron: "1 si betty", "2 no", "ver".
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' &&
+            payload.instance === (process.env.WA_NOTIF_INSTANCE || 'ws-duvan') &&
+            (eventData?.messageType === 'conversation' || eventData?.messageType === 'extendedTextMessage')) {
+          try {
+            const fromMe = eventData.key?.fromMe === true;
+            const senderJid = eventData.key?.remoteJid || '';
+            const senderNum = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            const jefeNum = (process.env.WA_DUVAN || process.env.WA_CAMILO || '573124858901').replace(/\D/g, '');
+            // Acepta: (1) jefe escribiendose a si mismo en ws-duvan, o (2) jefe escribiendo desde otra linea
+            const esJefe = fromMe && senderNum === jefeNum;
+            if (esJefe) {
+              const texto = eventData.message?.conversation
+                || eventData.message?.extendedTextMessage?.text
+                || '';
+              // Solo procesar si parece comando del panel
+              const t = texto.trim().toLowerCase();
+              const esComando = /^(ver|lista|list|\d+\s+(si|no|sí)\b)/i.test(t);
+              if (esComando) {
+                (async () => {
+                  try { await procesarRespuestaJefe(texto); }
+                  catch (e) { console.error('[jefe-cmd err]', e.message); }
+                })();
+              }
+            }
+          } catch (errCmd) {
+            console.error('[jefe-listener err]', errCmd);
           }
         }
 
@@ -4925,6 +5277,40 @@ setInterval(cron8pmTick, 60 * 1000);
 // Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
 setTimeout(cron8pmTick, 30 * 1000);
 console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON 7 PM — snapshot de "Ventas por confirmar" al jefe (panel WA)
+// ═══════════════════════════════════════════════════════════════════
+const CRON_7PM_FILE = path.join(__dirname, 'data', 'cron_7pm_ultimo.json');
+function _ya7pmHoy() {
+  try {
+    if (!fs.existsSync(CRON_7PM_FILE)) return false;
+    const ultimo = JSON.parse(fs.readFileSync(CRON_7PM_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ultimo.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcar7pmHoy() {
+  try {
+    fs.mkdirSync(path.dirname(CRON_7PM_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(CRON_7PM_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now() }));
+  } catch (e) { console.error('[cron-7pm] no se pudo marcar:', e.message); }
+}
+async function cron7pmTick() {
+  try {
+    const hora = _huelaPMBogota();
+    if (hora !== 19) return; // 7 PM
+    if (_ya7pmHoy()) return;
+    console.log('[cron-7pm] disparando snapshot ventas por confirmar...');
+    const snap = generarSnapshotVentas();
+    await enviarSnapshotWA(snap);
+    _marcar7pmHoy();
+  } catch (e) { console.error('[cron-7pm error]', e.message); }
+}
+setInterval(cron7pmTick, 60 * 1000);
+setTimeout(cron7pmTick, 45 * 1000);
+console.log('[cron-7pm] activado — snapshot ventas-por-confirmar 7 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos

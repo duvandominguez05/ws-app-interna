@@ -141,6 +141,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cm_pedido ON costureras_movimientos(pedido_id);
   CREATE INDEX IF NOT EXISTS idx_cm_fenvio ON costureras_movimientos(fecha_envio);
   CREATE INDEX IF NOT EXISTS idx_cm_pendientes ON costureras_movimientos(fecha_recepcion);
+
+  -- Decisiones manuales del jefe sobre candidatos a venta (panel WA)
+  CREATE TABLE IF NOT EXISTS ventas_decisiones (
+    candidato_key TEXT PRIMARY KEY,
+    decision TEXT NOT NULL,
+    pedido_id INTEGER,
+    vendedora TEXT,
+    monto INTEGER,
+    ts INTEGER NOT NULL
+  );
 `);
 
 // ── Prepared statements ──────────────────────────────────────────
@@ -347,6 +357,22 @@ function guardarComprobantes(lista) {
 function upsertComprobante(comp) {
   const cid = comp.messageId || String(comp.id || Date.now());
   S.upsertComp.run(cid, JSON.stringify(comp));
+}
+
+// ═════════════════════════════════════════════════════════════════
+// VENTAS_DECISIONES — panel WA del jefe
+// candidato_key suele ser el messageId del comprobante o "<tipo>:<id>"
+// ═════════════════════════════════════════════════════════════════
+function leerDecisionVenta(candidatoKey) {
+  const r = db.prepare('SELECT * FROM ventas_decisiones WHERE candidato_key = ?').get(candidatoKey);
+  return r || null;
+}
+function guardarDecisionVenta({ candidatoKey, decision, pedidoId, vendedora, monto }) {
+  db.prepare('INSERT OR REPLACE INTO ventas_decisiones (candidato_key, decision, pedido_id, vendedora, monto, ts) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(candidatoKey, decision, pedidoId || null, vendedora || null, monto || null, Date.now());
+}
+function listarDecisionesVentas() {
+  return db.prepare('SELECT * FROM ventas_decisiones ORDER BY ts DESC').all();
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -770,6 +796,7 @@ module.exports = {
   leerSatelites, guardarSatelites,
   leerWetransfer, insertWetransfer,
   leerComprobantes, guardarComprobantes, upsertComprobante,
+  leerDecisionVenta, guardarDecisionVenta, listarDecisionesVentas,
   leerNotifs, guardarNotifs,
   leerConfig, guardarConfig,
   leerDocsNums, guardarDocsNums, leerDocsHistorial, guardarDocsHistorial,
