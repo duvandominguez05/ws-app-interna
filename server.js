@@ -404,6 +404,54 @@ function textoRecordatorioRoles(resumen) {
   ].join('\n');
 }
 
+// ─────────────────────────────────────────────────────────────
+// Valida que el destinatario del comprobante sea W&S Textil.
+// Cliente puede mandar comprobantes de pagos a OTROS (proveedores,
+// envios, etc) — esos NO son ventas para nosotros.
+// ─────────────────────────────────────────────────────────────
+const WS_BENEFICIARIOS = (process.env.WS_BENEFICIARIOS ||
+  // Default: nombres tipicos que aparecen en comprobantes de W&S
+  'Duvan Camilo Dominguez,Camilo Dominguez,W&S,WyS,W & S,WS Textil,W&S Textil,W&S Enterprise,Uniformes Deportivos WyS,Deportivos Wys'
+).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+// Lista de proveedores conocidos que NO son W&S
+const PROVEEDORES_EXCLUIDOS = (process.env.PROVEEDORES_EXCLUIDOS ||
+  'TNT,Servientrega,Coordinadora,Interrapidisimo,Inter Rapidisimo,Envia,Saferbo,Domesa,Dispapeles,Calandra'
+).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+function _normNombre(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+    .replace(/[^a-z0-9\s&]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function validarBeneficiarioWS(destinatarioNombre) {
+  if (!destinatarioNombre) {
+    return { esParaWS: false, motivo: 'destinatario no detectado por Gemini' };
+  }
+  const norm = _normNombre(destinatarioNombre);
+
+  // 1. Match contra W&S
+  for (const ben of WS_BENEFICIARIOS) {
+    const benNorm = _normNombre(ben);
+    if (norm.includes(benNorm) || benNorm.includes(norm)) {
+      return { esParaWS: true, match: ben };
+    }
+  }
+
+  // 2. Match contra proveedores excluidos (descarte rapido)
+  for (const prov of PROVEEDORES_EXCLUIDOS) {
+    const provNorm = _normNombre(prov);
+    if (norm.includes(provNorm)) {
+      return { esParaWS: false, motivo: `es proveedor conocido: ${prov}` };
+    }
+  }
+
+  // 3. No coincide ni con W&S ni con proveedor — descartar por seguridad
+  return { esParaWS: false, motivo: `destinatario desconocido: "${destinatarioNombre}"` };
+}
+
 async function analizarImagenConGemini(base64Img, mimeType) {
   global._geminiUltimoError = null;
   global._geminiUltimaRespuesta = null;
@@ -413,10 +461,23 @@ async function analizarImagenConGemini(base64Img, mimeType) {
 
     const prompt = `Analizá esta imagen de WhatsApp en Colombia. Responde SOLO con JSON válido (sin markdown, sin texto extra).
 
-Si es captura/foto de un COMPROBANTE de pago de Bancolombia, Nequi, Daviplata, BBVA, Davivienda, Banco de Bogotá, Caja Social, AV Villas, PSE, transferencia bancaria, recibo de consignación, etc:
-{"esComprobante": true, "banco": "Nombre del banco/app", "monto": numero_sin_puntos_ni_pesos, "fecha": "YYYY-MM-DD o null si no se ve", "confianza": "alta|media|baja"}
+Si es captura/foto de un COMPROBANTE de pago de Bancolombia, Nequi, Daviplata, BBVA, Davivienda, Banco de Bogotá, Caja Social, AV Villas, PSE, transferencia bancaria, recibo de consignación, etc, extraé estos datos:
 
-Si NO es comprobante (es foto de uniforme, logo, persona, paisaje, captura de chat, screenshot de redes, etc):
+{"esComprobante": true,
+ "banco": "Nombre del banco/app emisor",
+ "monto": numero_sin_puntos_ni_pesos,
+ "fecha": "YYYY-MM-DD o null si no se ve",
+ "destinatario_nombre": "Nombre EXACTO de la persona/empresa que RECIBE el dinero (beneficiario), tal como aparece. null si no se ve",
+ "destinatario_cuenta": "Numero de cuenta/celular destino si aparece, null si no",
+ "remitente_nombre": "Nombre de quien ENVIA el dinero, null si no se ve",
+ "confianza": "alta|media|baja"}
+
+IMPORTANTE:
+- "destinatario_nombre" es CRITICO — extraelo siempre que sea visible (suele aparecer como "Para:", "A nombre de:", "Beneficiario:", "Destino:", o como el nombre principal del recibo cuando es de Bancolombia/Nequi)
+- NO confundas el banco emisor con el destinatario. El banco es donde se hace el pago, el destinatario es quien recibe el dinero.
+- Si NO ves el destinatario claro, deja "destinatario_nombre": null y baja la confianza.
+
+Si NO es comprobante (es foto de uniforme, logo, persona, paisaje, captura de chat, screenshot de redes, lista de jugadores, etc):
 {"esComprobante": false}
 
 Respuesta:`;
@@ -1564,6 +1625,13 @@ http.createServer(async (req, res) => {
           return json(res, 200, { ok: true, analisis, pedidoCreado: null, waEnviado: false, log });
         }
 
+        // Validacion de beneficiario
+        const validacion = validarBeneficiarioWS(analisis.destinatario_nombre);
+        log.push(`[2.4] Beneficiario: "${analisis.destinatario_nombre}" → ${validacion.esParaWS ? 'ES W&S ✅' : 'NO ES W&S ❌ ' + validacion.motivo}`);
+        if (!validacion.esParaWS) {
+          return json(res, 200, { ok: true, analisis, descartado: true, motivo: validacion.motivo, pedidoCreado: null, waEnviado: false, log });
+        }
+
         const telefonoCliente = jid.replace('@s.whatsapp.net', '').replace('@g.us', '').split('-')[0];
         const { nombre: nombreCliente } = await resolverCliente(jid, telefonoCliente, '');
         log.push(`[2.5] Cliente resuelto: ${nombreCliente}`);
@@ -2307,6 +2375,15 @@ http.createServer(async (req, res) => {
                   if (!analisis) return;
 
                   if (analisis.esComprobante) {
+                    // ── FILTRO 1: Validar destinatario sea W&S ──
+                    // Solo procesar si el pago va dirigido a alguien de W&S.
+                    // Si el destinatario es otro (proveedor, particular ajeno) → ignorar.
+                    const validacion = validarBeneficiarioWS(analisis.destinatario_nombre);
+                    if (!validacion.esParaWS) {
+                      console.log(`[comprobante] DESCARTADO — destinatario "${analisis.destinatario_nombre}" no es W&S (motivo: ${validacion.motivo})`);
+                      return;
+                    }
+
                     const { nombre: nombreCliente } = await resolverCliente(remoteJid, telefonoCliente, pushName);
                     const registro = {
                       ts: new Date().toISOString(),
@@ -2317,6 +2394,8 @@ http.createServer(async (req, res) => {
                       monto: analisis.monto || null,
                       fecha: analisis.fecha || null,
                       confianza: analisis.confianza || 'media',
+                      destinatario: analisis.destinatario_nombre || null,
+                      remitente: analisis.remitente_nombre || null,
                       messageId: eventData.key?.id || null,
                       remoteJid,
                       stickerEnviado: false,
