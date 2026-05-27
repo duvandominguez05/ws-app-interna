@@ -1593,6 +1593,38 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── GET /api/admin/diag-eventos — diagnostico: cuantos eventos hay por tipo/fecha ──
+  if (req.method === 'GET' && req.url === '/api/admin/diag-eventos') {
+    try {
+      const total = db.raw.prepare('SELECT COUNT(*) as n FROM evolution_events').get().n;
+      const porFecha = db.raw.prepare('SELECT fecha, COUNT(*) as n FROM evolution_events GROUP BY fecha ORDER BY fecha DESC LIMIT 30').all();
+      const ultimos = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 20').all();
+      const tipos = {};
+      let conImagen = 0;
+      let imagenesEntrantes = 0;
+      const muestraImg = [];
+      const allRows = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 500').all();
+      for (const r of allRows) {
+        try {
+          const ev = JSON.parse(r.data);
+          const d = ev.payload?.data || {};
+          const t = d.messageType || ev.event || 'desconocido';
+          tipos[t] = (tipos[t] || 0) + 1;
+          if (d.messageType === 'imageMessage') {
+            conImagen++;
+            if (d.key?.fromMe === false) {
+              imagenesEntrantes++;
+              if (muestraImg.length < 5) muestraImg.push({ fecha: r.fecha, instance: ev.payload?.instance, jid: d.key?.remoteJid, id: d.key?.id, pushName: d.pushName });
+            }
+          }
+        } catch {}
+      }
+      return json(res, 200, { totalEventos: total, porFecha, tiposEn500Recientes: tipos, conImagenEn500: conImagen, imagenesEntrantesEn500: imagenesEntrantes, muestraImg, ultimoEvento: ultimos[0] ? { fecha: ultimos[0].fecha, sample: ultimos[0].data.slice(0, 300) } : null });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/test/reprocesar-imagen — reprocesa un mensaje de Evolution con el flujo COMPLETO ──
   // Body: { instance, jid, id, vendedora?, simularPedido?, simularWA? }
   // Toma una imagen ya recibida via Evolution → Gemini → si comprobante: crear pedido + WA
