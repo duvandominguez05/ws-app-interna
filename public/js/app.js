@@ -4509,6 +4509,43 @@ function renderCalandraKPIs() {
     _calandraKpiCard((d.totalEnvios || 0).toLocaleString('es-CO'), 'Envíos totales', '#f472b6', 'históricos');
 }
 
+// Normaliza texto para matching: minusculas, sin tildes, sin puntuacion
+function _normMatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Busca el mejor pedido para asociar a un PDF segun nombre base.
+// Devuelve { pedido, score } o null. Score: cantidad de tokens del PDF que aparecen en el equipo.
+function _matchPedidoParaArchivo(base) {
+  if (!base) return null;
+  // Limpiar base: quitar sufijos tipicos _XXX, faltantes, exedentes, _xxxm
+  const limpio = _normMatch(base)
+    .replace(/\b(faltantes|exedentes|excedentes|original|copia|m2|m²)\b/g, '')
+    .replace(/\b\d+\b/g, '') // quitar numeros
+    .trim();
+  const tokens = limpio.split(' ').filter(t => t.length >= 3);
+  if (!tokens.length) return null;
+  let best = null;
+  for (const p of (pedidos || [])) {
+    if (p.estado === 'enviado-final') continue; // ignorar entregados
+    const equipoNorm = _normMatch(p.equipo || '');
+    if (!equipoNorm) continue;
+    let score = 0;
+    for (const t of tokens) {
+      if (equipoNorm.includes(t)) score++;
+    }
+    if (score > 0 && (!best || score > best.score)) {
+      best = { pedido: p, score };
+    }
+  }
+  return best && best.score >= 1 ? best : null;
+}
+
 function renderCalandraHuerfanos() {
   const cont = document.getElementById('calandra-huerfanos');
   if (!cont) return;
@@ -4518,29 +4555,70 @@ function renderCalandraHuerfanos() {
     cont.innerHTML = '';
     return;
   }
+
+  // Lista de pedidos candidatos para el selector (no entregados)
+  const candidatos = (pedidos || [])
+    .filter(p => p.estado !== 'enviado-final')
+    .sort((a, b) => (b.id || 0) - (a.id || 0))
+    .slice(0, 200);
+
   const filas = huerfanos.slice(0, 30).map(h => {
     const arch = h.archivo || {};
+    const safeMsgId = esc(h.msgId);
+    const sugerido = _matchPedidoParaArchivo(arch.base || arch.nombreOriginal || '');
+
+    // Selector con datalist (HTML5 autocompletar nativo)
+    const datalistId = `dl-${safeMsgId}`;
+    const opts = candidatos.map(p => {
+      const lbl = `#${p.id} — ${(p.equipo || 'Sin nombre').slice(0, 60)}${p.vendedora ? ' · ' + p.vendedora : ''}`;
+      return `<option value="${p.id}" label="${esc(lbl)}">${esc(lbl)}</option>`;
+    }).join('');
+
+    // Si hay sugerencia: card destacada con boton de 1-click
+    const sugerenciaHTML = sugerido
+      ? `<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:8px 12px;margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:0.92rem;">💡</span>
+          <div style="flex:1;min-width:160px;">
+            <div style="font-size:0.7rem;color:#86efac;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Posible coincidencia</div>
+            <div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-top:1px;">#${sugerido.pedido.id} ${esc(sugerido.pedido.equipo || 'Sin nombre')}</div>
+            <div style="font-size:0.7rem;color:var(--text-muted);">${esc(sugerido.pedido.vendedora || '—')} · ${esc(sugerido.pedido.telefono || 'sin tel')}</div>
+          </div>
+          <button onclick="vincularHuerfanoDirecto('${safeMsgId}', ${sugerido.pedido.id})" style="background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(34,197,94,0.3);">✓ Vincular</button>
+        </div>`
+      : `<div style="background:rgba(148,163,184,0.06);border:1px solid rgba(148,163,184,0.15);border-radius:8px;padding:6px 10px;margin:6px 0;font-size:0.72rem;color:var(--text-muted);">
+          🔎 No se encontro un pedido que coincida con el nombre. Elegi de la lista o crea uno nuevo.
+        </div>`;
+
     return `
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.25);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;">
-        <span style="font-size:1rem;">⚠️</span>
-        <div style="flex:1;min-width:200px;">
-          <div style="font-weight:600;color:var(--text);font-size:0.85rem;">${esc(arch.nombreOriginal || '—')}</div>
-          <div style="font-size:0.7rem;color:var(--text-muted);">base: <em>${esc(arch.base || '')}</em> · ${arch.m2 || '—'}m² · ${esc(arch.tipo || 'original')} · ${esc((h.fecha || '').slice(0, 10))}</div>
+      <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.22);border-radius:10px;padding:12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:1rem;">📎</span>
+          <div style="flex:1;min-width:200px;">
+            <div style="font-weight:700;color:var(--text);font-size:0.88rem;letter-spacing:-0.01em;">${esc(arch.nombreOriginal || '—')}</div>
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">base: <em>${esc(arch.base || '')}</em>${arch.m2 ? ' · ' + arch.m2 + 'm²' : ''} · ${esc((h.fecha || '').slice(0, 10))}</div>
+          </div>
+          ${h.linkWT ? `<a href="${esc(h.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:6px;padding:5px 10px;font-size:0.72rem;text-decoration:none;font-weight:600;">Ver WT</a>` : ''}
         </div>
-        <input type="text" id="huerf-pid-${esc(h.msgId)}" placeholder="ID pedido" style="background:var(--card-bg);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-size:0.78rem;padding:5px 9px;outline:none;width:90px;">
-        <button onclick="vincularHuerfano('${esc(h.msgId)}')" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:6px;padding:5px 12px;font-size:0.75rem;font-weight:600;cursor:pointer;">Vincular</button>
-        ${h.linkWT ? `<a href="${esc(h.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:6px;padding:5px 10px;font-size:0.75rem;text-decoration:none;">Ver WT</a>` : ''}
+        ${sugerenciaHTML}
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">
+          <input list="${datalistId}" id="huerf-pid-${safeMsgId}" placeholder="🔎 Buscar pedido por nombre, telefono o #ID..."
+            style="flex:1;min-width:220px;background:var(--card-bg);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-size:0.82rem;padding:7px 11px;outline:none;">
+          <datalist id="${datalistId}">${opts}</datalist>
+          <button onclick="vincularHuerfano('${safeMsgId}')" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.45);color:#c4b5fd;border-radius:6px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;">Vincular</button>
+          <button onclick="crearPedidoDesdeHuerfano('${safeMsgId}', '${esc(arch.base || arch.nombreOriginal || '').replace(/'/g, '\\\'')}')" title="Crear un pedido nuevo a partir de este archivo" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:6px;padding:7px 12px;font-size:0.78rem;font-weight:600;cursor:pointer;">+ Crear pedido</button>
+        </div>
       </div>
     `;
   }).join('');
+
   cont.innerHTML = `
     <div style="background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.18);border-radius:12px;padding:14px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-size:1.1rem;">⚠️</span>
-        <span style="font-size:0.85rem;font-weight:700;color:#fbbf24;">Archivos sin pedido vinculado (${huerfanos.length})</span>
+        <span style="font-size:0.9rem;font-weight:700;color:#fbbf24;">Archivos de calandra sin pedido vinculado (${huerfanos.length})</span>
       </div>
-      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:10px;">
-        Pega el número del pedido en la app y click "Vincular" para asociarlos manualmente.
+      <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:12px;line-height:1.45;">
+        Cuando el sistema reconoce el cliente, te muestra una sugerencia con boton verde — solo das click. Si no, busca el pedido en el campo de abajo (escribiendo el nombre o teléfono) o crea uno nuevo.
       </div>
       ${filas}
       ${huerfanos.length > 30 ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">+ ${huerfanos.length - 30} más…</div>` : ''}
@@ -4548,11 +4626,24 @@ function renderCalandraHuerfanos() {
   `;
 }
 
+// Vincular directamente desde sugerencia (1-click)
+async function vincularHuerfanoDirecto(msgId, pedidoId) {
+  await _vincularHuerfanoCore(msgId, pedidoId);
+}
+
+// Vincular desde el input (con validacion)
 async function vincularHuerfano(msgId) {
   const inp = document.getElementById('huerf-pid-' + msgId);
   if (!inp) return;
-  const pedidoId = parseInt(inp.value.trim(), 10);
-  if (!pedidoId) return toast('Ingresa un ID de pedido válido', 'warning');
+  const val = inp.value.trim();
+  // Si val es "#123" o "123 — Equipo", extraer el numero
+  const m = val.match(/#?(\d+)/);
+  if (!m) return toast('Elige un pedido de la lista o escribe su numero', 'warning');
+  await _vincularHuerfanoCore(msgId, parseInt(m[1], 10));
+}
+
+async function _vincularHuerfanoCore(msgId, pedidoId) {
+  if (!pedidoId) return toast('ID de pedido invalido', 'warning');
   try {
     const r = await fetch('/api/calandra/vincular-huerfano', {
       method: 'POST',
@@ -4564,6 +4655,39 @@ async function vincularHuerfano(msgId) {
     toast(`✅ Vinculado al pedido #${data.pedidoId}`, 'success');
     renderCalandraDashboard(true);
     if (typeof hardSyncFromServer === 'function') hardSyncFromServer(true);
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// Crear un pedido nuevo a partir del archivo huerfano (usa el nombre base como equipo)
+async function crearPedidoDesdeHuerfano(msgId, baseSugerido) {
+  const nombreLimpio = String(baseSugerido || '')
+    .replace(/_[\d]+/g, '').replace(/[_\-]/g, ' ').trim();
+  const nombre = prompt('Crear pedido nuevo desde este archivo.\n\nNombre del equipo o cliente:', nombreLimpio);
+  if (!nombre || !nombre.trim()) return;
+  try {
+    const pedido = {
+      id: nextId++,
+      equipo: nombre.trim(),
+      telefono: '',
+      vendedora: '',
+      tipoBandeja: 'pedido',
+      // Si llego archivo de calandra, el pedido ya esta en esa etapa
+      estado: 'enviado-calandra',
+      creadoEn: new Date().toLocaleDateString('es-CO'),
+      ultimoMovimiento: new Date().toISOString(),
+      items: [],
+      fechaEntrega: '',
+      notas: 'Creado automaticamente desde archivo huerfano de calandra',
+      origenHuerfano: true,
+    };
+    pedidos.push(pedido);
+    guardar();
+    render();
+    toast(`✅ Pedido #${pedido.id} creado. Vinculando archivo...`, 'success');
+    // Pequeño delay para que el guardar termine y el server tenga el pedido
+    setTimeout(() => _vincularHuerfanoCore(msgId, pedido.id), 600);
   } catch (e) {
     toast('Error: ' + e.message, 'error');
   }
