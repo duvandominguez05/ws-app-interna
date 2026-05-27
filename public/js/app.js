@@ -6146,44 +6146,120 @@ function abrirDetallePedido(id) {
     else urgencia = '<span style="color:var(--text-muted);">📅 Faltan ' + dParaEntrega + ' días</span>';
   }
 
+  // ── Hero info (urgencia o estado destacado) ──
+  const heroBg = p.fechaEntrega
+    ? (() => {
+        const dDays = Math.ceil((new Date(p.fechaEntrega).getTime() - Date.now()) / 86400000);
+        if (dDays < 0)  return 'linear-gradient(135deg,rgba(239,68,68,0.25),rgba(220,38,38,0.1))';
+        if (dDays <= 2) return 'linear-gradient(135deg,rgba(245,158,11,0.22),rgba(202,138,4,0.08))';
+        return 'linear-gradient(135deg,rgba(34,197,94,0.16),rgba(22,163,74,0.06))';
+      })()
+    : 'linear-gradient(135deg,rgba(124,58,237,0.16),rgba(76,29,149,0.06))';
+
+  const heroTxt = p.fechaEntrega
+    ? '<div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.55);font-weight:700;">Entrega</div>'
+      + '<div style="font-family:Outfit,sans-serif;font-size:1.35rem;font-weight:800;margin-top:2px;">' + fmtFecha(p.fechaEntrega) + '</div>'
+      + (urgencia ? '<div style="margin-top:4px;font-size:0.85rem;">' + urgencia + '</div>' : '')
+    : '<div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.55);font-weight:700;">Sin fecha de entrega</div>'
+      + '<div style="font-size:0.8rem;color:rgba(255,255,255,0.55);margin-top:4px;">Edita los datos para poner una fecha.</div>';
+
+  const montoTxt = p.montoComprobante
+    ? '<div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.55);font-weight:700;">Pagado</div>'
+      + '<div style="font-family:Outfit,sans-serif;font-size:1.35rem;font-weight:800;margin-top:2px;color:#86efac;">$' + Number(p.montoComprobante).toLocaleString('es-CO') + '</div>'
+      + (p.bancoComprobante ? '<div style="margin-top:2px;font-size:0.75rem;color:rgba(255,255,255,0.55);">' + esc(p.bancoComprobante) + '</div>' : '')
+    : '';
+
+  // Etapa pill
+  const estadoColors = {
+    'bandeja':         'rgba(245,158,11,0.18);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);',
+    'hacer-diseno':    'rgba(124,58,237,0.18);color:#c4b5fd;border:1px solid rgba(124,58,237,0.35);',
+    'confirmado':      'rgba(34,197,94,0.18);color:#86efac;border:1px solid rgba(34,197,94,0.35);',
+    'enviado-final':   'rgba(34,197,94,0.22);color:#86efac;border:1px solid rgba(34,197,94,0.4);',
+  };
+  const estadoPillStyle = estadoColors[p.estado] || 'rgba(103,232,249,0.18);color:#67e8f9;border:1px solid rgba(103,232,249,0.35);';
+
   const modal = document.createElement('div');
   modal.id = 'modal-detalle-pedido';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0;';
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
   modal.innerHTML =
-    '<div style="background:#12141c;border:1px solid rgba(255,255,255,0.1);border-radius:14px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">' +
-        '<div>' +
-          '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:1.15rem;color:var(--text);line-height:1.2;">' + esc(p.equipo || 'Sin equipo') + '</div>' +
-          '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;letter-spacing:0.6px;text-transform:uppercase;">Pedido #' + p.id + ' · ' + etapaActualLabel(p.estado) + '</div>' +
+    '<div style="background:#0c0e16;border-top:1px solid rgba(255,255,255,0.12);border-radius:18px 18px 0 0;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;padding:0;animation:slide-up 0.25s cubic-bezier(0.16,1,0.3,1);">' +
+      // === HEADER STICKY ===
+      '<div style="position:sticky;top:0;z-index:5;background:#0c0e16;border-bottom:1px solid rgba(255,255,255,0.06);padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:1.25rem;color:var(--text);line-height:1.15;letter-spacing:-0.02em;overflow:hidden;text-overflow:ellipsis;">' + esc(p.equipo || 'Sin equipo') + '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
+            '<span style="font-size:0.66rem;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;font-weight:600;">#' + p.id + '</span>' +
+            '<span style="padding:2px 9px;border-radius:99px;font-size:0.7rem;font-weight:700;background:' + estadoPillStyle + '">' + etapaActualLabel(p.estado) + '</span>' +
+          '</div>' +
         '</div>' +
-        '<button onclick="document.getElementById(\'modal-detalle-pedido\').remove()" style="background:transparent;border:none;color:var(--text-muted);font-size:1.4rem;cursor:pointer;padding:0 6px;line-height:1;">×</button>' +
+        '<button onclick="document.getElementById(\'modal-detalle-pedido\').remove()" style="background:rgba(255,255,255,0.06);border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">×</button>' +
       '</div>' +
-      // Datos del pedido
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:9px;padding:12px;font-size:0.82rem;margin-bottom:12px;">' +
-        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Teléfono</div><div>' + tel + '</div></div>' +
-        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Vendedora</div><div>🛍️ ' + ven + '</div></div>' +
-        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Diseñador</div><div>' + disHTML + '</div></div>' +
-        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Fecha entrega</div><div>' + fechaEntrega + (urgencia ? '<br>' + urgencia : '') + '</div></div>' +
-        '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Prendas</div><div>' + items + '</div></div>' +
-        (notas ? '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Notas</div><div>' + notas + '</div></div>' : '') +
-      '</div>' +
-      // Acciones
-      '<div style="display:flex;flex-direction:column;gap:8px;">' +
-        (siguiente
-          ? '<button onclick="avanzarEtapaPedido(' + p.id + ')" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:11px;border:none;border-radius:9px;font-weight:600;font-size:0.92rem;cursor:pointer;">➡️ Pasar a: ' + siguiente.label + '</button>'
-          : '<div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#86efac;padding:11px;border-radius:9px;text-align:center;font-size:0.85rem;">✅ Pedido terminado (entregado)</div>') +
-        // Botón archivar a Notion (solo cuando el pedido está entregado)
-        (p.estado === 'enviado-final'
-          ? '<button onclick="archivarUnPedidoNotion(' + p.id + ')" class="btn" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;padding:10px;border-radius:9px;font-weight:600;font-size:0.85rem;cursor:pointer;">📁 Archivar a Notion</button>'
+
+      '<div style="padding:18px;">' +
+
+      // === HERO (urgencia + monto si hay) ===
+      (montoTxt
+        ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'
+          + '<div style="background:' + heroBg + ';border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;">' + heroTxt + '</div>'
+          + '<div style="background:linear-gradient(135deg,rgba(34,197,94,0.18),rgba(22,163,74,0.06));border:1px solid rgba(34,197,94,0.25);border-radius:12px;padding:14px;">' + montoTxt + '</div>'
+        + '</div>'
+        : '<div style="background:' + heroBg + ';border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;margin-bottom:14px;">' + heroTxt + '</div>'
+      ) +
+
+      // === DATOS (con WhatsApp inline en telefono) ===
+      '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:12px;padding:14px;margin-bottom:14px;">' +
+        // Telefono con boton WA
+        (p.telefono
+          ? '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:12px;">'
+            + '<div><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;">Cliente</div>'
+            + '<div style="font-size:0.95rem;font-weight:600;margin-top:2px;">📱 ' + tel + '</div></div>'
+            + '<button onclick="window.open(\'https://wa.me/57' + String(p.telefono).replace(/\\D/g, '') + '\', \'_blank\')" style="background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;padding:8px 14px;border-radius:8px;font-weight:600;font-size:0.78rem;cursor:pointer;box-shadow:0 2px 8px rgba(34,197,94,0.3);">💬 WhatsApp</button>'
+          + '</div>'
           : '') +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
-          (p.telefono ? '<button onclick="window.open(\'https://wa.me/57' + String(p.telefono).replace(/\D/g, '') + '\', \'_blank\')" class="btn btn-sm" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">💬 WhatsApp</button>' : '<div></div>') +
-          '<button onclick="openModalCompletar(' + p.id + '); document.getElementById(\'modal-detalle-pedido\').remove();" class="btn btn-sm" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;">✏️ Editar datos</button>' +
+        // Vendedora + Diseñador
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
+          '<div><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;margin-bottom:4px;">Vendedora</div><div style="font-size:0.85rem;font-weight:600;">🛍️ ' + ven + '</div></div>' +
+          '<div><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;margin-bottom:4px;">Diseñador</div><div style="font-size:0.85rem;font-weight:600;">' + disHTML + '</div></div>' +
         '</div>' +
-        '<button onclick="eliminarPedidoCualquierEstado(' + p.id + ')" class="btn btn-sm" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;padding:8px;border-radius:7px;cursor:pointer;font-size:0.78rem;margin-top:4px;">🗑️ Eliminar pedido</button>' +
+        // Prendas (si las hay)
+        (items !== 'Sin prendas registradas'
+          ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;margin-bottom:4px;">Prendas</div><div style="font-size:0.82rem;">' + items + '</div></div>'
+          : '') +
+        // Notas (si las hay)
+        (notas
+          ? '<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700;margin-bottom:4px;">Notas</div><div style="font-size:0.82rem;font-style:italic;color:var(--text-muted);">' + notas + '</div></div>'
+          : '') +
       '</div>' +
+
+      // === ACCION PRIMARIA: avanzar etapa ===
+      (siguiente
+        ? '<button onclick="avanzarEtapaPedido(' + p.id + ')" style="width:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;padding:14px;border:none;border-radius:12px;font-weight:700;font-size:1rem;cursor:pointer;box-shadow:0 4px 16px rgba(124,58,237,0.35);margin-bottom:12px;letter-spacing:-0.01em;">Pasar a: ' + siguiente.label + ' →</button>'
+        : '<div style="background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:14px;border-radius:12px;text-align:center;font-size:0.95rem;font-weight:600;margin-bottom:12px;">✅ Pedido entregado al cliente</div>') +
+
+      // Notion (solo si entregado)
+      (p.estado === 'enviado-final'
+        ? '<button onclick="archivarUnPedidoNotion(' + p.id + ')" style="width:100%;background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.35);color:#86efac;padding:11px;border-radius:10px;font-weight:600;font-size:0.85rem;cursor:pointer;margin-bottom:12px;">📁 Archivar en Notion</button>'
+        : '') +
+
+      // === ACCIONES SECUNDARIAS ===
+      '<button onclick="openModalCompletar(' + p.id + '); document.getElementById(\'modal-detalle-pedido\').remove();" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text);padding:11px;border-radius:10px;font-weight:600;font-size:0.85rem;cursor:pointer;margin-bottom:8px;">✏️ Editar datos del pedido</button>' +
+
+      // === ACCION PELIGROSA (al fondo, mas pequeña) ===
+      '<button onclick="eliminarPedidoCualquierEstado(' + p.id + ')" style="width:100%;background:transparent;border:1px solid rgba(239,68,68,0.25);color:#fca5a5;padding:9px;border-radius:8px;font-size:0.78rem;cursor:pointer;margin-top:6px;">🗑️ Eliminar pedido</button>' +
+
+      '</div>' + // end padding
     '</div>';
+
+  // Animacion de subida (slide-up bottom-sheet style)
+  if (!document.getElementById('css-modal-detalle-anim')) {
+    const st = document.createElement('style');
+    st.id = 'css-modal-detalle-anim';
+    st.textContent = '@keyframes slide-up { from { transform: translateY(100%); opacity: 0.5; } to { transform: translateY(0); opacity: 1; } } @media (min-width: 769px) { #modal-detalle-pedido { align-items: center !important; } #modal-detalle-pedido > div { border-radius: 18px !important; border: 1px solid rgba(255,255,255,0.1) !important; max-height: 88vh; } }';
+    document.head.appendChild(st);
+  }
+
   document.body.appendChild(modal);
 }
 
