@@ -6625,17 +6625,33 @@ async function archivarEntregadosNotion() {
   }
 }
 
-// Reset duro: borra localStorage de pedidos y resincroniza con el servidor
-// (útil si la cache local quedó desincronizada)
+// Reset duro: borra localStorage de pedidos Y limpia eliminadosLocales (que pudo borrar pedidos del bot)
+// Resincroniza estado completo con el servidor.
 async function resincronizarConServidor() {
-  if (!confirm('Esto va a reemplazar todos los pedidos locales con los del servidor. ¿Continuar?')) return;
+  if (!confirm('Esto va a reemplazar todos los pedidos locales con los del servidor y limpiar el cache de borrados. ¿Continuar?')) return;
   try {
     const r = await fetch('/api/pedidos');
     const d = await r.json();
     const srv = Array.isArray(d) ? d : (d.pedidos || []);
     pedidos = srv;
+    if (d.nextId) {
+      nextId = d.nextId;
+      localStorage.setItem('ws_nextId3', String(nextId));
+    }
     localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
-    toast('✅ Resincronizado · ' + pedidos.length + ' pedidos del servidor', 'success');
+    // CRITICO: limpiar eliminadosLocales que pueden contener IDs de pedidos
+    // creados por bot/comprobante (que el usuario nunca borro explicitamente).
+    // Sin esto, el proximo POST mandaria eliminados=[...] y el servidor (sin proteccion vieja)
+    // los borraria de nuevo. Con la proteccion nueva ya no, pero limpiamos igual por higiene.
+    const idsBot = new Set(srv.filter(p => p.origenBot || p.origenComprobante || p.origenHuerfano).map(p => p.id));
+    let limpiados = 0;
+    for (const id of [...eliminadosLocales]) {
+      if (idsBot.has(id)) {
+        eliminadosLocales.delete(id);
+        limpiados++;
+      }
+    }
+    toast('✅ Resync OK · ' + pedidos.length + ' pedidos del servidor' + (limpiados ? ' · liberados ' + limpiados + ' del cache' : ''), 'success');
     render();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
