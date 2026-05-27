@@ -1306,9 +1306,25 @@ http.createServer(async (req, res) => {
           };
         });
         // Preservar pedidos del servidor que el cliente no tiene (creados por bot en otro momento)
-        // pero NO reagregar los que el cliente eliminó explícitamente NI los archivados
+        // PROTECCION: pedidos creados por el bot (origenBot, origenComprobante, origenHuerfano)
+        // se preservan SIEMPRE — el cliente no puede borrarlos por cache vieja en eliminadosLocales.
+        // Solo se borran si estan en archivadosSet (tombstone de Notion, decision explicita).
         const incomingIds = new Set(incomingFiltrado.map(p => p.id));
-        existing.forEach(e => { if (!incomingIds.has(e.id) && !eliminadosSet.has(e.id) && !archivadosSet.has(e.id)) merged.push(e); });
+        let recuperadosDelBot = 0;
+        existing.forEach(e => {
+          if (incomingIds.has(e.id)) return;
+          if (archivadosSet.has(e.id)) return;
+          const creadoPorSistema = e.origenBot || e.origenComprobante || e.origenHuerfano;
+          if (creadoPorSistema) {
+            // Pedido creado por sistema — NO permitir que client-side eliminadosLocales lo mate
+            if (eliminadosSet.has(e.id)) recuperadosDelBot++;
+            merged.push(e);
+          } else if (!eliminadosSet.has(e.id)) {
+            // Pedido manual del cliente — respeta eliminadosLocales
+            merged.push(e);
+          }
+        });
+        if (recuperadosDelBot > 0) console.log(`[POST /api/pedidos] protegidos ${recuperadosDelBot} pedidos bot que cliente intento borrar via cache`);
         merged.sort((a, b) => a.id - b.id);
 
         // ─── DETECCIÓN DE CAMBIOS para disparar notificaciones WA ───
@@ -1591,6 +1607,68 @@ http.createServer(async (req, res) => {
   // ── GET /api/admin/tombstones — listar todos los archivados (debug) ──
   if (req.method === 'GET' && req.url === '/api/admin/tombstones') {
     return json(res, 200, { tombstones: leerTombstones() });
+  }
+
+  // ── POST /api/admin/recuperar-pedidos-comprobante — re-crea pedidos faltantes ──
+  // Busca comprobantes_detectados que apuntan a un pedidoAutoCreado que ya no existe en pedidos.json
+  // y los re-crea con los datos del comprobante.
+  if (req.method === 'POST' && req.url === '/api/admin/recuperar-pedidos-comprobante') {
+    try {
+      const comps = db.leerComprobantes();
+      const pedidosActuales = leerPedidos();
+      const idsExistentes = new Set(pedidosActuales.map(p => p.id));
+      const tomb = idsArchivados();
+      const recuperados = [];
+      const procesadosId = new Set();
+
+      // Agrupar comprobantes por pedidoAutoCreado
+      const compsPorPedido = new Map();
+      for (const c of comps) {
+        if (!c.pedidoAutoCreado) continue;
+        if (idsExistentes.has(c.pedidoAutoCreado)) continue; // ya existe
+        if (tomb.has(c.pedidoAutoCreado)) continue; // archivado deliberadamente
+        if (!compsPorPedido.has(c.pedidoAutoCreado)) compsPorPedido.set(c.pedidoAutoCreado, []);
+        compsPorPedido.get(c.pedidoAutoCreado).push(c);
+      }
+
+      const pedidosNuevos = [...pedidosActuales];
+      for (const [pedidoId, lista] of compsPorPedido.entries()) {
+        const ultimoComp = lista[lista.length - 1];
+        const ven = ultimoComp.vendedora || '';
+        const vendedoraNorm = ven ? (ven.charAt(0).toUpperCase() + ven.slice(1).toLowerCase()) : '';
+        const reconstruido = {
+          id: pedidoId,
+          equipo: ultimoComp.cliente || 'Cliente +57 ' + (ultimoComp.telefono || '?'),
+          telefono: ultimoComp.telefono || '',
+          vendedora: vendedoraNorm,
+          tipoBandeja: 'pedido',
+          estado: 'hacer-diseno',
+          creadoEn: new Date(ultimoComp.ts || Date.now()).toLocaleDateString('es-CO'),
+          ultimoMovimiento: ultimoComp.ts || new Date().toISOString(),
+          items: [],
+          fechaEntrega: '',
+          notas: 'Recuperado desde comprobantes_detectados',
+          arreglo: null,
+          origenComprobante: true,
+          montoComprobante: ultimoComp.monto || null,
+          bancoComprobante: ultimoComp.banco || null,
+          confianzaComprobante: ultimoComp.confianza,
+          recuperadoTs: new Date().toISOString(),
+        };
+        pedidosNuevos.push(reconstruido);
+        recuperados.push({ id: pedidoId, cliente: reconstruido.equipo, monto: reconstruido.montoComprobante, vendedora: reconstruido.vendedora });
+        procesadosId.add(pedidoId);
+      }
+
+      if (recuperados.length) {
+        // Ordenar por id
+        pedidosNuevos.sort((a, b) => a.id - b.id);
+        guardarPedidos(pedidosNuevos, leerNextId());
+      }
+      return json(res, 200, { recuperados: recuperados.length, detalle: recuperados });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
   }
 
   // ── GET /api/admin/diag-eventos — diagnostico: cuantos eventos hay por tipo/fecha ──
