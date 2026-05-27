@@ -6075,7 +6075,11 @@ function abrirDetallePedido(id) {
   const siguiente = siguienteEtapa(p.estado);
   const tel = p.telefono ? esc(p.telefono) : '—';
   const ven = p.vendedora ? esc(p.vendedora) : 'Sin asignar';
-  const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : 'Sin asignar';
+  const DISENADORES = ['Camilo', 'Oscar', 'Wendy', 'Ney', 'Paola', 'Betty'];
+  const disHTML = p.disenadorAsignado
+    ? '🎨 ' + esc(p.disenadorAsignado) + ' <button onclick="cambiarDisenadorDetalle(' + p.id + ')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:0.7rem;margin-left:4px;">✎</button>'
+    : '<select id="dis-asignar-' + p.id + '" style="width:100%;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:6px 8px;border-radius:6px;font-size:0.8rem;margin-top:2px;"><option value="">🎨 Asignar diseñador…</option>' + DISENADORES.map(d => '<option value="' + d + '">' + d + '</option>').join('') + '</select>'
+      + '<button onclick="asignarDisenadorDesdeDetalle(' + p.id + ')" style="margin-top:6px;width:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;border:none;padding:7px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;">Confirmar diseñador</button>';
   const fechaEntrega = p.fechaEntrega ? esc(p.fechaEntrega) : 'Sin fecha';
   const notas = p.notas ? esc(p.notas) : '';
   const items = Array.isArray(p.items) && p.items.length
@@ -6109,7 +6113,7 @@ function abrirDetallePedido(id) {
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:9px;padding:12px;font-size:0.82rem;margin-bottom:12px;">' +
         '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Teléfono</div><div>' + tel + '</div></div>' +
         '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Vendedora</div><div>🛍️ ' + ven + '</div></div>' +
-        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Diseñador</div><div>🎨 ' + dis + '</div></div>' +
+        '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Diseñador</div><div>' + disHTML + '</div></div>' +
         '<div><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Fecha entrega</div><div>' + fechaEntrega + (urgencia ? '<br>' + urgencia : '') + '</div></div>' +
         '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Prendas</div><div>' + items + '</div></div>' +
         (notas ? '<div style="grid-column:1/-1;"><div style="color:var(--text-muted);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Notas</div><div>' + notas + '</div></div>' : '') +
@@ -6131,6 +6135,33 @@ function abrirDetallePedido(id) {
       '</div>' +
     '</div>';
   document.body.appendChild(modal);
+}
+
+function asignarDisenadorDesdeDetalle(id) {
+  const sel = document.getElementById('dis-asignar-' + id);
+  if (!sel) return;
+  const nombre = sel.value;
+  if (!nombre) { toast('Elige un diseñador primero', 'error'); return; }
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.disenadorAsignado = nombre;
+  p.ultimoMovimiento = new Date().toISOString();
+  guardar();
+  toast('🎨 ' + nombre + ' asignado al pedido', 'ok');
+  const modal = document.getElementById('modal-detalle-pedido');
+  if (modal) modal.remove();
+  render();
+  abrirDetallePedido(id);
+}
+
+function cambiarDisenadorDetalle(id) {
+  const p = pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.disenadorAsignado = '';
+  guardar();
+  const modal = document.getElementById('modal-detalle-pedido');
+  if (modal) modal.remove();
+  abrirDetallePedido(id);
 }
 
 async function avanzarEtapaPedido(id) {
