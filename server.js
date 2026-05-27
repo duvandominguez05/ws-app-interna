@@ -1776,6 +1776,149 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/reprocesar-historico — procesa comprobantes historicos en lote ──
+  // Body: { dias?: 14, max?: 20, dryRun?: false, simularWA?: false }
+  // 1) Lista imagenes entrantes 1:1 (no @g.us), dedupe por messageId
+  // 2) Excluye ids ya procesados (estan en comprobantes_detectados)
+  // 3) Para cada uno: descarga → Gemini → valida beneficiario → crea pedido si aplica
+  // 4) Devuelve resumen detallado
+  if (req.method === 'POST' && req.url === '/api/admin/reprocesar-historico') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const opts = body ? JSON.parse(body) : {};
+        const dias = parseInt(opts.dias || 14, 10);
+        const max = parseInt(opts.max || 20, 10);
+        const dryRun = opts.dryRun === true;
+        const simularWA = opts.simularWA !== false; // por defecto NO mandar WA en historico
+        const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+        const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY fecha ASC, id ASC').all(desde);
+
+        // 1. Recopilar imagenes entrantes 1:1 unicas
+        const yaProcesados = new Set();
+        try {
+          for (const c of db.leerComprobantes()) {
+            if (c.messageId) yaProcesados.add(c.messageId);
+          }
+        } catch {}
+
+        const candidatos = new Map(); // key: messageId, val: {instance, jid, id, fecha, pushName}
+        for (const row of rows) {
+          try {
+            const ev = JSON.parse(row.data);
+            const d = ev.data || {};
+            if (d.messageType !== 'imageMessage') continue;
+            const k = d.key || {};
+            if (k.fromMe === true) continue;
+            const jid = k.remoteJid || '';
+            if (jid.includes('@g.us')) continue; // solo 1:1
+            if (!k.id) continue;
+            if (yaProcesados.has(k.id)) continue;
+            if (candidatos.has(k.id)) continue;
+            candidatos.set(k.id, {
+              instance: ev.instance,
+              jid,
+              id: k.id,
+              fecha: row.fecha,
+              pushName: d.pushName || '',
+              telefono: jid.replace('@s.whatsapp.net', '').replace('@g.us', '').split('-')[0],
+            });
+          } catch {}
+        }
+
+        const lista = Array.from(candidatos.values()).slice(0, max);
+        const total = candidatos.size;
+
+        if (dryRun) {
+          return json(res, 200, { dryRun: true, total, procesariamos: lista.length, muestra: lista.slice(0, 20), yaProcesadosCount: yaProcesados.size });
+        }
+
+        const resultados = { total, procesados: 0, comprobantes: 0, pedidosCreados: 0, descartados: 0, errores: 0, descartesPorMotivo: {}, detalle: [] };
+
+        for (const c of lista) {
+          const item = { instance: c.instance, telefono: c.telefono, fecha: c.fecha, id: c.id.slice(0, 12) };
+          try {
+            const vendedora = vendedoraDeInstancia(c.instance);
+            const img = await descargarImagenEvolution(c.instance, { remoteJid: c.jid, fromMe: false, id: c.id });
+            if (!img || !img.base64) {
+              item.error = 'descarga fallo';
+              resultados.errores++;
+              resultados.detalle.push(item);
+              continue;
+            }
+            const analisis = await analizarImagenConGemini(img.base64, img.mimeType);
+            resultados.procesados++;
+            if (!analisis?.esComprobante) {
+              item.resultado = 'no es comprobante';
+              resultados.detalle.push(item);
+              continue;
+            }
+            resultados.comprobantes++;
+            item.banco = analisis.banco;
+            item.monto = analisis.monto;
+            item.destinatario = analisis.destinatario_nombre;
+
+            const validacion = validarBeneficiarioWS(analisis.destinatario_nombre);
+            if (!validacion.esParaWS) {
+              item.resultado = 'descartado: ' + validacion.motivo;
+              resultados.descartados++;
+              const motCorto = (validacion.motivo || '').split(':')[0].trim() || 'desconocido';
+              resultados.descartesPorMotivo[motCorto] = (resultados.descartesPorMotivo[motCorto] || 0) + 1;
+              // Guardar comprobante descartado para no reprocesarlo
+              guardarComprobanteDetectado({
+                messageId: c.id, vendedora, telefono: c.telefono, cliente: c.pushName,
+                monto: analisis.monto, banco: analisis.banco, confianza: analisis.confianza,
+                ts: new Date().toISOString(), descartado: true, motivoDescarte: validacion.motivo,
+              });
+              resultados.detalle.push(item);
+              continue;
+            }
+
+            const { nombre: nombreCliente } = await resolverCliente(c.jid, c.telefono, c.pushName || '');
+            let pedidoCreado = null;
+            if (analisis.confianza !== 'baja') {
+              const resCrear = crearVentaInterna('pedido', vendedora, c.telefono, 'hist-' + c.id, nombreCliente);
+              if (resCrear.ok && !resCrear.duplicado) {
+                pedidoCreado = resCrear.id;
+                const pps = leerPedidos();
+                const pp = pps.find(x => x.id === pedidoCreado);
+                if (pp) {
+                  pp.origenComprobante = true;
+                  pp.montoComprobante = analisis.monto;
+                  pp.bancoComprobante = analisis.banco;
+                  pp.fechaComprobante = analisis.fecha || c.fecha;
+                  guardarPedidos(pps, leerNextId());
+                }
+                resultados.pedidosCreados++;
+              } else if (resCrear.duplicado) {
+                pedidoCreado = resCrear.id;
+              }
+            }
+            guardarComprobanteDetectado({
+              messageId: c.id, vendedora, telefono: c.telefono, cliente: nombreCliente,
+              monto: analisis.monto, banco: analisis.banco, confianza: analisis.confianza,
+              ts: new Date().toISOString(), pedidoAutoCreado: pedidoCreado, stickerEnviado: false,
+            });
+            item.cliente = nombreCliente;
+            item.pedidoCreado = pedidoCreado;
+            item.resultado = pedidoCreado ? `pedido #${pedidoCreado} creado` : 'comprobante guardado';
+          } catch (e) {
+            item.error = e.message;
+            resultados.errores++;
+          }
+          resultados.detalle.push(item);
+        }
+
+        resultados.restantes = total - lista.length;
+        return json(res, 200, resultados);
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/test/comprobante — prueba end-to-end con imagen real ──
   // Body: { imageUrl: "https://...", vendedora: "Betty", telefonoCliente: "573...", nombreCliente?: "Maria",
   //         simularPedido?: bool, simularWA?: bool }
