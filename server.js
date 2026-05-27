@@ -2537,6 +2537,14 @@ http.createServer(async (req, res) => {
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
               const pushName = eventData.pushName || '';
 
+              // ── FILTRO 0: telefonos de proveedores conocidos — saltar SIN llamar a Gemini ──
+              const TELEFONOS_PROVEEDORES = (process.env.TELEFONOS_PROVEEDORES || '')
+                .split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean);
+              if (TELEFONOS_PROVEEDORES.includes(telefonoCliente)) {
+                console.log(`[comprobante] DESCARTADO — ${telefonoCliente} es proveedor conocido (lista TELEFONOS_PROVEEDORES)`);
+                return json(res, 200, { ok: true, webhook_recibido: true, accionRealizada, resultadoApi, descartadoPorProveedor: true });
+              }
+
               // Procesar en background (no bloquear webhook)
               (async () => {
                 try {
