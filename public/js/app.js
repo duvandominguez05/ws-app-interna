@@ -342,8 +342,32 @@ function toggleSidebar() {
   } else {
     sidebar.classList.add('open');
     overlay.classList.add('open');
+    actualizarPersonaSidebar(); // refrescar info de persona al abrir
   }
 }
+
+// Pinta en el bloque del sidebar quien esta conectado para no perderse.
+function actualizarPersonaSidebar() {
+  const cont = document.getElementById('sidebar-persona-info');
+  if (!cont) return;
+  const persona = getPersonaActual();
+  if (!persona) {
+    cont.removeAttribute('data-active');
+    cont.style.display = 'none';
+    return;
+  }
+  cont.setAttribute('data-active', 'true');
+  cont.style.display = 'block';
+  const nombreEl = document.getElementById('sidebar-persona-nombre');
+  const rolEl    = document.getElementById('sidebar-persona-rol');
+  if (nombreEl) nombreEl.textContent = (persona.emoji ? persona.emoji + ' ' : '') + persona.nombre;
+  if (rolEl) {
+    const roles = (persona.roles || []).map(r => ROLE_LABELS[r] || r).join(' · ');
+    rolEl.textContent = roles || '—';
+  }
+}
+// Llamar al cargar para que arranque visible si ya hay persona
+setTimeout(actualizarPersonaSidebar, 500);
 
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
@@ -709,12 +733,15 @@ async function forzarBackup() {
 function _miDiaBloqueDiseno(nombrePersona) {
   const mios = _miDiaActivos().filter(p => p.estado === 'hacer-diseno' && p.disenadorAsignado === nombrePersona);
   const sinAsignar = _miDiaActivos().filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado);
-  const cards = mios.slice(0, 10).map(p => `
-    <div class="midia-card" onclick="irAlPedido(${p.id})">
-      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
-      <div class="midia-card-meta">${esc(p.vendedora || '—')} · Entrega: ${p.fechaEntrega ? fmtFecha(p.fechaEntrega) : '—'}</div>
-    </div>
-  `).join('') || '<div class="midia-empty">No tienes diseños asignados.</div>';
+  const cards = mios.slice(0, 10).map(p => {
+    const urg = _urgenciaFechaCorta(p.fechaEntrega);
+    return '<div class="midia-card" onclick="abrirDetallePedido(' + p.id + ')">'
+      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-meta">🛍️ ' + esc(p.vendedora || '—') + (urg ? ' · ' + urg : '') + '</div>'
+    + '</div>';
+  }).join('') || (sinAsignar.length
+      ? '<div class="midia-empty">No tienes ningun diseño asignado todavia. Hay <strong>' + sinAsignar.length + ' en cola sin asignar</strong>. ¿Tomas uno?</div>'
+      : '<div class="midia-empty">✅ Sin diseños pendientes. Todo al dia.</div>');
   return `
     <article class="midia-bloque" style="--bloque-color:#fb923c;">
       <header class="midia-bloque-head">
@@ -737,12 +764,20 @@ function _miDiaBloqueVentas(nombrePersona) {
   const hoyStr = new Date().toISOString().slice(0,10);
   const hoy = mias.filter(p => (p.fechaVenta || '').slice(0,10) === hoyStr);
   const sinSticker = mias.filter(p => p.estado === 'bandeja' && !p.stickerVenta);
-  const cards = mias.slice(0, 10).map(p => `
-    <div class="midia-card ${p.estado === 'bandeja' && !p.stickerVenta ? 'warn' : ''}" onclick="irAlPedido(${p.id})">
-      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
-      <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado} ${p.stickerVenta ? '· 💰' : '· ⚠️ falta sticker'}</div>
-    </div>
-  `).join('') || '<div class="midia-empty">Aún no tienes ventas registradas.</div>';
+  const cards = mias.slice(0, 10).map(p => {
+    const isWarn = p.estado === 'bandeja' && !p.stickerVenta;
+    const urgenciaTxt = _urgenciaFechaCorta(p.fechaEntrega);
+    const estadoLabel = ESTADO_LABELS[p.estado] || p.estado;
+    return '<div class="midia-card' + (isWarn ? ' warn' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">'
+      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-meta">'
+        + '<span style="background:rgba(124,58,237,0.18);color:#c4b5fd;padding:1px 7px;border-radius:6px;font-weight:600;font-size:0.65rem;">' + estadoLabel + '</span>'
+        + (p.telefono ? ' · 📱 ' + esc(p.telefono) : '')
+        + (urgenciaTxt ? ' · ' + urgenciaTxt : '')
+        + (isWarn ? ' · <span style="color:#fcd34d;font-weight:700;">⚠️ Falta sticker</span>' : '')
+      + '</div>'
+    + '</div>';
+  }).join('') || '<div class="midia-empty">✨ Sin ventas registradas todavia. Cuando llegue un comprobante por WA aparece aqui.</div>';
   return `
     <article class="midia-bloque" style="--bloque-color:#34d399;">
       <header class="midia-bloque-head">
@@ -760,14 +795,29 @@ function _miDiaBloqueVentas(nombrePersona) {
   `;
 }
 
+// Devuelve texto corto de urgencia para mostrar en cards (ej. "🚨 vencido 2d", "🔥 hoy", "⏰ 3d")
+function _urgenciaFechaCorta(fechaEntrega) {
+  if (!fechaEntrega) return '';
+  const d = Math.ceil((new Date(fechaEntrega).getTime() - Date.now()) / 86400000);
+  if (d < 0) return '<span style="color:#fca5a5;font-weight:700;">🚨 ' + Math.abs(d) + 'd venc</span>';
+  if (d === 0) return '<span style="color:#fca5a5;font-weight:700;">🔥 HOY</span>';
+  if (d <= 2) return '<span style="color:#fcd34d;font-weight:600;">🔥 ' + d + 'd</span>';
+  if (d <= 5) return '<span style="color:#fde68a;">⏰ ' + d + 'd</span>';
+  return '<span style="color:var(--text-muted);">📅 ' + d + 'd</span>';
+}
+
 function _miDiaBloqueProduccion() {
   const enProd = _miDiaActivos().filter(p => ['enviado-calandra','llego-impresion','corte','calidad','costura','listo'].includes(p.estado));
-  const cards = enProd.slice(0, 10).map(p => `
-    <div class="midia-card" onclick="irAlPedido(${p.id})">
-      <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
-      <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado}</div>
-    </div>
-  `).join('') || '<div class="midia-empty">Nada en producción ahora.</div>';
+  const cards = enProd.slice(0, 10).map(p => {
+    const urg = _urgenciaFechaCorta(p.fechaEntrega);
+    return '<div class="midia-card" onclick="abrirDetallePedido(' + p.id + ')">'
+      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-meta">'
+        + '<span style="background:rgba(103,232,249,0.15);color:#67e8f9;padding:1px 7px;border-radius:6px;font-size:0.65rem;font-weight:600;">' + (ESTADO_LABELS[p.estado] || p.estado) + '</span>'
+        + (urg ? ' · ' + urg : '')
+      + '</div>'
+    + '</div>';
+  }).join('') || '<div class="midia-empty">✅ Sin pedidos en produccion. ¡Equipo al dia!</div>';
   return `
     <article class="midia-bloque" style="--bloque-color:#67e8f9;">
       <header class="midia-bloque-head">

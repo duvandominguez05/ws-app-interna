@@ -564,3 +564,45 @@ input:focus, select:focus, textarea:focus {
 .section-heading .dot {
   box-shadow: 0 0 12px currentColor;
 }
+
+/* ── 26. MOBILE UX — solo en pantalla pequeña ───────────────────────── */
+@media (max-width: 768px) {
+  /* Modo Torre TV no tiene sentido en celular */
+  #btn-torre-tv-sidebar { display: none !important; }
+
+  /* Floating action button (FAB) "+ Nuevo pedido" siempre visible */
+  .fab-nuevo-pedido {
+    position: fixed;
+    right: 16px;
+    bottom: 24px;
+    z-index: 50;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    box-shadow: 0 8px 24px rgba(124,58,237,0.45), 0 0 0 1px rgba(255,255,255,0.08);
+    border: none;
+    color: #fff;
+    font-size: 1.6rem;
+    font-weight: 300;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .fab-nuevo-pedido:active {
+    transform: scale(0.94);
+  }
+  .fab-nuevo-pedido::before {
+    content: '+';
+    line-height: 1;
+    margin-top: -3px;
+  }
+  /* En modo TV o torre, ocultar FAB */
+  body.modo-tv .fab-nuevo-pedido,
+  body.modo-miniapp .fab-nuevo-pedido { display: none !important; }
+}
+
+/* Sidebar persona info: solo cuando hay alguien identificado */
+#sidebar-persona-info[data-active="true"] { display: block !important; }

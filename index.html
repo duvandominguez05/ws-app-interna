@@ -82,6 +82,9 @@
 
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
+<!-- FAB (Floating Action Button) - Nuevo pedido siempre visible en mobile -->
+<button class="fab-nuevo-pedido" onclick="openModalNuevo()" title="Nuevo pedido" aria-label="Crear nuevo pedido"></button>
+
 <div class="app-layout">
 
   <!-- ═══════════════════════════════════════════════════════════
@@ -96,8 +99,22 @@
       <div class="logo-sub">Textil Enterprise ERP</div>
     </div>
 
+    <!-- Persona conectada — visible al abrir el menu para que sepan quien son -->
+    <div id="sidebar-persona-info" style="display:none;padding:10px 14px;margin:0 12px 8px;background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(139,92,246,0.08));border:1px solid rgba(124,58,237,0.25);border-radius:10px;">
+      <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;font-weight:600;">Conectado como</div>
+      <div id="sidebar-persona-nombre" style="font-size:0.95rem;font-weight:800;font-family:'Outfit',sans-serif;margin-top:2px;">—</div>
+      <div id="sidebar-persona-rol" style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">—</div>
+    </div>
+
     <nav class="sidebar-nav">
-      <div class="nav-label">Cerebro</div>
+      <div class="nav-label">Mi vista</div>
+
+      <div class="nav-item" onclick="showSection('mi-dia', this); window.location.hash='#/mi-dia'; if(typeof renderMiDia==='function')renderMiDia();">
+        <span class="nav-icon">☀️</span>
+        <span>Mi Día</span>
+      </div>
+
+      <div class="nav-label" style="margin-top:14px;">Cerebro</div>
 
       <div class="nav-item active" onclick="showSection('tablero-principal', this); renderTableroPrincipal();">
         <span class="nav-icon">📋</span>
@@ -148,7 +165,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nuevo pedido
       </button>
-      <button onclick="activarModoTV()" style="width:100%;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;transition:var(--transition);" onmouseover="this.style.background='rgba(124,58,237,0.15)';this.style.color='#c4b5fd'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.color='var(--text-muted)'">
+      <button id="btn-torre-tv-sidebar" onclick="activarModoTV()" style="width:100%;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:var(--text-muted);font-size:0.75rem;cursor:pointer;transition:var(--transition);" onmouseover="this.style.background='rgba(124,58,237,0.15)';this.style.color='#c4b5fd'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.color='var(--text-muted)'">
         🖥️ Modo Torre TV
       </button>
     </div>
