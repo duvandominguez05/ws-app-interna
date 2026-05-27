@@ -1609,6 +1609,46 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── GET /api/admin/diag-stickers — lista stickers enviados hoy con hash y fromMe ──
+  if (req.method === 'GET' && req.url === '/api/admin/diag-stickers') {
+    try {
+      const desde = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC LIMIT 3000').all(desde);
+      const stickers = [];
+      const hashCount = {};
+      for (const row of rows) {
+        try {
+          const ev = JSON.parse(row.data);
+          const d = ev.data || {};
+          if (d.messageType !== 'stickerMessage') continue;
+          const sm = d.message?.stickerMessage || {};
+          const hash = sm.fileSha256 ? Buffer.from(sm.fileSha256, 'base64').toString('hex') : null;
+          hashCount[hash] = (hashCount[hash] || 0) + 1;
+          if (stickers.length < 30) {
+            stickers.push({
+              fecha: row.fecha,
+              instance: ev.instance,
+              fromMe: d.key?.fromMe,
+              jid: d.key?.remoteJid,
+              pushName: d.pushName,
+              hash: hash ? hash.slice(0, 20) + '...' : null,
+              hashCompleto: hash,
+            });
+          }
+        } catch {}
+      }
+      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620';
+      return json(res, 200, {
+        configurado: STICKER_VENTA_HASH,
+        hashesUsadosHoy: hashCount,
+        coincidencias: Object.entries(hashCount).filter(([h]) => STICKER_VENTA_HASH.includes(h)).length,
+        stickers,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/recuperar-pedidos-comprobante — re-crea pedidos faltantes ──
   // Busca comprobantes_detectados que apuntan a un pedidoAutoCreado que ya no existe en pedidos.json
   // y los re-crea con los datos del comprobante.
