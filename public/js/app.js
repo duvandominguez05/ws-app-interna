@@ -1954,7 +1954,7 @@ function renderBandeja() {
 }
 
 function renderBandejaCotizaciones(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
+  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin cotizaciones pendientes</div><div class="empty-hint">Cuando llegue un PDF por correo o WhatsApp aparece aqui. O toca <strong>+ Nuevo pedido</strong> para crear uno manual.</div></div>`;
   return arr.map(p => `
     <div class="bandeja-card">
       <div class="bandeja-card-top">
@@ -2073,7 +2073,7 @@ async function eliminarPedidoBandeja(id, event) {
 }
 
 function renderBandejaPedidos(arr) {
-  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Sin entradas</div></div>`;
+  if (!arr.length) return `<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-text">Sin pedidos confirmados ahora</div><div class="empty-hint">Cuando la vendedora oficialice una venta con el sticker 💰 aparece aqui en camino a diseño/produccion.</div></div>`;
   return arr.map(p => {
     const etiqueta = ESTADO_LABELS[p.estado] || p.estado;
     const color    = ETAPA_COLOR[p.estado] || '#64748b';
