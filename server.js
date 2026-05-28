@@ -2224,6 +2224,40 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/diag-drive-fact — diagnostico subida a Drive ──
+  if (req.method === 'GET' && req.url === '/api/admin/diag-drive-fact') {
+    try {
+      const facturas = db.leerFacturas(200, 0);
+      const sinDrive = facturas.filter(f => !f.drive_file_id);
+      const conDrive = facturas.filter(f => f.drive_file_id);
+      // Probar subida con PDF dummy
+      let testUpload = null;
+      try {
+        const minimalPdf = Buffer.from('%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]>>endobj xref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000051 00000 n\n0000000095 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n140\n%%EOF', 'utf8').toString('base64');
+        const subida = await driveSync.subirArchivo({
+          titulo: `TEST-DIAG-${Date.now()}.pdf`,
+          mimeType: 'application/pdf',
+          contentBase64: minimalPdf,
+          parentId: driveSync.FOLDER_FACTURAS,
+        });
+        testUpload = { ok: true, ...subida };
+      } catch (e) {
+        testUpload = { ok: false, error: e.message };
+      }
+      return json(res, 200, {
+        totalFacturas: facturas.length,
+        sinDrive: sinDrive.length,
+        conDrive: conDrive.length,
+        carpetaFacturas: driveSync.FOLDER_FACTURAS,
+        carpetaCotizaciones: driveSync.FOLDER_COTIZACIONES,
+        testUpload,
+        primeras3SinDrive: sinDrive.slice(0, 3).map(f => ({ id: f.id, numero: f.numero, tipo: f.tipo, fecha: f.fecha, cliente: f.cliente_nombre })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/diag-eventos — diagnostico: cuantos eventos hay por tipo/fecha ──
   if (req.method === 'GET' && req.url === '/api/admin/diag-eventos') {
     try {

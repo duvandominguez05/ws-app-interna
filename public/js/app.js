@@ -4789,6 +4789,13 @@ function _fmtPeso0(n) {
 function renderFacturasStats() {
   const cont = document.getElementById('facturas-stats');
   if (!cont) return;
+  const esAdmin = personaTieneRol('admin') || userRol === 'admin';
+  if (!esAdmin) {
+    cont.style.display = 'none';
+    cont.innerHTML = '';
+    return;
+  }
+  cont.style.display = '';
   const data = _facturasCache || {};
   const stats = data.stats || { mes: { total: 0, n: 0 }, anio: { total: 0, n: 0 }, totalFacturas: 0, totalCotizaciones: 0 };
   // Hoy: contar facturas con fecha = hoy
@@ -4816,6 +4823,10 @@ async function renderFacturasLista(forceReload) {
   const cont = document.getElementById('doc-historial');
   if (!cont) return;
   cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:16px 0;">Cargando…</div>';
+  // Ocultar selector "Todas las vendedoras" a no-admin (no le sirve, solo ve las suyas)
+  const _esAdminFL = personaTieneRol('admin') || userRol === 'admin';
+  const _selVend = document.getElementById('doc-filtro-vendedora');
+  if (_selVend) _selVend.style.display = _esAdminFL ? '' : 'none';
   await _cargarFacturasServer(forceReload);
   renderFacturasStats();
 
@@ -4855,6 +4866,15 @@ async function renderFacturasLista(forceReload) {
 
   if (filtroTipo) lista = lista.filter(d => d.tipo === filtroTipo);
   if (filtroVendedora) lista = lista.filter(d => d.vendedora === filtroVendedora);
+  // Filtro por rol: si NO es admin, solo ve sus propias facturas.
+  // En BD vendedora se guarda con nombre completo ("Betty Forero", "Paola Cruz")
+  // y getPersonaActual().nombre es corto ("Betty"/"Paola") → match por substring.
+  const esAdmin = personaTieneRol('admin') || userRol === 'admin';
+  if (!esAdmin) {
+    const persona = getPersonaActual();
+    const miNombre = (persona?.nombre || '').toLowerCase().trim();
+    if (miNombre) lista = lista.filter(d => (d.vendedora || '').toLowerCase().includes(miNombre));
+  }
   if (buscar) lista = lista.filter(d =>
     (d.cliente || '').toLowerCase().includes(buscar) ||
     (d.numero || '').toLowerCase().includes(buscar) ||
