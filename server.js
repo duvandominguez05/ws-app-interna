@@ -1910,6 +1910,34 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/diag-msj-jefe — ultimos mensajes de texto fromMe en ws-duvan ──
+  if (req.method === 'GET' && req.url === '/api/admin/diag-msj-jefe') {
+    try {
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 200').all();
+      const msjs = [];
+      for (const row of rows) {
+        try {
+          const ev = JSON.parse(row.data);
+          if (ev.instance !== 'ws-duvan') continue;
+          const d = ev.data || {};
+          if (d.messageType !== 'conversation' && d.messageType !== 'extendedTextMessage') continue;
+          msjs.push({
+            fecha: row.fecha,
+            ts: ev.date_time || d.messageTimestamp,
+            fromMe: d.key?.fromMe,
+            remoteJid: d.key?.remoteJid,
+            messageType: d.messageType,
+            texto: (d.message?.conversation || d.message?.extendedTextMessage?.text || '').slice(0, 200),
+          });
+          if (msjs.length >= 20) break;
+        } catch {}
+      }
+      return json(res, 200, { total: msjs.length, msjs });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/test-respuesta-jefe — simula respuesta del jefe sin pasar por WA ──
   // Body: { texto: "1 si betty" }
   if (req.method === 'POST' && req.url === '/api/admin/test-respuesta-jefe') {
