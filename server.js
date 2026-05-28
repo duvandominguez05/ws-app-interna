@@ -735,7 +735,7 @@ function generarSnapshotVentas() {
     fechaGenerado: new Date().toISOString(),
     candidatos: candidatos.map((c, i) => ({ numero: i + 1, ...c })),
   };
-  db.guardarConfig('ventas_snapshot_actual', snapshot);
+  db.guardarConfig({ ventas_snapshot_actual: snapshot });
   return snapshot;
 }
 
