@@ -2036,8 +2036,8 @@ http.createServer(async (req, res) => {
   // ── GET /api/admin/diag-stickers — lista stickers enviados hoy con hash y fromMe ──
   if (req.method === 'GET' && req.url === '/api/admin/diag-stickers') {
     try {
-      const desde = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC LIMIT 15000').all(desde);
+      const desde = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+      const rows = db.raw.prepare(`SELECT fecha, data FROM evolution_events WHERE fecha >= ? AND data LIKE '%stickerMessage%' ORDER BY id DESC LIMIT 200`).all(desde);
       const stickers = [];
       const hashCount = {};
       for (const row of rows) {
