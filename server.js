@@ -757,24 +757,24 @@ async function construirMensajeSnapshot(snapshot) {
   for (let i = 0; i < snapshot.candidatos.length; i++) {
     const c = snapshot.candidatos[i];
     const tkn = `${snapshot.id}-${c.numero}`;
+    const vendCap = c.vendedoraSugerida
+      ? c.vendedoraSugerida.charAt(0).toUpperCase() + c.vendedoraSugerida.slice(1).toLowerCase()
+      : null;
     txt += `━━━━━━━━━━━━━━━━━━━━━━━\n`;
     txt += `*${c.numero}️⃣ ${c.cliente}*\n`;
     txt += `📞 ${c.telefono || 'sin tel'}`;
     if (c.monto) txt += ` · 💰 $${Number(c.monto).toLocaleString('es-CO')}`;
     if (c.banco && c.banco !== 'desconocido') txt += ` ${c.banco}`;
     txt += '\n';
+    if (vendCap) txt += `🛍️ Vendedora: *${vendCap}* (línea del chat)\n`;
     if (urls[i]) txt += `🔗 Ver chat: ${urls[i]}\n`;
     txt += '\n';
-    txt += `✅ SÍ es venta — elegí vendedora:\n`;
-    txt += `   ${baseUrl}/v/${tkn}?v=betty\n`;
-    txt += `   ${baseUrl}/v/${tkn}?v=ney\n`;
-    txt += `   ${baseUrl}/v/${tkn}?v=wendy\n`;
-    txt += `   ${baseUrl}/v/${tkn}?v=paola\n`;
-    txt += `   ${baseUrl}/v/${tkn}?v=graciela\n`;
+    txt += `✅ SÍ fue venta de ${vendCap || 'la línea detectada'}:\n`;
+    txt += `   ${baseUrl}/v/${tkn}?si=1\n`;
     txt += `❌ NO fue venta:\n`;
     txt += `   ${baseUrl}/v/${tkn}?no=1\n\n`;
   }
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━\nUn solo click y se procesa.`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━\nUn solo click y se procesa.\n\n_Si la vendedora detectada es incorrecta, podés cambiarla:_\n_${baseUrl}/v/<numero>?v=ney_`;
   return txt;
 }
 
@@ -1904,6 +1904,50 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── GET /api/admin/sticker-detectar — lista stickers enviados POR NOSOTROS hoy y ofrece hash ──
+  // Cuando una vendedora envia el sticker oficial, este endpoint captura el hash.
+  if (req.method === 'GET' && req.url === '/api/admin/sticker-detectar') {
+    try {
+      const desde = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC').all(desde);
+      const stickersSalientes = [];
+      const hashCount = {};
+      for (const row of rows) {
+        try {
+          const ev = JSON.parse(row.data);
+          const d = ev.data || {};
+          if (d.messageType !== 'stickerMessage') continue;
+          if (d.key?.fromMe !== true) continue; // solo los que enviamos NOSOTROS
+          const sm = d.message?.stickerMessage || {};
+          const hash = sm.fileSha256 ? Buffer.from(sm.fileSha256, 'base64').toString('hex') : null;
+          if (!hash) continue;
+          hashCount[hash] = (hashCount[hash] || 0) + 1;
+          stickersSalientes.push({
+            fecha: row.fecha,
+            instance: ev.instance,
+            jid: d.key?.remoteJid,
+            hash: hash.slice(0, 30) + '...',
+            hashCompleto: hash,
+            ts: d.messageTimestamp,
+          });
+        } catch {}
+      }
+      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620';
+      // Hash mas usado entre nuestros stickers salientes (probablemente el oficial)
+      const masUsado = Object.entries(hashCount).sort((a, b) => b[1] - a[1])[0] || null;
+      return json(res, 200, {
+        configurado: STICKER_VENTA_HASH,
+        configuradoYaCoincide: masUsado && STICKER_VENTA_HASH.includes(masUsado[0]),
+        hashMasUsado: masUsado ? { hash: masUsado[0], veces: masUsado[1] } : null,
+        totalSalientes: stickersSalientes.length,
+        recientes: stickersSalientes.slice(0, 5),
+        hashesUnicos: Object.entries(hashCount).map(([h, c]) => ({ hash: h, veces: c })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/limpiar-tombstones-huerfanos — borra TODOS los tombstones de un golpe ──
   // Body opcional: { ids: [219, 226] } para borrar solo esos. Sin body borra todos.
   if (req.method === 'POST' && req.url === '/api/admin/limpiar-tombstones-huerfanos') {
@@ -1932,6 +1976,7 @@ http.createServer(async (req, res) => {
       try {
         const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
         const tokenRaw = urlObj.pathname.split('/v/')[1];
+        const accionSi = urlObj.searchParams.get('si');
         const accionVend = urlObj.searchParams.get('v');
         const accionNo = urlObj.searchParams.get('no');
         const montoOverride = urlObj.searchParams.get('monto');
@@ -1952,10 +1997,12 @@ http.createServer(async (req, res) => {
           await responderJefe(`❌ #${numero} descartado — ${cand.cliente} no se sube como venta.`);
           return _htmlOk(res, '❌ Descartado', `${cand.cliente} marcado como NO venta. Ya no aparecerá en el panel.`);
         }
-        if (accionVend) {
+        // ?si=1 → usa la vendedora sugerida (automatica por linea). ?v=ney → override manual.
+        const vendedoraElegida = accionVend || (accionSi ? cand.vendedoraSugerida : null);
+        if (vendedoraElegida) {
           const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
-          const vendNorm = String(accionVend).toLowerCase();
-          if (!VENDEDORAS_VALIDAS.includes(vendNorm)) return _htmlError(res, `Vendedora "${accionVend}" invalida.`);
+          const vendNorm = String(vendedoraElegida).toLowerCase();
+          if (!VENDEDORAS_VALIDAS.includes(vendNorm)) return _htmlError(res, `Vendedora "${vendedoraElegida}" invalida.`);
           const montoFinal = (montoOverride ? parseInt(montoOverride.replace(/\D/g,''), 10) : null) || cand.monto || 0;
           const resCrear = crearVentaInterna('pedido', vendNorm, cand.telefono || '', 'panel-' + cand.messageId, cand.cliente || `Cliente +57 ${cand.telefono || '?'}`);
           if (!resCrear.ok) return _htmlError(res, `Error: ${resCrear.error}`);
