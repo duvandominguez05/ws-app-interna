@@ -1913,6 +1913,17 @@ http.createServer(async (req, res) => {
       const stickersSalientes = [];
       const hashCount = {};
       const debugInfo = { totalEventos: rows.length, stickersVistos: 0, conFromMe: 0, conMessage: 0, conSha: 0, errores: 0, primerSticker: null };
+      function _shaToHex(sha) {
+        if (!sha) return null;
+        if (typeof sha === 'string') return Buffer.from(sha, 'base64').toString('hex');
+        if (typeof sha === 'object') {
+          const keys = Object.keys(sha).filter(k => /^\d+$/.test(k)).sort((a,b)=>+a-+b);
+          if (!keys.length) return null;
+          const bytes = keys.map(k => sha[k]);
+          return Buffer.from(bytes).toString('hex');
+        }
+        return null;
+      }
       for (const row of rows) {
         try {
           const ev = JSON.parse(row.data);
@@ -1925,7 +1936,7 @@ http.createServer(async (req, res) => {
           if (d.key?.fromMe === true) debugInfo.conFromMe++;
           if (d.message?.stickerMessage) debugInfo.conMessage++;
           const sm = d.message?.stickerMessage || {};
-          const hash = sm.fileSha256 ? Buffer.from(sm.fileSha256, 'base64').toString('hex') : null;
+          const hash = _shaToHex(sm.fileSha256);
           if (hash) debugInfo.conSha++;
           if (!hash) continue;
           hashCount[hash] = (hashCount[hash] || 0) + 1;
