@@ -740,34 +740,41 @@ function generarSnapshotVentas() {
 }
 
 // Construye el mensaje WA con la lista numerada
+// Cada candidato lleva LINKS DIRECTOS — 1 click procesa la decisión sin escribir nada
 async function construirMensajeSnapshot(snapshot) {
   if (!snapshot.candidatos.length) {
     return `✅ *W&S — Sin ventas por confirmar*\n\nNo hay candidatos para revisar.\n\nMañana 7 PM te aviso de nuevo.`;
   }
   const fechaCorta = new Date().toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' });
+  const baseUrl = process.env.PUBLIC_URL || 'https://ws-app-interna-production.up.railway.app';
   let txt = `🔔 *W&S — Ventas por confirmar* (${fechaCorta})\n\n`;
-  txt += `${snapshot.candidatos.length} candidato${snapshot.candidatos.length > 1 ? 's' : ''} de las últimas 48h:\n\n`;
+  txt += `${snapshot.candidatos.length} candidato${snapshot.candidatos.length > 1 ? 's' : ''} de las últimas 48h.\n`;
+  txt += `Toca los botones para confirmar/descartar:\n\n`;
 
-  // Construir chatwoot URLs en paralelo (con tope)
+  // Construir chatwoot URLs en paralelo
   const urls = await Promise.all(snapshot.candidatos.map(c => obtenerChatwootConvUrl(c.telefono).catch(() => null)));
 
   for (let i = 0; i < snapshot.candidatos.length; i++) {
     const c = snapshot.candidatos[i];
-    txt += `*${c.numero}️⃣* ${c.cliente}\n`;
-    txt += `   📞 ${c.telefono || 'sin tel'}`;
+    const tkn = `${snapshot.id}-${c.numero}`;
+    txt += `━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    txt += `*${c.numero}️⃣ ${c.cliente}*\n`;
+    txt += `📞 ${c.telefono || 'sin tel'}`;
     if (c.monto) txt += ` · 💰 $${Number(c.monto).toLocaleString('es-CO')}`;
     if (c.banco && c.banco !== 'desconocido') txt += ` ${c.banco}`;
     txt += '\n';
-    if (c.destinatario) txt += `   ↪️ Para: "${c.destinatario.slice(0, 40)}"\n`;
-    if (urls[i]) txt += `   🔗 ${urls[i]}\n`;
+    if (urls[i]) txt += `🔗 Ver chat: ${urls[i]}\n`;
     txt += '\n';
+    txt += `✅ SÍ es venta — elegí vendedora:\n`;
+    txt += `   ${baseUrl}/v/${tkn}?v=betty\n`;
+    txt += `   ${baseUrl}/v/${tkn}?v=ney\n`;
+    txt += `   ${baseUrl}/v/${tkn}?v=wendy\n`;
+    txt += `   ${baseUrl}/v/${tkn}?v=paola\n`;
+    txt += `   ${baseUrl}/v/${tkn}?v=graciela\n`;
+    txt += `❌ NO fue venta:\n`;
+    txt += `   ${baseUrl}/v/${tkn}?no=1\n\n`;
   }
-
-  txt += `*Respondé acá:*\n`;
-  txt += `• \`1 si betty\` → crea venta\n`;
-  txt += `• \`1 no\` → descartar\n`;
-  txt += `• \`1 si ney 250000\` → corregir monto\n`;
-  txt += `• \`ver\` → ver lista de nuevo\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━\nUn solo click y se procesa.`;
   return txt;
 }
 
@@ -911,6 +918,18 @@ function faltantesPendientes(snap) {
   const pendientes = snap.candidatos.filter(c => !db.leerDecisionVenta(c.messageId));
   if (!pendientes.length) return 'Todos los candidatos del snapshot ya fueron procesados ✓';
   return `Quedan ${pendientes.length} por confirmar.`;
+}
+
+// Helpers para el endpoint /v/:token — devuelve HTML simple con feedback visual
+function _htmlOk(res, titulo, mensajeHtml) {
+  cors(res);
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${titulo} - W&S</title><style>body{font-family:system-ui,sans-serif;background:#0a0b0f;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.card{background:linear-gradient(135deg,rgba(34,197,94,0.15),rgba(22,163,74,0.05));border:1px solid rgba(34,197,94,0.4);border-radius:18px;padding:32px;max-width:420px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,0.5)}h1{font-size:1.8rem;margin:0 0 16px;letter-spacing:-0.02em}p{font-size:1rem;line-height:1.5;color:rgba(255,255,255,0.85)}.close{margin-top:24px;padding:10px 20px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;text-decoration:none;display:inline-block;font-weight:600}</style></head><body><div class="card"><h1>${titulo}</h1><p>${mensajeHtml}</p><a class="close" href="javascript:window.close()">Cerrar</a></div></body></html>`);
+}
+function _htmlError(res, mensaje) {
+  cors(res);
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error - W&S</title><style>body{font-family:system-ui,sans-serif;background:#0a0b0f;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.card{background:linear-gradient(135deg,rgba(239,68,68,0.15),rgba(220,38,38,0.05));border:1px solid rgba(239,68,68,0.4);border-radius:18px;padding:32px;max-width:420px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,0.5)}h1{font-size:1.5rem;margin:0 0 12px}p{color:rgba(255,255,255,0.85);line-height:1.5}.close{margin-top:24px;padding:10px 20px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;text-decoration:none;display:inline-block;font-weight:600}</style></head><body><div class="card"><h1>⚠️ ${mensaje.split('.')[0]}</h1><p>${mensaje}</p><a class="close" href="javascript:window.close()">Cerrar</a></div></body></html>`);
 }
 
 // Consulta Evolution para obtener el nombre del contacto desde su JID.
@@ -1885,6 +1904,64 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── GET /v/:token — link click para procesar decisión de venta (panel WA del jefe) ──
+  // Token formato: <snapshotId>-<numero>. Query params: ?v=<vendedora> (SI) o ?no=1 (NO)
+  if (req.method === 'GET' && req.url.startsWith('/v/')) {
+    (async () => {
+      try {
+        const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const tokenRaw = urlObj.pathname.split('/v/')[1];
+        const accionVend = urlObj.searchParams.get('v');
+        const accionNo = urlObj.searchParams.get('no');
+        const montoOverride = urlObj.searchParams.get('monto');
+        const m = tokenRaw.match(/^(.+)-(\d+)$/);
+        if (!m) return _htmlError(res, 'Link invalido');
+        const snapId = m[1];
+        const numero = parseInt(m[2], 10);
+
+        const snap = db.leerConfig().ventas_snapshot_actual;
+        if (!snap || snap.id !== snapId) return _htmlError(res, 'Snapshot expirado. Solicita un nuevo resumen escribiendo "ver" o esperando el de las 7 PM.');
+        const cand = (snap.candidatos || []).find(c => c.numero === numero);
+        if (!cand) return _htmlError(res, `Candidato #${numero} no encontrado.`);
+        const yaDec = db.leerDecisionVenta(cand.messageId);
+        if (yaDec) return _htmlOk(res, `Ya procesado`, `Este candidato (#${numero}: ${cand.cliente}) ya fue marcado como *${yaDec.decision}*${yaDec.pedido_id ? ' (pedido #' + yaDec.pedido_id + ')' : ''}.`);
+
+        if (accionNo) {
+          db.guardarDecisionVenta({ candidatoKey: cand.messageId, decision: 'no' });
+          await responderJefe(`❌ #${numero} descartado — ${cand.cliente} no se sube como venta.`);
+          return _htmlOk(res, '❌ Descartado', `${cand.cliente} marcado como NO venta. Ya no aparecerá en el panel.`);
+        }
+        if (accionVend) {
+          const VENDEDORAS_VALIDAS = ['betty','graciela','ney','wendy','paola'];
+          const vendNorm = String(accionVend).toLowerCase();
+          if (!VENDEDORAS_VALIDAS.includes(vendNorm)) return _htmlError(res, `Vendedora "${accionVend}" invalida.`);
+          const montoFinal = (montoOverride ? parseInt(montoOverride.replace(/\D/g,''), 10) : null) || cand.monto || 0;
+          const resCrear = crearVentaInterna('pedido', vendNorm, cand.telefono || '', 'panel-' + cand.messageId, cand.cliente || `Cliente +57 ${cand.telefono || '?'}`);
+          if (!resCrear.ok) return _htmlError(res, `Error: ${resCrear.error}`);
+          if (resCrear.id && !resCrear.duplicado) {
+            const pps = leerPedidos();
+            const pp = pps.find(x => x.id === resCrear.id);
+            if (pp) {
+              pp.origenComprobante = true;
+              pp.montoComprobante = montoFinal;
+              pp.bancoComprobante = cand.banco || null;
+              pp.notas = (pp.notas || '') + ` [subido desde panel WA por jefe]`;
+              guardarPedidos(pps, leerNextId());
+            }
+          }
+          db.guardarDecisionVenta({ candidatoKey: cand.messageId, decision: 'si', pedidoId: resCrear.id, vendedora: vendNorm, monto: montoFinal });
+          const montoTxt = montoFinal ? `\n💰 $${montoFinal.toLocaleString('es-CO')}` : '';
+          await responderJefe(`✅ Pedido #${resCrear.id} creado\n👤 ${cand.cliente}\n📞 ${cand.telefono}\n🛍️ ${vendNorm}${montoTxt}`);
+          return _htmlOk(res, '✅ Venta creada', `Pedido #${resCrear.id}<br><br>👤 ${cand.cliente}<br>📞 ${cand.telefono}<br>🛍️ Vendedora: ${vendNorm}${montoTxt.replace('\n','<br>')}`);
+        }
+        return _htmlError(res, 'Falta accion (?v=<vendedora> o ?no=1)');
+      } catch (e) {
+        return _htmlError(res, 'Error: ' + e.message);
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/admin/disparar-snapshot-ventas — fuerza envio WA al jefe AHORA ──
   if (req.method === 'POST' && req.url === '/api/admin/disparar-snapshot-ventas') {
     (async () => {
@@ -1960,7 +2037,7 @@ http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/api/admin/diag-stickers') {
     try {
       const desde = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC LIMIT 3000').all(desde);
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC LIMIT 15000').all(desde);
       const stickers = [];
       const hashCount = {};
       for (const row of rows) {
