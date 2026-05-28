@@ -1908,29 +1908,37 @@ http.createServer(async (req, res) => {
   // Cuando una vendedora envia el sticker oficial, este endpoint captura el hash.
   if (req.method === 'GET' && req.url === '/api/admin/sticker-detectar') {
     try {
-      const desde = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC').all(desde);
+      // Tomar TODOS los eventos recientes (sin filtro de fecha por si los timestamps fallan)
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events ORDER BY id DESC LIMIT 10000').all();
       const stickersSalientes = [];
       const hashCount = {};
+      const debugInfo = { totalEventos: rows.length, stickersVistos: 0, conFromMe: 0, conMessage: 0, conSha: 0, errores: 0, primerSticker: null };
       for (const row of rows) {
         try {
           const ev = JSON.parse(row.data);
           const d = ev.data || {};
           if (d.messageType !== 'stickerMessage') continue;
-          if (d.key?.fromMe !== true) continue; // solo los que enviamos NOSOTROS
+          debugInfo.stickersVistos++;
+          if (!debugInfo.primerSticker) {
+            debugInfo.primerSticker = JSON.stringify(ev).slice(0, 800);
+          }
+          if (d.key?.fromMe === true) debugInfo.conFromMe++;
+          if (d.message?.stickerMessage) debugInfo.conMessage++;
           const sm = d.message?.stickerMessage || {};
           const hash = sm.fileSha256 ? Buffer.from(sm.fileSha256, 'base64').toString('hex') : null;
+          if (hash) debugInfo.conSha++;
           if (!hash) continue;
           hashCount[hash] = (hashCount[hash] || 0) + 1;
           stickersSalientes.push({
             fecha: row.fecha,
             instance: ev.instance,
+            fromMe: d.key?.fromMe,
             jid: d.key?.remoteJid,
             hash: hash.slice(0, 30) + '...',
             hashCompleto: hash,
             ts: d.messageTimestamp,
           });
-        } catch {}
+        } catch (e) { debugInfo.errores++; }
       }
       const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620';
       // Hash mas usado entre nuestros stickers salientes (probablemente el oficial)
@@ -1940,8 +1948,9 @@ http.createServer(async (req, res) => {
         configuradoYaCoincide: masUsado && STICKER_VENTA_HASH.includes(masUsado[0]),
         hashMasUsado: masUsado ? { hash: masUsado[0], veces: masUsado[1] } : null,
         totalSalientes: stickersSalientes.length,
-        recientes: stickersSalientes.slice(0, 5),
+        recientes: stickersSalientes.slice(0, 10),
         hashesUnicos: Object.entries(hashCount).map(([h, c]) => ({ hash: h, veces: c })),
+        debug: debugInfo,
       });
     } catch (e) {
       return json(res, 500, { error: e.message });
