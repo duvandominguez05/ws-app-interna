@@ -2037,7 +2037,8 @@ http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/api/admin/diag-stickers') {
     try {
       const desde = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-      const rows = db.raw.prepare(`SELECT fecha, data FROM evolution_events WHERE fecha >= ? AND data LIKE '%stickerMessage%' ORDER BY id DESC LIMIT 200`).all(desde);
+      // Buscar en TODOS los eventos de los ultimos 10 dias (puede haber muchos)
+      const rows = db.raw.prepare('SELECT fecha, data FROM evolution_events WHERE fecha >= ? ORDER BY id DESC').all(desde);
       const stickers = [];
       const hashCount = {};
       for (const row of rows) {
