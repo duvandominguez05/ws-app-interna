@@ -1904,6 +1904,27 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── POST /api/admin/limpiar-tombstones-huerfanos — borra TODOS los tombstones de un golpe ──
+  // Body opcional: { ids: [219, 226] } para borrar solo esos. Sin body borra todos.
+  if (req.method === 'POST' && req.url === '/api/admin/limpiar-tombstones-huerfanos') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const opts = body ? JSON.parse(body) : {};
+        const idsAEliminar = Array.isArray(opts.ids) ? new Set(opts.ids) : null;
+        const lista = leerTombstones();
+        const antes = lista.length;
+        const nueva = idsAEliminar ? lista.filter(t => !idsAEliminar.has(t.id)) : [];
+        guardarTombstones(nueva);
+        return json(res, 200, { ok: true, antes, ahora: nueva.length, removidos: antes - nueva.length });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── GET /v/:token — link click para procesar decisión de venta (panel WA del jefe) ──
   // Token formato: <snapshotId>-<numero>. Query params: ?v=<vendedora> (SI) o ?no=1 (NO)
   if (req.method === 'GET' && req.url.startsWith('/v/')) {
