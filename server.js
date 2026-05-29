@@ -5291,13 +5291,31 @@ http.createServer(async (req, res) => {
     });
   }
 
-  // ── GET /api/c/:slug/lotes — lotes pendientes para una costurera ──
+  // ── GET /api/c/:slug/lotes — lotes pendientes + entregados hoy para una costurera ──
   if (req.method === 'GET' && req.url.startsWith('/api/c/') && req.url.endsWith('/lotes')) {
     const slug = req.url.split('/')[3];
     const costu = PERSONAS.find(p => p.slug === slug && p.roles.includes('costura'));
     if (!costu) return json(res, 404, { error: 'costurera no encontrada' });
     const pendientes = db.leerMovimientosCostureraPendientes(slug);
-    return json(res, 200, { costurera: { slug, nombre: costu.nombre }, pendientes });
+    // Calcular cuantos entregó hoy (confirmados con fecha en hoy/Bogota)
+    let entregadosHoy = 0;
+    try {
+      const recientes = db.leerMovimientosCostureraPorSlug(slug, 100);
+      const hoyBog = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+      entregadosHoy = recientes.filter(m => {
+        if (m.confirmado_costurera != 1) return false;
+        const f = m.confirmado_fecha || m.fecha_recibido || null;
+        if (!f) return false;
+        try {
+          return new Date(f).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) === hoyBog;
+        } catch { return false; }
+      }).length;
+    } catch (e) { console.warn('[lotes-hoy]', e.message); }
+    return json(res, 200, {
+      costurera: { slug, nombre: costu.nombre, color: costu.color || '#10b981' },
+      pendientes,
+      entregadosHoy,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════

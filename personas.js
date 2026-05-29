@@ -28,11 +28,11 @@ const PERSONAS = [
   { slug: 'lidermeyer', nombre: 'Lidermeyer', roles: ['produccion', 'corte'],      emoji: '✂️', color: '#f59e0b', vistaInicial: '/#/mi-dia' },
 
   // Costura (satélites)
-  { slug: 'marcela',    nombre: 'Marcela',    roles: ['costura'],                  emoji: '🧵', color: '#ec4899', vistaInicial: '/#/mi-dia' },
-  { slug: 'cristina',   nombre: 'Cristina',   roles: ['costura'],                  emoji: '🧵', color: '#8b5cf6', vistaInicial: '/#/mi-dia' },
-  { slug: 'wilson',     nombre: 'Wilson',     roles: ['costura'],                  emoji: '🧵', color: '#3b82f6', vistaInicial: '/#/mi-dia' },
-  { slug: 'yamile',     nombre: 'Yamile',     roles: ['costura'],                  emoji: '🧵', color: '#06b6d4', vistaInicial: '/#/mi-dia' },
-  { slug: 'nicol',      nombre: 'Nicol',      roles: ['costura'],                  emoji: '🧵', color: '#10b981', vistaInicial: '/#/mi-dia' },
+  { slug: 'marcela',    nombre: 'Marcela',    roles: ['costura'],                  emoji: '🧵', color: '#ec4899', vistaInicial: '/c/marcela' },
+  { slug: 'cristina',   nombre: 'Cristina',   roles: ['costura'],                  emoji: '🧵', color: '#8b5cf6', vistaInicial: '/c/cristina' },
+  { slug: 'wilson',     nombre: 'Wilson',     roles: ['costura'],                  emoji: '🧵', color: '#3b82f6', vistaInicial: '/c/wilson' },
+  { slug: 'yamile',     nombre: 'Yamile',     roles: ['costura'],                  emoji: '🧵', color: '#06b6d4', vistaInicial: '/c/yamile' },
+  { slug: 'nicol',      nombre: 'Nicol',      roles: ['costura'],                  emoji: '🧵', color: '#10b981', vistaInicial: '/c/nicol' },
 ];
 
 const PERSONAS_BY_SLUG = Object.fromEntries(PERSONAS.map(p => [p.slug, p]));

@@ -48,6 +48,11 @@
       padding: 28px 18px 80px;
       position: relative;
       overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 480px) {
+      body { padding: 20px 14px 90px; }
     }
 
     /* Ambient glow Vercel-style */
@@ -73,12 +78,12 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-size: 0.72rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
-      letter-spacing: 2px;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .greeting::before {
       content: '';
@@ -89,7 +94,7 @@
       animation: pulse 2s ease-in-out infinite;
     }
     .name {
-      font-size: 2.4rem;
+      font-size: 2.8rem;
       font-weight: 900;
       letter-spacing: -0.04em;
       line-height: 1;
@@ -97,12 +102,31 @@
       -webkit-background-clip: text;
       background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
+    @media (max-width: 480px) { .name { font-size: 2.4rem; } }
     .subtitle {
-      font-size: 0.88rem;
+      font-size: 0.95rem;
       color: var(--text-muted);
       font-weight: 500;
+    }
+    .today-progress {
+      margin-top: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16,185,129,0.10);
+      border: 1px solid rgba(16,185,129,0.25);
+      padding: 8px 16px;
+      border-radius: var(--radius-full);
+      font-size: 0.82rem;
+      color: #6ee7b7;
+      font-weight: 600;
+    }
+    .today-progress .num {
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #34d399;
     }
     .brand {
       margin-top: 16px;
@@ -282,9 +306,9 @@
       background: linear-gradient(180deg, var(--green) 0%, #059669 100%);
       border: 1px solid rgba(16,185,129,0.5);
       color: #fff;
-      font-size: 1rem;
-      font-weight: 700;
-      padding: 15px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      padding: 18px 15px;
       border-radius: var(--radius);
       cursor: pointer;
       letter-spacing: -0.011em;
@@ -294,6 +318,16 @@
       transition: all 200ms var(--ease-out);
       position: relative;
       overflow: hidden;
+      min-height: 56px;
+    }
+    .btn-entregue.confirmando {
+      background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+      border-color: rgba(251,191,36,0.5);
+      animation: pulse-warn 1s ease-in-out infinite;
+    }
+    @keyframes pulse-warn {
+      0%, 100% { box-shadow: 0 4px 12px rgba(251,191,36,0.5); }
+      50%      { box-shadow: 0 4px 24px rgba(251,191,36,0.8); }
     }
     .btn-entregue:hover {
       transform: translateY(-2px);
@@ -437,9 +471,10 @@
 <body>
   <div class="content">
     <div class="header">
-      <div class="greeting">Hola</div>
+      <div class="greeting" id="greeting-time">Hola</div>
       <div class="name" id="nombre-costurera">...</div>
-      <div class="subtitle">Estos son tus lotes pendientes</div>
+      <div class="subtitle" id="subtitle-text">Estos son tus lotes pendientes</div>
+      <div id="today-progress-container"></div>
       <div class="brand">W&S TEXTIL · COSTURA</div>
     </div>
 
@@ -505,8 +540,29 @@
       `;
     }
 
+    function renderGreeting() {
+      // Saludo segun hora (Bogota)
+      const hora = new Date().getHours();
+      let saludo = 'Hola';
+      if (hora >= 5 && hora < 12) saludo = 'Buenos días';
+      else if (hora >= 12 && hora < 19) saludo = 'Buenas tardes';
+      else saludo = 'Buenas noches';
+      document.getElementById('greeting-time').textContent = saludo;
+    }
+
+    function renderTodayProgress(entregadosHoy) {
+      const cont = document.getElementById('today-progress-container');
+      if (!cont) return;
+      if (!entregadosHoy || entregadosHoy === 0) { cont.innerHTML = ''; return; }
+      const txt = entregadosHoy === 1
+        ? '<span class="num">1</span> lote entregado hoy 💚'
+        : `<span class="num">${entregadosHoy}</span> lotes entregados hoy 💚`;
+      cont.innerHTML = `<div class="today-progress">${txt}</div>`;
+    }
+
     async function cargar() {
       try {
+        renderGreeting();
         const r = await fetch('/api/c/' + slug + '/lotes');
         if (!r.ok) {
           document.getElementById('lista-lotes').innerHTML =
@@ -515,20 +571,32 @@
         }
         const data = await r.json();
         document.getElementById('nombre-costurera').textContent = data.costurera.nombre;
+        renderTodayProgress(data.entregadosHoy);
 
         renderStats(data.pendientes);
         const cont = document.getElementById('lista-lotes');
 
         if (!data.pendientes.length) {
+          const yaEntregoHoy = data.entregadosHoy > 0;
           cont.innerHTML = `
             <div class="empty">
-              <div class="empty-icon">✨</div>
-              <div class="empty-title">Día tranquilo</div>
-              <div class="empty-sub">No tienes lotes pendientes ahora.<br>Buen trabajo 💚</div>
+              <div class="empty-icon">${yaEntregoHoy ? '🎉' : '✨'}</div>
+              <div class="empty-title">${yaEntregoHoy ? '¡Excelente trabajo!' : 'Día tranquilo'}</div>
+              <div class="empty-sub">${yaEntregoHoy
+                ? 'Ya terminaste tus lotes pendientes.<br>Buen trabajo 💚'
+                : 'No tienes lotes pendientes ahora.<br>Buen trabajo 💚'}</div>
             </div>
           `;
+          document.getElementById('subtitle-text').textContent = yaEntregoHoy
+            ? 'Terminaste todo lo pendiente'
+            : 'No hay lotes pendientes';
           return;
         }
+        // Update subtitle dynamically
+        const pendN = data.pendientes.length;
+        document.getElementById('subtitle-text').textContent = pendN === 1
+          ? 'Tienes 1 lote pendiente'
+          : `Tienes ${pendN} lotes pendientes`;
 
         let html = '';
         for (const m of data.pendientes) {
@@ -558,7 +626,7 @@
               ${m.observaciones ? `<div class="lote-obs">${escapeHtml(m.observaciones)}</div>` : ''}
               ${yaConfirmo
                 ? `<button class="btn-entregue confirmado">✅ Ya marcaste como entregado</button>`
-                : `<button class="btn-entregue" onclick="confirmar(${m.id})">✅ Ya lo entregué</button>`}
+                : `<button class="btn-entregue" id="btn-${m.id}" onclick="iniciarConfirmar(${m.id})">✅ Ya lo entregué</button>`}
             </div>
           `;
         }
@@ -569,8 +637,46 @@
       }
     }
 
+    // Estado de "confirmación pendiente" — evita confirm() del navegador
+    // y usa 2 toques: 1er toque arma, 2do toque confirma (3 seg de ventana).
+    const confirmacionesArmadas = new Set();
+
+    function vibrar(ms) {
+      try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+    }
+
+    function iniciarConfirmar(id) {
+      const btn = document.getElementById('btn-' + id);
+      if (!btn) return;
+      if (confirmacionesArmadas.has(id)) {
+        // segundo toque: confirmar
+        confirmacionesArmadas.delete(id);
+        vibrar([20, 60, 30]);
+        confirmar(id);
+        return;
+      }
+      // primer toque: armar
+      confirmacionesArmadas.add(id);
+      vibrar(15);
+      const textoOriginal = btn.innerHTML;
+      btn.innerHTML = '👉 Toca otra vez para confirmar';
+      btn.classList.add('confirmando');
+      setTimeout(() => {
+        if (confirmacionesArmadas.has(id)) {
+          confirmacionesArmadas.delete(id);
+          btn.innerHTML = textoOriginal;
+          btn.classList.remove('confirmando');
+        }
+      }, 3000);
+    }
+
     async function confirmar(id) {
-      if (!confirm('¿Confirmar que ya entregaste este lote?')) return;
+      const btn = document.getElementById('btn-' + id);
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Marcando...';
+        btn.classList.remove('confirmando');
+      }
       try {
         const r = await fetch('/api/costureras/confirmar', {
           method: 'POST',
@@ -580,9 +686,14 @@
         const data = await r.json();
         if (!r.ok || !data.ok) throw new Error(data.error || 'falló');
         toast('✅ Marcado. Avisamos al taller.', 'success');
+        vibrar([20, 40, 20, 40, 60]);
         setTimeout(cargar, 800);
       } catch (e) {
         toast('Error: ' + e.message, 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '✅ Ya lo entregué';
+        }
       }
     }
 
