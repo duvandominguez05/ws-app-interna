@@ -6806,6 +6806,95 @@ setTimeout(cronDomingoTick, 60 * 1000);
 console.log('[cron-dom] activado — resumen semanal admin domingo 7 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON STICKER REPROCESADOR — red de seguridad diaria
+// Ejecuta sticker-reprocesador todos los días a las 10 PM Bogotá.
+// Recupera ventas perdidas por race conditions o el bug que afectó
+// los stickers del 25-28 mayo (10 ventas perdidas).
+// ═══════════════════════════════════════════════════════════════════
+const CRON_STK_FILE = path.join(__dirname, 'data', 'cron_sticker_ultimo.json');
+function _ultimoStickerCronDia() {
+  try { return JSON.parse(fs.readFileSync(CRON_STK_FILE, 'utf8')).fecha || ''; } catch { return ''; }
+}
+function _marcarStickerCronHoy() {
+  try {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    fs.mkdirSync(path.dirname(CRON_STK_FILE), { recursive: true });
+    fs.writeFileSync(CRON_STK_FILE, JSON.stringify({ fecha: hoy }));
+  } catch (e) { console.error('[cron-stk marca]', e.message); }
+}
+async function cronStickerReprocesar() {
+  try {
+    const hora = _huelaPMBogota();
+    if (hora !== 22) return; // 10 PM Bogotá
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    if (_ultimoStickerCronDia() === hoy) return;
+
+    const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+    const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 3').all().map(r => r.fecha);
+    let recuperados = 0;
+    for (const fecha of fechas) {
+      const events = db.leerEvolutionEvents(fecha);
+      for (const ev of events) {
+        const ed = ev.data || ev;
+        if (ed?.messageType !== 'stickerMessage') continue;
+        const stk = ed.message?.stickerMessage || {};
+        const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+        if (!STICKERS_VENTA.includes(hash)) continue;
+        if (ed.key?.fromMe !== true) continue;
+        const remoteJid = ed.key?.remoteJid || '';
+        const tel = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        if (tel.length < 6) continue;
+        const pedidosActuales = leerPedidos();
+        const yaProcesado = pedidosActuales.some(p =>
+          String(p.telefono || '').replace(/\D/g, '') === tel && p.stickerVenta === hash
+        );
+        if (yaProcesado) continue;
+        const instance = ev.instance || '?';
+        const vendedora = vendedoraDeInstancia(instance);
+        let nombre;
+        try {
+          const resuelto = await resolverCliente(remoteJid, tel, ed.pushName || '');
+          nombre = resuelto.nombre || `Cliente +57 ${tel.slice(-10)}`;
+        } catch { nombre = `Cliente +57 ${tel.slice(-10)}`; }
+        const r = crearVentaInterna('pedido', vendedora, tel, null, nombre);
+        if (r.ok && r.id && !r.duplicado) {
+          const todos = leerPedidos();
+          const pd = todos.find(x => x.id === r.id);
+          if (pd) {
+            pd.estado = 'hacer-diseno';
+            pd.tipoBandeja = 'pedido';
+            pd.stickerVenta = hash;
+            pd.fechaVenta = fecha;
+            pd.notas = pd.notas || `Recuperado por cron diario desde sticker del ${fecha}`;
+            pd.ultimoMovimiento = new Date().toISOString();
+            pd.historial = pd.historial || [];
+            pd.historial.push({
+              fecha: new Date().toISOString(),
+              por: 'cron-sticker-reprocesador',
+              accion: 'crear-desde-sticker-historico',
+              nota: `Sticker venta de ${vendedora} del ${fecha} (cron)`,
+            });
+            guardarPedidos(todos, leerNextId());
+            recuperados++;
+          }
+        }
+      }
+    }
+    if (recuperados > 0) {
+      const msg = `🛡️ *Red de seguridad sticker*\n\nRecuperé ${recuperados} venta${recuperados!==1?'s':''} que se había${recuperados!==1?'n':''} perdido en los últimos 3 días.`;
+      try { await notificarTelegramAdmin(msg); } catch {}
+      console.log(`[cron-stk] recuperados ${recuperados} pedidos perdidos`);
+    } else {
+      console.log('[cron-stk] OK — no hay stickers perdidos');
+    }
+    _marcarStickerCronHoy();
+  } catch (e) { console.error('[cron-stk error]', e.message); }
+}
+setInterval(cronStickerReprocesar, 60 * 1000);
+setTimeout(cronStickerReprocesar, 90 * 1000);
+console.log('[cron-stk] activado — reprocesador sticker diario 10 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
 // ALERTAS CALANDRA +24h SIN DESCARGAR
 // Cuando un pedido lleva +24h en estado 'enviado-calandra' sin que
 // calandra haya descargado el WT, avisa al diseñador responsable y
