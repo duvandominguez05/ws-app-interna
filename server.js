@@ -1258,8 +1258,8 @@ function purgarArchivados(pedidos) {
 // editar este valor (no usar env var por confusion historica).
 const NOTION_DB_DEFAULT = '9a40c001-02a7-457f-8010-842a1bcb2eee';
 
-async function archivarPedidoEnNotion(pedido) {
-  const token = process.env.NOTION_TOKEN;
+async function archivarPedidoEnNotion(pedido, tokenOverride) {
+  const token = tokenOverride || process.env.NOTION_TOKEN;
   const dbId = NOTION_DB_DEFAULT;
   if (!token) {
     console.log('[notion] sin token, saltando archivo');
@@ -3384,9 +3384,12 @@ http.createServer(async (req, res) => {
             })),
           });
         }
+        // Permite override del token (útil cuando Railway tiene token viejo sin acceso
+        // a la DB nueva). Pasar via query ?token=ntn_... (URL-encoded)
+        const tokenOverride = u.searchParams.get('token') || null;
         const acciones = [];
         for (const p of candidatos) {
-          const r = await archivarPedidoEnNotion(p);
+          const r = await archivarPedidoEnNotion(p, tokenOverride);
           if (r.ok) {
             acciones.push({ id: p.id, equipo: p.equipo, ok: true, notionPageId: r.notionPageId });
           } else {
