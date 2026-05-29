@@ -274,11 +274,25 @@ function limpiarEnviadosDelMesPasado() {
 function guardar() {
   localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
   localStorage.setItem('ws_nextId3', String(nextId));
-  // Sincronizar con servidor para que n8n pueda leer y actualizar pedidos
+  // Sincronizar con servidor y RECIBIR DE VUELTA la lista mergeada.
+  // Si el server preservó/agregó pedidos (origenBot, origenFacturaHuerfana, etc),
+  // actualizamos localStorage para que el tablero NO siga mostrando cache vieja.
   fetch('/api/pedidos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pedidos, nextId, eliminados: [...eliminadosLocales] })
+  }).then(r => r.ok ? r.json() : null).then(resp => {
+    if (!resp || !Array.isArray(resp.pedidos)) return;
+    const idsLocales = new Set(pedidos.map(p => p.id));
+    const agregadosPorServer = resp.pedidos.filter(p => !idsLocales.has(p.id));
+    if (agregadosPorServer.length === 0) return;
+    // Server agregó pedidos que el cliente no tenía -> merge y re-render
+    console.log(`[guardar] server agregó ${agregadosPorServer.length} pedido(s) preservados: ${agregadosPorServer.map(p => '#' + p.id).join(', ')}`);
+    pedidos = resp.pedidos;
+    if (resp.nextId && resp.nextId > nextId) nextId = resp.nextId;
+    localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
+    localStorage.setItem('ws_nextId3', String(nextId));
+    try { render(); } catch (e) { console.error('[guardar re-render]', e); }
   }).catch(() => {}); // silencioso — no interrumpe si falla
 }
 

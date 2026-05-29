@@ -1976,7 +1976,10 @@ http.createServer(async (req, res) => {
           notificarWAPersona(p.vendedora, msg).catch(()=>{});
         }
 
-        return json(res, 200, { ok: true, total: merged.length });
+        // Devolver la lista final mergeada para que el cliente cierre el loop:
+        // si el server agregó pedidos (recuperados del bot, recién creados por sticker, etc),
+        // el cliente actualiza su localStorage en lugar de quedarse con su cache vieja.
+        return json(res, 200, { ok: true, total: merged.length, pedidos: merged, nextId: leerNextId() });
       } catch (e) {
         return json(res, 400, { error: 'JSON inválido' });
       }
