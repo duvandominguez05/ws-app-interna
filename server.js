@@ -1842,7 +1842,7 @@ http.createServer(async (req, res) => {
         existing.forEach(e => {
           if (incomingIds.has(e.id)) return;
           if (archivadosSet.has(e.id)) return;
-          const creadoPorSistema = e.origenBot || e.origenComprobante || e.origenHuerfano;
+          const creadoPorSistema = e.origenBot || e.origenComprobante || e.origenHuerfano || e.origenFacturaHuerfana;
           if (creadoPorSistema) {
             // Pedido creado por sistema — NO permitir que client-side eliminadosLocales lo mate
             if (eliminadosSet.has(e.id)) recuperadosDelBot++;
