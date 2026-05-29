@@ -135,6 +135,27 @@ async function notificarTelegramDuvan(texto) {
   } catch (e) { console.error('[telegram-duvan error]', e.message); }
 }
 
+// Manda mensaje al grupo W&S Admin de Telegram (reportes ejecutivos al duenio).
+// Usa TELEGRAM_CHAT_ID_ADMIN si existe; fallback a Duvan personal.
+async function notificarTelegramAdmin(texto) {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID_ADMIN
+      || process.env.TELEGRAM_CHAT_ID_DUVAN
+      || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: texto, parse_mode: 'Markdown' }),
+    });
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      console.error('[telegram-admin] respuesta:', r.status, errBody.slice(0, 200));
+    }
+  } catch (e) { console.error('[telegram-admin error]', e.message); }
+}
+
 // Manda mensaje al grupo de WhatsApp "Trabajo en familia" vía Evolution.
 // Usa ws-duvan por default (la de Betty/ws-ventas esta en revision).
 async function notificarWhatsappTrabajoFamilia(texto) {
@@ -2332,7 +2353,7 @@ http.createServer(async (req, res) => {
       if (enviar) {
         await responderJefe(texto);
         enviadoWA = true;
-        try { await notificarTelegramDuvan(texto); enviadoTG = true; } catch (e) {}
+        try { await notificarTelegramAdmin(texto); enviadoTG = true; } catch (e) {}
       }
       return json(res, 200, { data, texto, enviadoWA, enviadoTG });
     } catch (e) {
@@ -5896,11 +5917,11 @@ async function cronDomingoTick() {
     console.log('[cron-dom] disparando resumen semanal admin...');
     const data = await generarResumenSemanalAdmin();
     const texto = construirMensajeResumenSemanal(data);
-    // Doble canal: WA personal + Telegram admin
+    // Doble canal: WA personal + grupo Telegram W&S Admin
     await responderJefe(texto);
-    try { await notificarTelegramDuvan(texto); } catch (e) { console.error('[cron-dom tg]', e.message); }
+    try { await notificarTelegramAdmin(texto); } catch (e) { console.error('[cron-dom tg]', e.message); }
     _marcarDomingoEstaSemana();
-    console.log('[cron-dom] enviado WA+TG');
+    console.log('[cron-dom] enviado WA+TG-Admin');
   } catch (e) { console.error('[cron-dom error]', e.message); }
 }
 setInterval(cronDomingoTick, 60 * 1000);
