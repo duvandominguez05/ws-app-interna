@@ -2506,6 +2506,19 @@ http.createServer(async (req, res) => {
       const pedidos = leerPedidos();
       const accionesPropuestas = [];
       let maxId = Math.max(0, ...pedidos.map(p => p.id || 0));
+      // Helper: normaliza nombre vendedora factura ("Betty Forero") al nombre corto ("Betty")
+      // que coincide con personas.js para que Mi Dia filtre correctamente.
+      const normalizarVendedora = (nombre) => {
+        if (!nombre) return null;
+        const n = String(nombre).toLowerCase().trim();
+        const vend = PERSONAS.filter(p => (p.roles || []).includes('ventas'));
+        for (const p of vend) {
+          const corto = p.nombre.toLowerCase();
+          if (n === corto || n.includes(corto)) return p.nombre;
+        }
+        return nombre;
+      };
+
       for (const f of facturas) {
         if (f.pedido_id) continue; // ya vinculada
         if (f.tipo !== 'factura') continue; // ignoramos cotizaciones
@@ -2553,7 +2566,7 @@ http.createServer(async (req, res) => {
             cliente: f.cliente_nombre || ('Cliente +57 ' + tel),
             equipo: f.cliente_nombre || ('Cliente +57 ' + tel),
             telefono: f.cliente_telefono || null,
-            vendedora: f.vendedora || null,
+            vendedora: normalizarVendedora(f.vendedora) || null,
             estado: 'bandeja',
             origenFacturaHuerfana: f.id,
             total: Number(f.total) || null,
