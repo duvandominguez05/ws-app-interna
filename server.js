@@ -3307,6 +3307,46 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/diag-notion — info de configuracion actual de Notion ──
+  if (req.method === 'GET' && req.url === '/api/admin/diag-notion') {
+    try {
+      const dbEnv = process.env.NOTION_DB_ARCHIVO_PEDIDOS || null;
+      const dbUsada = dbEnv || NOTION_DB_DEFAULT;
+      // Verificar que la DB es accesible
+      let info = null;
+      let error = null;
+      if (process.env.NOTION_TOKEN) {
+        try {
+          const r = await fetch('https://api.notion.com/v1/databases/' + dbUsada, {
+            headers: {
+              'Authorization': 'Bearer ' + process.env.NOTION_TOKEN,
+              'Notion-Version': '2022-06-28',
+            },
+          });
+          const data = await r.json();
+          if (r.ok) {
+            info = {
+              title: (data.title || []).map(t => t.plain_text || '').join(''),
+              props: Object.keys(data.properties || {}),
+            };
+          } else {
+            error = data.message || ('HTTP ' + r.status);
+          }
+        } catch (e) { error = e.message; }
+      }
+      return json(res, 200, {
+        envSet: !!dbEnv,
+        envValue: dbEnv ? (dbEnv.slice(0, 8) + '...' + dbEnv.slice(-4)) : null,
+        defaultHardcoded: NOTION_DB_DEFAULT,
+        dbEnUso: dbUsada,
+        tokenConfigurado: !!process.env.NOTION_TOKEN,
+        info, error,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/migrar-pedidos-a-notion?dryRun=1&estados=todos|cerrados ──
   // Sube pedidos existentes a la DB de Notion (histórico). Útil para poblar la DB
   // de una vez con los pedidos que ya cerraron o están en curso, sin esperar al
