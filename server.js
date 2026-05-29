@@ -2519,8 +2519,15 @@ http.createServer(async (req, res) => {
         return nombre;
       };
 
+      // Set de IDs de pedidos existentes para detectar facturas con pedido_id huerfano
+      const pedidoIdsExistentes = new Set(pedidos.map(p => p.id));
       for (const f of facturas) {
-        if (f.pedido_id) continue; // ya vinculada
+        // Si pedido_id apunta a un pedido que NO existe, limpiar para recrearlo
+        if (f.pedido_id && !pedidoIdsExistentes.has(f.pedido_id)) {
+          db.raw.prepare('UPDATE facturas SET pedido_id = NULL WHERE id = ?').run(f.id);
+          f.pedido_id = null;
+        }
+        if (f.pedido_id) continue; // ya vinculada a pedido existente
         if (f.tipo !== 'factura') continue; // ignoramos cotizaciones
         // Buscar pedido existente del mismo cliente/telefono
         const tel = String(f.cliente_telefono || '').replace(/\D/g, '');
