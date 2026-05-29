@@ -2434,6 +2434,166 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /api/admin/sticker-reprocesar-historicos?dryRun=1 ──
+  // Reprocesa stickers fromMe + hash válido de los últimos 10 días que NO crearon pedido.
+  // Recupera los pedidos faltantes (caso reporte de Paola).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/sticker-reprocesar-historicos')) {
+    (async () => {
+      try {
+        const u = new URL(req.url, `http://${req.headers.host}`);
+        const dryRun = u.searchParams.get('dryRun') === '1';
+        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+        const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 10').all().map(r => r.fecha);
+        const acciones = [];
+        for (const fecha of fechas) {
+          const events = db.leerEvolutionEvents(fecha);
+          for (const ev of events) {
+            const ed = ev.data || ev;
+            if (ed?.messageType !== 'stickerMessage') continue;
+            const stk = ed.message?.stickerMessage || {};
+            const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+            if (!STICKERS_VENTA.includes(hash)) continue;
+            if (ed.key?.fromMe !== true) continue;
+            const remoteJid = ed.key?.remoteJid || '';
+            const tel = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            if (tel.length < 6) continue;
+            const instance = ev.instance || '?';
+            const vendedora = vendedoraDeInstancia(instance);
+            const pushName = ed.pushName || '';
+            // ¿Ya hay pedido del cliente con stickerVenta?
+            const pedidosActuales = leerPedidos();
+            const yaProcesado = pedidosActuales.some(p =>
+              String(p.telefono || '').replace(/\D/g, '') === tel && p.stickerVenta === hash
+            );
+            if (yaProcesado) continue;
+            // Hay pedido pero sin sticker? Marcárselo (no crear duplicado)
+            const pedidoExistente = pedidosActuales.find(p =>
+              String(p.telefono || '').replace(/\D/g, '') === tel
+              && ['bandeja','hacer-diseno','confirmado'].includes(p.estado)
+            );
+            if (pedidoExistente) {
+              if (dryRun) {
+                acciones.push({ accion: 'marcar-sticker', tel, vendedora, fecha, pedido_id: pedidoExistente.id });
+              } else {
+                pedidoExistente.stickerVenta = hash;
+                pedidoExistente.fechaVenta = pedidoExistente.fechaVenta || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+                if (pedidoExistente.estado === 'bandeja') pedidoExistente.estado = 'hacer-diseno';
+                if (pedidoExistente.tipoBandeja === 'cotizar') pedidoExistente.tipoBandeja = 'pedido';
+                pedidoExistente.ultimoMovimiento = new Date().toISOString();
+                pedidoExistente.historial = pedidoExistente.historial || [];
+                pedidoExistente.historial.push({
+                  fecha: new Date().toISOString(),
+                  por: 'sticker-reprocesador',
+                  accion: 'sticker-detectado-historico',
+                  nota: `Sticker venta de ${vendedora} reprocesado desde evento del ${fecha}`,
+                });
+                const todos = leerPedidos();
+                const idx = todos.findIndex(x => x.id === pedidoExistente.id);
+                if (idx >= 0) { todos[idx] = pedidoExistente; guardarPedidos(todos, leerNextId()); }
+                acciones.push({ accion: 'marcar-sticker', tel, vendedora, fecha, pedido_id: pedidoExistente.id });
+              }
+            } else {
+              // No hay pedido — crearlo
+              if (dryRun) {
+                acciones.push({ accion: 'crear-pedido', tel, vendedora, fecha, pushName });
+              } else {
+                const equipo = pushName || `Cliente +57 ${tel}`;
+                const r = crearVentaInterna('pedido', vendedora, tel, null, equipo);
+                if (r.ok && r.id) {
+                  const todos = leerPedidos();
+                  const pd = todos.find(x => x.id === r.id);
+                  if (pd) {
+                    pd.estado = 'hacer-diseno';
+                    pd.tipoBandeja = 'pedido';
+                    pd.stickerVenta = hash;
+                    pd.fechaVenta = fecha;
+                    pd.origenBot = true;
+                    pd.notas = pd.notas || `Recuperado desde sticker historico del ${fecha}`;
+                    pd.ultimoMovimiento = new Date().toISOString();
+                    pd.historial = pd.historial || [];
+                    pd.historial.push({
+                      fecha: new Date().toISOString(),
+                      por: 'sticker-reprocesador',
+                      accion: 'crear-desde-sticker-historico',
+                      nota: `Sticker venta de ${vendedora} del ${fecha}`,
+                    });
+                    guardarPedidos(todos, leerNextId());
+                  }
+                  acciones.push({ accion: 'crear-pedido', tel, vendedora, fecha, nuevo_pedido_id: r.id });
+                } else {
+                  acciones.push({ accion: 'fallo-crear', tel, vendedora, fecha, error: r.error });
+                }
+              }
+            }
+          }
+        }
+        return json(res, 200, { dryRun, total: acciones.length, acciones });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
+  // ── GET /api/admin/sticker-audit — cruza cada sticker fromMe + hash correcto con su pedido ──
+  // Para diagnosticar el reporte de Paola: dice que mandó stickers el 27-28 pero no se crearon pedidos.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-audit')) {
+    try {
+      const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 10').all().map(r => r.fecha);
+      const pedidos = leerPedidos();
+      const tomb = idsArchivados();
+      const out = [];
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha);
+        for (const ev of events) {
+          const ed = ev.data || ev;
+          if (ed?.messageType !== 'stickerMessage') continue;
+          const stk = ed.message?.stickerMessage || {};
+          const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
+          const fromMe = ed.key?.fromMe;
+          const remoteJid = ed.key?.remoteJid || '';
+          const tel = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          if (!STICKERS_VENTA.includes(hash)) continue;
+          if (fromMe !== true) continue;
+          const instance = ev.instance || '?';
+          const vendedora = vendedoraDeInstancia(instance);
+          // Buscar pedido del cliente
+          const pedidosCliente = pedidos.filter(p => String(p.telefono || '').replace(/\D/g, '') === tel);
+          const tieneSticker = pedidosCliente.some(p => p.stickerVenta === hash);
+          out.push({
+            fecha,
+            instance,
+            vendedoraEsperada: vendedora,
+            telefono: tel,
+            pushName: ed.pushName || '',
+            hayPedidoConSticker: tieneSticker,
+            pedidosDelCliente: pedidosCliente.map(p => ({ id: p.id, estado: p.estado, equipo: p.equipo, ven: p.vendedora, ts: p.ultimoMovimiento, stickerVenta: p.stickerVenta })),
+            archivado: pedidosCliente.some(p => tomb.has(p.id)),
+            diagnostico: tieneSticker
+              ? 'OK: pedido tiene stickerVenta marcado'
+              : pedidosCliente.length === 0
+                ? 'FALLO: NO se creo pedido para este cliente'
+                : 'PARCIAL: hay pedido pero sin stickerVenta — posible race condition',
+          });
+        }
+      }
+      out.sort((a, b) => b.fecha.localeCompare(a.fecha));
+      const falladosCount = out.filter(o => o.diagnostico.startsWith('FALLO')).length;
+      const okCount = out.filter(o => o.diagnostico.startsWith('OK')).length;
+      const parcialCount = out.filter(o => o.diagnostico.startsWith('PARCIAL')).length;
+      return json(res, 200, {
+        totalStickersValidos: out.length,
+        ok: okCount,
+        fallados: falladosCount,
+        parciales: parcialCount,
+        items: out,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/diag-stickers — lista stickers enviados hoy con hash y fromMe ──
   if (req.method === 'GET' && req.url === '/api/admin/diag-stickers') {
     try {
