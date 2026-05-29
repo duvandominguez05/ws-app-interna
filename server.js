@@ -2341,6 +2341,23 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/alertas-calandra — preview/dispara alertas calandra +24h ──
+  // Query: ?enviar=1 (envía); sin enviar solo muestra los candidatos detectados.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/alertas-calandra')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const enviar = u.searchParams.get('enviar') === '1';
+      const candidatos = detectarPedidosCalandraSinDescargar();
+      let resultado = { enviados: 0, candidatos };
+      if (enviar) {
+        resultado = await enviarAlertasCalandraSinDescargar();
+      }
+      return json(res, 200, resultado);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/resumen-semanal — dispara el resumen del domingo manualmente ──
   // Util para probar sin esperar al domingo o regenerar el reporte.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/resumen-semanal')) {
@@ -5927,6 +5944,130 @@ async function cronDomingoTick() {
 setInterval(cronDomingoTick, 60 * 1000);
 setTimeout(cronDomingoTick, 60 * 1000);
 console.log('[cron-dom] activado — resumen semanal admin domingo 7 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// ALERTAS CALANDRA +24h SIN DESCARGAR
+// Cuando un pedido lleva +24h en estado 'enviado-calandra' sin que
+// calandra haya descargado el WT, avisa al diseñador responsable y
+// al grupo W&S Admin. Una vez por pedido por día para no spamear.
+// ═══════════════════════════════════════════════════════════════════
+const ALERTAS_CAL_FILE = path.join(__dirname, 'data', 'alertas_calandra_enviadas.json');
+function _leerAlertasCalandraEnv() {
+  try { return JSON.parse(fs.readFileSync(ALERTAS_CAL_FILE, 'utf8')); }
+  catch { return {}; }
+}
+function _guardarAlertasCalandraEnv(obj) {
+  try {
+    fs.mkdirSync(path.dirname(ALERTAS_CAL_FILE), { recursive: true });
+    fs.writeFileSync(ALERTAS_CAL_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) { console.error('[alertas-cal] guardar:', e.message); }
+}
+
+function detectarPedidosCalandraSinDescargar() {
+  const pedidos = leerPedidos();
+  const ahora = Date.now();
+  const candidatos = [];
+  for (const p of pedidos) {
+    if (p.estado !== 'enviado-calandra') continue;
+    const archivos = (p.wetransfer && p.wetransfer.archivos) || [];
+    // Filtrar archivos originales enviados pero NO descargados
+    const sinDescargar = archivos.filter(a =>
+      (!a.tipo || a.tipo === 'original') && a.fechaEnvio && !a.fechaDescarga
+    );
+    if (!sinDescargar.length) {
+      // Si NO hay archivos WT registrados aún pero ya está en enviado-calandra,
+      // usar ultimoMovimiento como referencia (fallback).
+      if (!archivos.length && p.ultimoMovimiento) {
+        const horas = (ahora - new Date(p.ultimoMovimiento).getTime()) / 36e5;
+        if (horas >= 24) {
+          candidatos.push({
+            id: p.id,
+            cliente: p.cliente || p.equipo || 'Sin nombre',
+            disenador: p.disenadorAsignado || null,
+            fechaEnvio: p.ultimoMovimiento,
+            horasSinDescarga: Math.round(horas),
+            archivo: null,
+            fuente: 'ultimoMovimiento',
+          });
+        }
+      }
+      continue;
+    }
+    // Tomar el archivo más viejo sin descarga
+    const masViejo = sinDescargar.slice().sort((a, b) =>
+      new Date(a.fechaEnvio).getTime() - new Date(b.fechaEnvio).getTime()
+    )[0];
+    const horas = (ahora - new Date(masViejo.fechaEnvio).getTime()) / 36e5;
+    if (horas >= 24) {
+      candidatos.push({
+        id: p.id,
+        cliente: p.cliente || p.equipo || 'Sin nombre',
+        disenador: p.disenadorAsignado || null,
+        fechaEnvio: masViejo.fechaEnvio,
+        horasSinDescarga: Math.round(horas),
+        archivo: masViejo.nombreOriginal || null,
+        fuente: 'wetransfer',
+      });
+    }
+  }
+  return candidatos;
+}
+
+async function enviarAlertasCalandraSinDescargar() {
+  const candidatos = detectarPedidosCalandraSinDescargar();
+  if (!candidatos.length) {
+    console.log('[alertas-cal] sin pedidos atrasados en calandra');
+    return { enviados: 0, candidatos: [] };
+  }
+  const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+  const enviadasPrev = _leerAlertasCalandraEnv();
+  const aEnviar = candidatos.filter(c => enviadasPrev[c.id] !== hoyBogota);
+  if (!aEnviar.length) {
+    console.log(`[alertas-cal] ${candidatos.length} candidatos pero todos ya avisados hoy`);
+    return { enviados: 0, candidatos };
+  }
+  // Agrupar por diseñador
+  const porDis = {};
+  for (const c of aEnviar) {
+    const k = c.disenador || 'SIN_ASIGNAR';
+    if (!porDis[k]) porDis[k] = [];
+    porDis[k].push(c);
+  }
+  // WA personal a cada diseñador
+  for (const [dis, lista] of Object.entries(porDis)) {
+    if (dis === 'SIN_ASIGNAR') continue; // no notif individual sin asignar
+    const lineas = lista.map(c =>
+      `• *#${c.id} ${c.cliente}* — enviado hace ${c.horasSinDescarga}h${c.archivo ? ' (' + c.archivo + ')' : ''}`
+    ).join('\n');
+    const texto = `⚠️ *Pedidos en calandra +24h sin descargar*\n\n${lineas}\n\n👉 Si calandra no responde, contáctalos o reenvía el WT.`;
+    try {
+      const ok = await notificarWAPersona(dis, texto);
+      if (ok) console.log(`[alertas-cal] WA enviado a ${dis} (${lista.length} pedidos)`);
+    } catch (e) { console.error('[alertas-cal wa]', e.message); }
+  }
+  // TG al grupo W&S Admin (consolidado para visibilidad)
+  const lineasAdmin = aEnviar.map(c =>
+    `• *#${c.id} ${c.cliente}* (${c.disenador || 'sin asignar'}) — ${c.horasSinDescarga}h`
+  ).join('\n');
+  const tgTexto = `⚠️ *CALANDRA +24h SIN DESCARGAR* (${aEnviar.length} pedidos)\n\n${lineasAdmin}\n\n_Diseñadores ya recibieron WA individual._`;
+  try { await notificarTelegramAdmin(tgTexto); } catch (e) { console.error('[alertas-cal tg]', e.message); }
+  // Marcar como enviadas hoy
+  for (const c of aEnviar) enviadasPrev[c.id] = hoyBogota;
+  _guardarAlertasCalandraEnv(enviadasPrev);
+  return { enviados: aEnviar.length, candidatos };
+}
+
+// Cron — corre cada hora durante horario laboral (8 AM a 7 PM Bogotá)
+async function cronAlertasCalandraTick() {
+  try {
+    const hora = _huelaPMBogota();
+    if (hora < 8 || hora >= 19) return;
+    await enviarAlertasCalandraSinDescargar();
+  } catch (e) { console.error('[cron-alertas-cal err]', e.message); }
+}
+setInterval(cronAlertasCalandraTick, 60 * 60 * 1000); // cada hora
+setTimeout(cronAlertasCalandraTick, 90 * 1000); // primer tick 90s tras arrancar
+console.log('[cron-alertas-cal] activado — chequea calandra +24h cada hora 8AM-7PM');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
