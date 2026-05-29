@@ -410,6 +410,37 @@
 
   <main class="worklist" id="worklist"></main>
 
+  <!-- Modal recepcion lote -->
+  <div class="modal" id="modal-recepcion" onclick="cerrarModalRecepcion(event)" style="display:none;">
+    <div class="sheet" onclick="event.stopPropagation()" style="background:#0e0e10;border-radius:18px;padding:22px 18px;max-width:440px;margin:auto;border:1px solid rgba(255,255,255,0.08);box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+        <div>
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700;margin-bottom:6px;">RECEPCIÓN</div>
+          <h2 style="font-size:1.2rem;font-weight:800;letter-spacing:-0.02em;color:#fff;">¿Cuántas prendas recibiste?</h2>
+          <div id="recep-prenda-info" style="font-size:0.82rem;color:#a0a0a0;margin-top:6px;"></div>
+          <div id="recep-enviada-info" style="font-size:0.75rem;color:#666;margin-top:2px;"></div>
+        </div>
+        <button onclick="cerrarModalRecepcion()" style="background:rgba(255,255,255,0.06);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:1rem;cursor:pointer;flex-shrink:0;">✕</button>
+      </div>
+
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px 16px;margin-bottom:14px;text-align:center;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:14px;">
+          <button type="button" onclick="ajustarRecepcion(-1)" style="width:52px;height:52px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);color:#fff;border-radius:14px;font-size:1.6rem;font-weight:800;cursor:pointer;">−</button>
+          <div id="recep-cantidad" style="font-size:3rem;font-weight:900;color:#34d399;font-variant-numeric:tabular-nums;min-width:80px;letter-spacing:-0.05em;line-height:1;">0</div>
+          <button type="button" onclick="ajustarRecepcion(1)" style="width:52px;height:52px;background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.40);color:#34d399;border-radius:14px;font-size:1.6rem;font-weight:800;cursor:pointer;">+</button>
+        </div>
+        <button type="button" onclick="setRecepcionTodos()" style="margin-top:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);color:#a0a0a0;padding:8px 14px;border-radius:999px;font-size:0.78rem;font-weight:600;cursor:pointer;">↺ Recibí todo (igual que enviado)</button>
+      </div>
+
+      <div id="recep-faltante-info" style="text-align:center;font-size:0.85rem;font-weight:700;margin-bottom:14px;padding:10px;background:rgba(255,255,255,0.03);border-radius:10px;"></div>
+
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Notas (opcional)</div>
+      <textarea id="recep-nota" placeholder="Ej: las pantalonetas vienen con mancha, hay que revisar..." rows="2" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;color:#fff;font-size:0.9rem;resize:vertical;margin-bottom:16px;font-family:inherit;"></textarea>
+
+      <button id="recep-confirmar-btn" onclick="confirmarRecepcion()" style="width:100%;background:linear-gradient(180deg,#10b981 0%,#059669 100%);border:none;color:#fff;font-size:1.05rem;font-weight:800;padding:16px;border-radius:12px;cursor:pointer;min-height:54px;">✅ Confirmar recepción completa</button>
+    </div>
+  </div>
+
   <!-- Modal cuadre costureras -->
   <div class="modal" id="modal-cuadre" onclick="cerrarCuadre(event)" style="display:none;">
     <div class="sheet" onclick="event.stopPropagation()" style="background:#0e0e10;border-radius:18px;padding:22px 18px;max-width:560px;margin:auto;border:1px solid rgba(255,255,255,0.08);box-shadow:0 24px 80px rgba(0,0,0,0.7);max-height:88vh;overflow-y:auto;">
@@ -954,16 +985,23 @@
         if (!r.ok) return;
         const data = await r.json();
         const lista = Array.isArray(data.pendientes) ? data.pendientes : [];
-        // Agrupar por costurera_slug
+        // Agrupar por costurera_slug + contar estados
         const grupos = {};
         for (const m of lista) {
           if (!m.costurera_slug) continue;
           if (!grupos[m.costurera_slug]) {
-            grupos[m.costurera_slug] = { slug: m.costurera_slug, nombre: m.costurera_nombre || m.costurera_slug, lotes: 0, prendas: 0, urgentes: 0 };
+            grupos[m.costurera_slug] = {
+              slug: m.costurera_slug,
+              nombre: m.costurera_nombre || m.costurera_slug,
+              lotes: 0, prendas: 0, urgentes: 0,
+              cosiendo: 0, terminados: 0,
+            };
           }
           grupos[m.costurera_slug].lotes += 1;
           grupos[m.costurera_slug].prendas += (m.cantidad_enviada || 0);
           if ((m.dias_en_costura || 0) >= 7) grupos[m.costurera_slug].urgentes += 1;
+          if (m.confirmado_costurera == 1) grupos[m.costurera_slug].terminados += 1;
+          else grupos[m.costurera_slug].cosiendo += 1;
         }
         const arr = Object.values(grupos);
         const panel = document.getElementById('costureras-panel');
@@ -977,9 +1015,17 @@
           const urg = g.urgentes > 0
             ? `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:700;margin-left:6px;">${g.urgentes} urg</span>`
             : '';
-          return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(139,92,246,0.30);border-radius:12px;padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:0.86rem;color:#fff;" onclick="abrirCuadreCostu()">
+          const estado = g.terminados > 0
+            ? `<span style="background:rgba(52,211,153,0.18);color:#34d399;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:800;margin-left:6px;">🟢 ${g.terminados} lista${g.terminados !== 1 ? 's' : ''}</span>`
+            : `<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:700;margin-left:6px;">🟡 cosiendo</span>`;
+          // Si la costurera tiene mix, mostrar ambos badges
+          const mixEstado = (g.terminados > 0 && g.cosiendo > 0)
+            ? `<span style="background:rgba(52,211,153,0.18);color:#34d399;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:800;margin-left:6px;">🟢 ${g.terminados}</span><span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:700;margin-left:4px;">🟡 ${g.cosiendo}</span>`
+            : estado;
+          return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(139,92,246,0.30);border-radius:12px;padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:0.86rem;color:#fff;flex-wrap:wrap;" onclick="abrirCuadreCostu()">
             <strong>🧵 ${esc(g.nombre)}</strong>
             <span style="color:#a0a0a0;font-size:0.78rem;">${g.lotes} lote${g.lotes !== 1 ? 's' : ''} · ${g.prendas} prenda${g.prendas !== 1 ? 's' : ''}</span>
+            ${mixEstado}
             ${urg}
           </div>`;
         }).join('');
@@ -1011,17 +1057,41 @@
         }
         body.innerHTML = Object.values(grupos).map(g => {
           const totalPrendas = g.lotes.reduce((s, l) => s + (l.cantidad_enviada || 0), 0);
-          const lotesHtml = g.lotes.sort((a, b) => (b.dias_en_costura || 0) - (a.dias_en_costura || 0)).map(l => {
+          // Orden: terminados primero (lo que Lidermeyer puede recibir YA), después cosiendo
+          const lotesHtml = g.lotes.sort((a, b) => {
+            const aTerm = a.confirmado_costurera == 1 ? 1 : 0;
+            const bTerm = b.confirmado_costurera == 1 ? 1 : 0;
+            if (aTerm !== bTerm) return bTerm - aTerm;
+            return (b.dias_en_costura || 0) - (a.dias_en_costura || 0);
+          }).map(l => {
             const urg = (l.dias_en_costura || 0) >= 7;
+            const terminado = l.confirmado_costurera == 1;
             const equipo = esc(l.equipo || 'Sin equipo');
-            const prenda = l.prenda ? ' · ' + esc(l.prenda) : '';
-            return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:8px;${urg ? 'border-color:rgba(239,68,68,0.30);' : ''}">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-                <strong style="font-size:0.92rem;color:#fff;">${equipo}</strong>
-                <span style="font-family:monospace;font-size:0.7rem;color:#666;">#${l.id}</span>
+            const prendaText = l.prenda ? esc(l.prenda) : 'Sin detalle de prendas';
+            const badge = terminado
+              ? '<span style="background:rgba(52,211,153,0.18);color:#34d399;padding:3px 9px;border-radius:999px;font-size:0.7rem;font-weight:800;">🟢 LISTO PARA RECIBIR</span>'
+              : '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:3px 9px;border-radius:999px;font-size:0.7rem;font-weight:700;">🟡 cosiendo</span>';
+            const btnStyle = terminado
+              ? 'background:linear-gradient(180deg,#10b981 0%,#059669 100%);box-shadow:0 4px 12px rgba(16,185,129,0.40);'
+              : 'background:rgba(16,185,129,0.40);';
+            const bordeColor = terminado
+              ? 'border-color:rgba(52,211,153,0.40);box-shadow:0 0 0 1px rgba(52,211,153,0.10);'
+              : (urg ? 'border-color:rgba(239,68,68,0.30);' : '');
+            return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;margin-bottom:10px;${bordeColor}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:8px;">
+                <strong style="font-size:0.95rem;color:#fff;line-height:1.2;">${equipo}</strong>
+                <span style="font-family:monospace;font-size:0.7rem;color:#666;flex-shrink:0;">#${l.id}</span>
               </div>
-              <div style="font-size:0.78rem;color:#a0a0a0;margin-bottom:8px;">${l.cantidad_enviada} prendas${prenda} · ${l.dias_en_costura} día${l.dias_en_costura !== 1 ? 's' : ''}${urg ? ' ⚠️' : ''}</div>
-              <button onclick="recibirLoteCostu(${l.id})" style="width:100%;background:#10b981;border:none;color:#fff;padding:10px;border-radius:8px;font-weight:700;font-size:0.88rem;cursor:pointer;">📥 Recibí terminado</button>
+              <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+                ${badge}
+                <span style="background:rgba(255,255,255,0.04);color:#a0a0a0;padding:3px 9px;border-radius:999px;font-size:0.7rem;font-weight:600;">${l.dias_en_costura} día${l.dias_en_costura !== 1 ? 's' : ''}${urg ? ' ⚠️' : ''}</span>
+              </div>
+              <div style="background:rgba(255,255,255,0.02);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#666;font-weight:700;margin-bottom:4px;">Composición del lote</div>
+                <div style="font-size:0.88rem;color:#fff;font-weight:600;">${prendaText}</div>
+                <div style="font-size:0.75rem;color:#a0a0a0;margin-top:2px;">Total enviado: ${l.cantidad_enviada} prendas</div>
+              </div>
+              <button onclick="abrirModalRecepcion(${l.id}, ${l.cantidad_enviada}, ${JSON.stringify(prendaText).replace(/"/g, '&quot;')})" style="width:100%;${btnStyle}border:none;color:#fff;padding:14px;border-radius:10px;font-weight:800;font-size:0.95rem;cursor:pointer;min-height:50px;">📥 Recibí terminado</button>
             </div>`;
           }).join('');
           return `<div style="margin-bottom:20px;">
@@ -1039,25 +1109,96 @@
       document.getElementById('modal-cuadre').style.display = 'none';
     }
 
-    async function recibirLoteCostu(movId) {
-      const cant = prompt('¿Cuántas prendas recibiste de vuelta? (puede ser igual o menos)');
-      if (cant === null) return;
-      const n = parseInt(cant, 10);
-      if (isNaN(n) || n < 0) { toast('Cantidad inválida', 'error'); return; }
+    // ─── Modal recepción de lote ───
+    let recepcionMovId = null;
+    let recepcionEnviada = 0;
+    let recepcionRecibida = 0;
+
+    function abrirModalRecepcion(movId, cantEnviada, prendaText) {
+      recepcionMovId = movId;
+      recepcionEnviada = cantEnviada;
+      recepcionRecibida = cantEnviada; // Asumimos igual por default (caso comun)
+      document.getElementById('recep-prenda-info').textContent = prendaText.replace(/&quot;/g, '"');
+      document.getElementById('recep-enviada-info').textContent = cantEnviada + ' prendas enviadas';
+      document.getElementById('recep-nota').value = '';
+      actualizarRecepcionUI();
+      const modal = document.getElementById('modal-recepcion');
+      modal.style.display = 'flex';
+      modal.style.alignItems = 'center';
+      modal.style.justifyContent = 'center';
+      modal.style.padding = '20px';
+    }
+
+    function ajustarRecepcion(delta) {
+      recepcionRecibida = Math.max(0, Math.min(recepcionEnviada * 2, recepcionRecibida + delta));
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+      actualizarRecepcionUI();
+    }
+
+    function setRecepcionTodos() {
+      recepcionRecibida = recepcionEnviada;
+      try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+      actualizarRecepcionUI();
+    }
+
+    function actualizarRecepcionUI() {
+      document.getElementById('recep-cantidad').textContent = recepcionRecibida;
+      const faltante = recepcionEnviada - recepcionRecibida;
+      const infoEl = document.getElementById('recep-faltante-info');
+      const btnEl = document.getElementById('recep-confirmar-btn');
+      if (faltante === 0) {
+        infoEl.innerHTML = '<span style="color:#34d399;">✅ Llegó todo completo</span>';
+        btnEl.innerHTML = '✅ Confirmar recepción completa';
+        btnEl.style.background = 'linear-gradient(180deg,#10b981 0%,#059669 100%)';
+      } else if (faltante > 0) {
+        infoEl.innerHTML = `<span style="color:#fbbf24;">⚠️ Faltan ${faltante} prenda${faltante !== 1 ? 's' : ''} → se crea arreglo automático</span>`;
+        btnEl.innerHTML = `⚠️ Confirmar con ${faltante} faltante${faltante !== 1 ? 's' : ''}`;
+        btnEl.style.background = 'linear-gradient(180deg,#f59e0b 0%,#d97706 100%)';
+      } else {
+        infoEl.innerHTML = `<span style="color:#a78bfa;">+${-faltante} prenda${-faltante !== 1 ? 's' : ''} extra (recibió más de lo enviado)</span>`;
+        btnEl.innerHTML = `Confirmar recepción (${recepcionRecibida})`;
+        btnEl.style.background = 'linear-gradient(180deg,#8b5cf6 0%,#7c3aed 100%)';
+      }
+    }
+
+    function cerrarModalRecepcion(ev) {
+      if (ev && ev.target.id !== 'modal-recepcion') return;
+      document.getElementById('modal-recepcion').style.display = 'none';
+      recepcionMovId = null;
+    }
+
+    async function confirmarRecepcion() {
+      if (!recepcionMovId) return;
+      const faltante = Math.max(0, recepcionEnviada - recepcionRecibida);
+      const nota = document.getElementById('recep-nota').value.trim();
+      const btn = document.getElementById('recep-confirmar-btn');
+      const txtOrig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Guardando...';
       try {
         const r = await fetch('/api/costureras/recepcion', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ movimiento_id: movId, cantidad_recibida: n, recibido_por: 'lidermeyer-app' }),
+          body: JSON.stringify({
+            movimiento_id: recepcionMovId,
+            cantidad_recibida: recepcionRecibida,
+            faltante,
+            observaciones: nota || null,
+            recibido_por: 'lidermeyer-app',
+          }),
         });
         const data = await r.json();
         if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
-        toast('✅ Recepción registrada');
+        toast(faltante > 0 ? `✅ Recepción + arreglo creado (${faltante} faltantes)` : '✅ Recepción completa registrada');
         try { if (navigator.vibrate) navigator.vibrate([20, 40, 60]); } catch (e) {}
+        cerrarModalRecepcion();
         abrirCuadreCostu();
         cargarPanelCostureras();
+        cargar();
       } catch (e) {
         toast('Error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = txtOrig;
       }
     }
 

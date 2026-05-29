@@ -5190,33 +5190,74 @@ http.createServer(async (req, res) => {
         const mov = db.leerMovimientoCostura(movimiento_id);
         if (!mov) return json(res, 404, { error: 'movimiento no encontrado' });
 
+        const faltanteNum = parseInt(faltante || 0, 10);
+        const recibidaNum = parseInt(cantidad_recibida, 10);
         db.recibirMovimientoCostura(movimiento_id, {
-          cantidad_recibida: parseInt(cantidad_recibida, 10),
-          faltante: parseInt(faltante || 0, 10),
+          cantidad_recibida: recibidaNum,
+          faltante: faltanteNum,
           recibido_por: recibido_por || null,
           observaciones: observaciones || null,
         });
 
-        // Avanzar pedido a 'calidad'
+        // Buscar pedido para datos
+        let pedido = null;
         if (mov.pedido_id) {
           const todos = leerPedidos();
           const idx = todos.findIndex(x => x.id === mov.pedido_id);
           if (idx >= 0) {
-            todos[idx].estado = 'calidad';
-            todos[idx].ultimoMovimiento = new Date().toISOString();
-            todos[idx].historial = todos[idx].historial || [];
-            todos[idx].historial.push({
+            pedido = todos[idx];
+            pedido.estado = 'calidad';
+            pedido.ultimoMovimiento = new Date().toISOString();
+            pedido.historial = pedido.historial || [];
+            pedido.historial.push({
               fecha: new Date().toISOString(),
               por: recibido_por || 'app',
               accion: 'recibir-costura',
-              nota: `Recibido de ${mov.costurera_nombre}: ${cantidad_recibida}/${mov.cantidad_enviada}` +
-                    (faltante > 0 ? ` (FALTAN ${faltante})` : ''),
+              nota: `Recibido de ${mov.costurera_nombre}: ${recibidaNum}/${mov.cantidad_enviada}` +
+                    (faltanteNum > 0 ? ` (FALTAN ${faltanteNum})` : ''),
             });
             db.guardarPedidos(todos);
           }
         }
 
-        return json(res, 200, { ok: true });
+        // ─── HUECO #2: Si hay faltantes, crear arreglo automático ───
+        let arregloId = null;
+        if (faltanteNum > 0) {
+          try {
+            const actuales = db.leerArreglos();
+            const nuevoArreglo = {
+              id: Date.now(),
+              equipo: (pedido && (pedido.equipo || pedido.cliente)) || mov.equipo || ('Pedido #' + (mov.pedido_id || '')),
+              faltante: `Faltan ${faltanteNum} prenda${faltanteNum !== 1 ? 's' : ''} del lote de ${mov.costurera_nombre} (envió ${recibidaNum}/${mov.cantidad_enviada} - ${mov.prenda || 'mix'})`,
+              disenador: (pedido && pedido.disenadorAsignado) || 'Sin asignar',
+              pedidoId: mov.pedido_id || null,
+              enviado: false,
+              resuelto: false,
+              fecha: new Date().toLocaleDateString('es-CO'),
+              origen: 'faltante-costura',
+              origenMovimiento: movimiento_id,
+            };
+            actuales.unshift(nuevoArreglo);
+            db.guardarArreglos(actuales);
+            arregloId = nuevoArreglo.id;
+            // Notif al disenador
+            if (nuevoArreglo.disenador && nuevoArreglo.disenador !== 'Sin asignar') {
+              const msgWA = `⚠️ *Arreglo auto-creado por faltante de costura*\n\n` +
+                `👕 Equipo: ${nuevoArreglo.equipo}\n` +
+                `🧵 Costurera: ${mov.costurera_nombre}\n` +
+                `📝 Falta: ${nuevoArreglo.faltante}\n\n` +
+                `Por favor reponé las ${faltanteNum} prenda${faltanteNum !== 1 ? 's' : ''} faltante${faltanteNum !== 1 ? 's' : ''}.`;
+              notificarWAPersona(nuevoArreglo.disenador, msgWA).catch(()=>{});
+            }
+            // Telegram a Duvan
+            try {
+              await notificarTelegramAdmin(`⚠️ *Arreglo auto-creado* — faltantes en costura\n\n` +
+                `Equipo: ${nuevoArreglo.equipo}\nCostura: ${mov.costurera_nombre}\nFaltan: ${faltanteNum}\nAsignado a: ${nuevoArreglo.disenador}`);
+            } catch (e) {}
+          } catch (eArr) { console.error('[faltante-arreglo err]', eArr.message); }
+        }
+
+        return json(res, 200, { ok: true, faltante: faltanteNum, arregloId });
       } catch (e) {
         return json(res, 500, { error: e.message });
       }
@@ -6443,6 +6484,53 @@ async function cronAlertasCalandraTick() {
 setInterval(cronAlertasCalandraTick, 60 * 60 * 1000); // cada hora
 setTimeout(cronAlertasCalandraTick, 90 * 1000); // primer tick 90s tras arrancar
 console.log('[cron-alertas-cal] activado — chequea calandra +24h cada hora 8AM-7PM');
+
+// ═══════════════════════════════════════════════════════════════════
+// ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió
+// Cron horario 8AM-7PM Bogotá. Avisa a Lidermeyer + admin.
+// ═══════════════════════════════════════════════════════════════════
+const ALERTAS_COSTU_FILE = path.join(__dirname, 'data', 'alertas_costura_entrega.json');
+function _leerAlertasCostu() {
+  try { return JSON.parse(fs.readFileSync(ALERTAS_COSTU_FILE, 'utf8')); } catch { return {}; }
+}
+function _guardarAlertasCostu(obj) {
+  try { fs.mkdirSync(path.dirname(ALERTAS_COSTU_FILE), { recursive: true }); fs.writeFileSync(ALERTAS_COSTU_FILE, JSON.stringify(obj, null, 2)); } catch {}
+}
+
+async function cronAlertasCosturaEntregaTick() {
+  try {
+    const hora = _huelaPMBogota();
+    if (hora < 8 || hora >= 19) return;
+    const pendientes = db.leerMovimientosCosturaPendientes();
+    const ahora = Date.now();
+    const pendientesEntrega = pendientes.filter(m => {
+      if (m.confirmado_costurera != 1) return false;
+      if (m.cantidad_recibida != null) return false;
+      if (!m.fecha_confirmacion) return false;
+      const horas = (ahora - new Date(m.fecha_confirmacion).getTime()) / 36e5;
+      return horas >= 48;
+    });
+    if (!pendientesEntrega.length) return;
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    const enviadasPrev = _leerAlertasCostu();
+    const aEnviar = pendientesEntrega.filter(m => enviadasPrev[m.id] !== hoyBogota);
+    if (!aEnviar.length) return;
+    // Una sola notif consolidada a Lidermeyer + grupo Admin
+    const lineas = aEnviar.map(m => {
+      const horas = Math.round((ahora - new Date(m.fecha_confirmacion).getTime()) / 36e5);
+      return `• #${m.id} ${m.costurera_nombre}: ${m.cantidad_enviada} prendas (${m.equipo}) — marcó hace ${horas}h`;
+    }).join('\n');
+    const texto = `⚠️ *Lotes terminados sin recibir físicamente*\n\n${lineas}\n\n👉 Revisa si las costureras los trajeron o llamá a verificar.`;
+    try { await notificarWAPersona('Lidermeyer', texto); } catch (e) {}
+    try { await notificarTelegramAdmin(texto); } catch (e) {}
+    for (const m of aEnviar) enviadasPrev[m.id] = hoyBogota;
+    _guardarAlertasCostu(enviadasPrev);
+    console.log(`[alertas-costu-entrega] notif sobre ${aEnviar.length} lotes`);
+  } catch (e) { console.error('[cron-alertas-costu-entrega err]', e.message); }
+}
+setInterval(cronAlertasCosturaEntregaTick, 60 * 60 * 1000); // cada hora
+setTimeout(cronAlertasCosturaEntregaTick, 120 * 1000);
+console.log('[cron-alertas-costu-entrega] activado — chequea costureras +48h sin entregar fisicamente');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
