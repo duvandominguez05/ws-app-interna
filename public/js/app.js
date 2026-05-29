@@ -740,8 +740,15 @@ function _miDiaBloqueDiseno(nombrePersona) {
       + '<div class="midia-card-meta">🛍️ ' + esc(p.vendedora || '—') + (urg ? ' · ' + urg : '') + '</div>'
     + '</div>';
   }).join('') || (sinAsignar.length
-      ? '<div class="midia-empty">No tienes ningun diseño asignado todavia. Hay <strong>' + sinAsignar.length + ' en cola sin asignar</strong>. ¿Tomas uno?</div>'
-      : '<div class="midia-empty">✅ Sin diseños pendientes. Todo al dia.</div>');
+      ? `<div class="midia-empty">
+          <div style="margin-bottom:14px;">No tienes ningún diseño asignado todavía.<br>Hay <strong>${sinAsignar.length} en cola sin asignar</strong>.</div>
+          <button class="midia-btn" style="background:linear-gradient(180deg,#fb923c 0%,#ea580c 100%);border:none;color:#fff;font-weight:800;padding:14px 22px;font-size:0.95rem;box-shadow:0 4px 14px rgba(251,146,60,0.35);min-height:48px;" onclick="tomarProximoDiseno()">🎨 Tomar próximo diseño en cola</button>
+        </div>`
+      : '<div class="midia-empty">✅ Sin diseños pendientes. Todo al día.</div>');
+  // Boton tomar otro arriba de la lista cuando ya tiene asignados Y hay sin asignar
+  const tomarMas = (mios.length > 0 && sinAsignar.length > 0)
+    ? `<button class="midia-btn" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.40);color:#fb923c;font-weight:700;margin-bottom:10px;font-size:0.85rem;" onclick="tomarProximoDiseno()">🎨 Tomar uno más de la cola (${sinAsignar.length} disponibles)</button>`
+    : '';
   return `
     <article class="midia-bloque" style="--bloque-color:#fb923c;">
       <header class="midia-bloque-head">
@@ -751,12 +758,53 @@ function _miDiaBloqueDiseno(nombrePersona) {
           <small>${mios.length} asignados · ${sinAsignar.length} sin asignar en cola</small>
         </div>
       </header>
+      ${tomarMas}
       <div class="midia-cards">${cards}</div>
       <div class="midia-actions">
         <button class="midia-btn" onclick="showSection('diseno', null);">Ver todos los diseños</button>
       </div>
     </article>
   `;
+}
+
+// Asigna el proximo diseño en cola al usuario actual.
+// Toma el más urgente (fechaEntrega más cercana o vencida).
+async function tomarProximoDiseno() {
+  const persona = getPersonaActual();
+  if (!persona) { toast('No se identifica tu persona', 'error'); return; }
+  const cola = _miDiaActivos()
+    .filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado)
+    .sort((a, b) => {
+      // Más urgente primero (fecha más cercana o vencida)
+      const fa = a.fechaEntrega ? new Date(a.fechaEntrega).getTime() : Infinity;
+      const fb = b.fechaEntrega ? new Date(b.fechaEntrega).getTime() : Infinity;
+      return fa - fb;
+    });
+  if (!cola.length) {
+    toast('No hay diseños sin asignar en cola', 'info');
+    return;
+  }
+  const p = cola[0];
+  // Confirmacion inline (no popup feo)
+  const ok = confirm(`¿Tomar el diseño de "${p.equipo || p.telefono || ('#' + p.id)}"?\n\nVendedora: ${p.vendedora || '—'}\nEntrega: ${p.fechaEntrega || 'sin fecha'}`);
+  if (!ok) return;
+  try {
+    const r = await fetch('/api/pedidos/' + p.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ disenadorAsignado: persona.nombre }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+    toast(`🎨 Diseño tomado: ${p.equipo || '#' + p.id}`, 'success');
+    // Refrescar pedidos locales y re-render
+    if (typeof resincronizarConServidor === 'function') {
+      try { await resincronizarConServidor(); } catch (e) {}
+    }
+    renderMiDia();
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 function _miDiaBloqueVentas(nombrePersona) {
@@ -1460,8 +1508,28 @@ function copiarEstadoCliente(id) {
   );
 }
 
+// Calcula y actualiza badges del sidebar — desacoplado de renderXXX
+// para que siempre refleje el estado actual de `pedidos` aunque el
+// usuario esté en otra sección (ej. Mi Día).
+function actualizarBadgesSidebar() {
+  try {
+    const activos = (pedidos || []).filter(p => p && p.estado && p.estado !== 'enviado-final' && p.estado !== 'archivado');
+    const setBadge = (id, n) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (n == null ? 0 : n);
+    };
+    setBadge('badge-tab-principal', activos.length);
+    setBadge('badge-torre-unif', activos.length);
+    const enCalandra = activos.filter(p => ['enviado-calandra', 'llego-impresion'].includes(p.estado));
+    setBadge('badge-calandra', enCalandra.length);
+    const arregPend = ((_miDiaArreglos || []).filter(a => !a.resuelto)).length;
+    setBadge('badge-arreglos', arregPend);
+  } catch (e) { /* silencioso */ }
+}
+
 function render() {
   const safe = (nombre, fn) => { try { fn(); } catch (e) { console.error('[render]', nombre, e); } };
+  safe('badges-sidebar', actualizarBadgesSidebar);
   safe('metricas', renderMetricas);
   safe('dashboard', renderDashboard);
   safe('badges', renderBadges);
@@ -3291,6 +3359,7 @@ function syncConServidor(silencioso = false) {
         nextId = Math.max(nextId, serverNextId || 1, ...pedidos.map(p => p.id + 1));
         localStorage.setItem('ws_pedidos3', JSON.stringify(pedidos));
         localStorage.setItem('ws_nextId3', String(nextId));
+        try { actualizarBadgesSidebar(); } catch (e) {}
         render();
         try { if (document.getElementById('mi-dia') && document.getElementById('mi-dia').classList.contains('active')) renderMiDia(); } catch (e) {}
         if (!silencioso) toast('🔄 ' + pedidos.length + ' pedidos cargados del servidor', 'success');
