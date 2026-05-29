@@ -2457,6 +2457,44 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/test-lote-costurera/:slug — crea lote demo para probar UX ──
+  // Inserta un lote ficticio. NO impacta producción real. Para borrar usar
+  // /api/admin/test-lote-borrar?id=XX
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/test-lote-costurera/')) {
+    try {
+      const slug = req.url.split('/')[4].split('?')[0];
+      const costu = PERSONAS.find(p => p.slug === slug && p.roles.includes('costura'));
+      if (!costu) return json(res, 404, { error: 'costurera no encontrada' });
+      const id = db.crearMovimientoCostura({
+        pedido_id: null,
+        costurera_slug: slug,
+        costurera_nombre: costu.nombre,
+        equipo: 'PRUEBA — Colegio Demo',
+        prenda: 'Camiseta + pantaloneta',
+        cantidad_enviada: 24,
+        enviado_por: 'test-admin',
+        observaciones: 'Lote de PRUEBA. Esto es solo para ver como se ve la app de '+costu.nombre+'. Cuando termines, borralo con el endpoint /api/admin/test-lote-borrar?id='+'<el id que sale aqui>',
+      });
+      return json(res, 200, {
+        ok: true,
+        movimiento_id: id,
+        vistaCosturera: `/c/${slug}`,
+        borrarUrl: `/api/admin/test-lote-borrar?id=${id}`,
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
+  // ── GET /api/admin/test-lote-borrar?id=XX — borra un lote de prueba ──
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/test-lote-borrar')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const id = parseInt(u.searchParams.get('id') || '0', 10);
+      if (!id) return json(res, 400, { error: 'falta id' });
+      db.raw.prepare('DELETE FROM costureras_movimientos WHERE id = ?').run(id);
+      return json(res, 200, { ok: true, borrado: id });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // ── GET /api/admin/pagos-pedido/:id — estado financiero detallado de un pedido ──
   if (req.method === 'GET' && /^\/api\/admin\/pagos-pedido\/\d+/.test(req.url)) {
     try {
