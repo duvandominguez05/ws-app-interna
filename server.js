@@ -2493,12 +2493,20 @@ http.createServer(async (req, res) => {
                 acciones.push({ accion: 'marcar-sticker', tel, vendedora, fecha, pedido_id: pedidoExistente.id });
               }
             } else {
-              // No hay pedido — crearlo
+              // No hay pedido — crearlo (resolverCliente filtra pushNames de la cuenta empresa)
+              let nombreCliente = '';
+              try {
+                const resuelto = await resolverCliente(remoteJid, tel, pushName);
+                nombreCliente = resuelto.nombre || '';
+              } catch (eR) {
+                nombreCliente = `Cliente +57 ${tel.slice(-10)}`;
+              }
               if (dryRun) {
-                acciones.push({ accion: 'crear-pedido', tel, vendedora, fecha, pushName });
-              } else {
-                const equipo = pushName || `Cliente +57 ${tel}`;
-                const r = crearVentaInterna('pedido', vendedora, tel, null, equipo);
+                acciones.push({ accion: 'crear-pedido', tel, vendedora, fecha, equipoResuelto: nombreCliente });
+                continue;
+              }
+              {
+                const r = crearVentaInterna('pedido', vendedora, tel, null, nombreCliente);
                 if (r.ok && r.id) {
                   const todos = leerPedidos();
                   const pd = todos.find(x => x.id === r.id);
