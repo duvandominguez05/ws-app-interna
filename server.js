@@ -2746,6 +2746,94 @@ http.createServer(async (req, res) => {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // ── POST /api/admin/recuperar-pedidos-desde-comprobantes?dryRun=1 ──
+  // Para cada teléfono que tiene comprobantes pero NINGÚN pedido activo en la app,
+  // crea un pedido huerfano con vendedora derivada del comprobante (Betty/Ney/etc).
+  // Suma todos sus comprobantes como abonado. Esto recupera ventas reales que el
+  // vendedor olvido oficializar con sticker.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/recuperar-pedidos-desde-comprobantes')) {
+    (async () => {
+      try {
+        const u = new URL(req.url, `http://${req.headers.host}`);
+        const dryRun = u.searchParams.get('dryRun') === '1';
+        const comps = db.leerComprobantes();
+        const pedidos = leerPedidos();
+        const normTel = t => String(t || '').replace(/\D/g, '').slice(-10);
+        const telsConPedido = new Set(pedidos.filter(p => p.estado !== 'enviado-final').map(p => normTel(p.telefono)));
+        // Agrupar comprobantes por telefono normalizado, solo los sin pedido
+        const porTel = new Map();
+        for (const c of comps) {
+          if (!c.monto || c.monto <= 0) continue;
+          const tel = normTel(c.telefono);
+          if (!tel) continue;
+          if (telsConPedido.has(tel)) continue;
+          if (!porTel.has(tel)) porTel.set(tel, { tel, telOriginal: String(c.telefono).replace(/\D/g, ''), comps: [], total: 0, vendedora: null, cliente: null, remoteJid: null });
+          const g = porTel.get(tel);
+          g.comps.push(c);
+          g.total += c.monto;
+          if (!g.vendedora && c.vendedora) g.vendedora = c.vendedora;
+          if (!g.cliente && c.cliente) g.cliente = c.cliente;
+          if (!g.remoteJid && c.remoteJid) g.remoteJid = c.remoteJid;
+        }
+        const acciones = [];
+        for (const [tel, g] of porTel.entries()) {
+          const vendedora = g.vendedora || 'Betty';
+          let nombreCliente = g.cliente;
+          // Si el "cliente" en comprobante es solo emoji o telefono, intentar Chatwoot
+          if (!nombreCliente || /^\d+$/.test(nombreCliente) || nombreCliente.length < 2 || /^[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]+$/u.test(nombreCliente)) {
+            try {
+              const resuelto = await resolverCliente(g.remoteJid || (tel + '@s.whatsapp.net'), tel, g.cliente || '');
+              nombreCliente = resuelto.nombre || `Cliente +57 ${tel}`;
+            } catch { nombreCliente = `Cliente +57 ${tel}`; }
+          }
+          if (dryRun) {
+            acciones.push({ tel, vendedora, cliente: nombreCliente, total: g.total, comps: g.comps.length });
+            continue;
+          }
+          // Crear pedido
+          const r = crearVentaInterna('pedido', vendedora, g.telOriginal || tel, null, nombreCliente);
+          if (!r.ok || !r.id) { acciones.push({ tel, fallo: r.error }); continue; }
+          // Marcar como recuperado + sumar abonado de TODOS sus comprobantes
+          const todos = leerPedidos();
+          const pd = todos.find(x => x.id === r.id);
+          if (pd) {
+            pd.estado = 'hacer-diseno';
+            pd.tipoBandeja = 'pedido';
+            pd.origenComprobante = true;
+            pd.notas = pd.notas || `Recuperado de ${g.comps.length} comprobante(s) sin pedido previo`;
+            pd.ultimoMovimiento = new Date().toISOString();
+            _inicializarPagosPedido(pd);
+            for (const c of g.comps) {
+              _anadirPagoAPedido(pd, {
+                monto: c.monto, banco: c.banco, fecha: c.fecha,
+                comprobante_id: c.id || c.messageId, origen: 'comprobante',
+              });
+            }
+            pd.historial = pd.historial || [];
+            pd.historial.push({
+              fecha: new Date().toISOString(),
+              por: 'admin-recuperar-comprobantes',
+              accion: 'crear-desde-comprobantes',
+              nota: `${g.comps.length} comprobante(s) sumados: $${g.total.toLocaleString('es-CO')}`,
+            });
+            guardarPedidos(todos, leerNextId());
+          }
+          acciones.push({ tel, vendedora, cliente: nombreCliente, total: g.total, comps: g.comps.length, pedido_id: r.id });
+        }
+        const totalRecuperado = acciones.reduce((s, a) => s + (a.total || 0), 0);
+        return json(res, 200, {
+          dryRun,
+          totalClientes: porTel.size,
+          totalRecuperado,
+          acciones: acciones.sort((a, b) => (b.total || 0) - (a.total || 0)),
+        });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/admin/vincular-comprobantes-huerfanos?dryRun=1 ──
   // Toma todos los comprobantes_detectados y los suma al "abonado" del pedido
   // del mismo telefono activo. Necesario para que el resumen domingo refleje
