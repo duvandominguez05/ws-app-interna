@@ -5249,11 +5249,9 @@ http.createServer(async (req, res) => {
                 `Por favor reponé las ${faltanteNum} prenda${faltanteNum !== 1 ? 's' : ''} faltante${faltanteNum !== 1 ? 's' : ''}.`;
               notificarWAPersona(nuevoArreglo.disenador, msgWA).catch(()=>{});
             }
-            // Telegram a Duvan
-            try {
-              await notificarTelegramAdmin(`⚠️ *Arreglo auto-creado* — faltantes en costura\n\n` +
-                `Equipo: ${nuevoArreglo.equipo}\nCostura: ${mov.costurera_nombre}\nFaltan: ${faltanteNum}\nAsignado a: ${nuevoArreglo.disenador}`);
-            } catch (e) {}
+            // Telegram a Duvan (fire-and-forget, no await porque este callback no es async)
+            notificarTelegramAdmin(`⚠️ *Arreglo auto-creado* — faltantes en costura\n\n` +
+              `Equipo: ${nuevoArreglo.equipo}\nCostura: ${mov.costurera_nombre}\nFaltan: ${faltanteNum}\nAsignado a: ${nuevoArreglo.disenador}`).catch(()=>{});
           } catch (eArr) { console.error('[faltante-arreglo err]', eArr.message); }
         }
 
