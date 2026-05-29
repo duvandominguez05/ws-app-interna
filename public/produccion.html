@@ -399,9 +399,30 @@
       <div class="summary-card"><strong id="s-stale">0</strong><span>Sin mov.</span></div>
     </div>
     <div class="filters" id="filters"></div>
+    <div id="costureras-panel" style="display:none;margin-top:14px;padding:14px 12px;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.20);border-radius:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong style="font-size:0.78rem;text-transform:uppercase;letter-spacing:1.5px;color:#c4b5fd;">🧵 Costureras activas</strong>
+        <button onclick="abrirCuadreCostu()" style="background:rgba(255,255,255,0.06);border:none;color:#c4b5fd;padding:4px 12px;border-radius:999px;font-size:0.72rem;font-weight:700;cursor:pointer;">Ver detalle</button>
+      </div>
+      <div id="costureras-chips" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
   </div>
 
   <main class="worklist" id="worklist"></main>
+
+  <!-- Modal cuadre costureras -->
+  <div class="modal" id="modal-cuadre" onclick="cerrarCuadre(event)" style="display:none;">
+    <div class="sheet" onclick="event.stopPropagation()" style="background:#0e0e10;border-radius:18px;padding:22px 18px;max-width:560px;margin:auto;border:1px solid rgba(255,255,255,0.08);box-shadow:0 24px 80px rgba(0,0,0,0.7);max-height:88vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+        <div>
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700;margin-bottom:6px;">CUADRE</div>
+          <h2 style="font-size:1.25rem;font-weight:800;letter-spacing:-0.02em;color:#fff;">Lotes activos por costurera</h2>
+        </div>
+        <button onclick="cerrarCuadre()" style="background:rgba(255,255,255,0.06);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:1rem;cursor:pointer;flex-shrink:0;">✕</button>
+      </div>
+      <div id="cuadre-body"></div>
+    </div>
+  </div>
 
   <div class="modal" id="modal" onclick="cerrarDetalle(event)">
     <div class="sheet" onclick="event.stopPropagation()">
@@ -864,9 +885,125 @@
         toast('Error: ' + e.message, 'error');
       }
     }
+    // ─── Panel costureras (Paso 3) ───
+    async function cargarPanelCostureras() {
+      try {
+        const r = await fetch('/api/costureras/pendientes');
+        if (!r.ok) return;
+        const data = await r.json();
+        const lista = Array.isArray(data.pendientes) ? data.pendientes : [];
+        // Agrupar por costurera_slug
+        const grupos = {};
+        for (const m of lista) {
+          if (!m.costurera_slug) continue;
+          if (!grupos[m.costurera_slug]) {
+            grupos[m.costurera_slug] = { slug: m.costurera_slug, nombre: m.costurera_nombre || m.costurera_slug, lotes: 0, prendas: 0, urgentes: 0 };
+          }
+          grupos[m.costurera_slug].lotes += 1;
+          grupos[m.costurera_slug].prendas += (m.cantidad_enviada || 0);
+          if ((m.dias_en_costura || 0) >= 7) grupos[m.costurera_slug].urgentes += 1;
+        }
+        const arr = Object.values(grupos);
+        const panel = document.getElementById('costureras-panel');
+        const chips = document.getElementById('costureras-chips');
+        if (!arr.length) {
+          panel.style.display = 'none';
+          return;
+        }
+        panel.style.display = 'block';
+        chips.innerHTML = arr.map(g => {
+          const urg = g.urgentes > 0
+            ? `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:2px 7px;border-radius:999px;font-size:0.66rem;font-weight:700;margin-left:6px;">${g.urgentes} urg</span>`
+            : '';
+          return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(139,92,246,0.30);border-radius:12px;padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:0.86rem;color:#fff;" onclick="abrirCuadreCostu()">
+            <strong>🧵 ${esc(g.nombre)}</strong>
+            <span style="color:#a0a0a0;font-size:0.78rem;">${g.lotes} lote${g.lotes !== 1 ? 's' : ''} · ${g.prendas} prenda${g.prendas !== 1 ? 's' : ''}</span>
+            ${urg}
+          </div>`;
+        }).join('');
+      } catch (e) { console.warn('[panel-costu]', e.message); }
+    }
+
+    async function abrirCuadreCostu() {
+      const modal = document.getElementById('modal-cuadre');
+      const body = document.getElementById('cuadre-body');
+      modal.style.display = 'flex';
+      modal.style.alignItems = 'center';
+      modal.style.justifyContent = 'center';
+      modal.style.padding = '20px';
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:#888;">Cargando...</div>';
+      try {
+        const r = await fetch('/api/costureras/pendientes');
+        const data = await r.json();
+        const lista = Array.isArray(data.pendientes) ? data.pendientes : [];
+        if (!lista.length) {
+          body.innerHTML = '<div style="padding:30px;text-align:center;color:#888;">Ninguna costurera tiene lotes activos.<br>Buen trabajo 💚</div>';
+          return;
+        }
+        // Agrupar por costurera
+        const grupos = {};
+        for (const m of lista) {
+          if (!m.costurera_slug) continue;
+          if (!grupos[m.costurera_slug]) grupos[m.costurera_slug] = { nombre: m.costurera_nombre || m.costurera_slug, lotes: [] };
+          grupos[m.costurera_slug].lotes.push(m);
+        }
+        body.innerHTML = Object.values(grupos).map(g => {
+          const totalPrendas = g.lotes.reduce((s, l) => s + (l.cantidad_enviada || 0), 0);
+          const lotesHtml = g.lotes.sort((a, b) => (b.dias_en_costura || 0) - (a.dias_en_costura || 0)).map(l => {
+            const urg = (l.dias_en_costura || 0) >= 7;
+            const equipo = esc(l.equipo || 'Sin equipo');
+            const prenda = l.prenda ? ' · ' + esc(l.prenda) : '';
+            return `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;margin-bottom:8px;${urg ? 'border-color:rgba(239,68,68,0.30);' : ''}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+                <strong style="font-size:0.92rem;color:#fff;">${equipo}</strong>
+                <span style="font-family:monospace;font-size:0.7rem;color:#666;">#${l.id}</span>
+              </div>
+              <div style="font-size:0.78rem;color:#a0a0a0;margin-bottom:8px;">${l.cantidad_enviada} prendas${prenda} · ${l.dias_en_costura} día${l.dias_en_costura !== 1 ? 's' : ''}${urg ? ' ⚠️' : ''}</div>
+              <button onclick="recibirLoteCostu(${l.id})" style="width:100%;background:#10b981;border:none;color:#fff;padding:10px;border-radius:8px;font-weight:700;font-size:0.88rem;cursor:pointer;">📥 Recibí terminado</button>
+            </div>`;
+          }).join('');
+          return `<div style="margin-bottom:20px;">
+            <div style="font-size:1.05rem;font-weight:800;color:#c4b5fd;margin-bottom:10px;">🧵 ${esc(g.nombre)} · ${g.lotes.length} lote${g.lotes.length !== 1 ? 's' : ''} · ${totalPrendas} prendas</div>
+            ${lotesHtml}
+          </div>`;
+        }).join('');
+      } catch (e) {
+        body.innerHTML = '<div style="padding:20px;color:#fca5a5;">Error: ' + e.message + '</div>';
+      }
+    }
+
+    function cerrarCuadre(ev) {
+      if (ev && ev.target.id !== 'modal-cuadre') return;
+      document.getElementById('modal-cuadre').style.display = 'none';
+    }
+
+    async function recibirLoteCostu(movId) {
+      const cant = prompt('¿Cuántas prendas recibiste de vuelta? (puede ser igual o menos)');
+      if (cant === null) return;
+      const n = parseInt(cant, 10);
+      if (isNaN(n) || n < 0) { toast('Cantidad inválida', 'error'); return; }
+      try {
+        const r = await fetch('/api/costureras/recepcion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movimiento_id: movId, cantidad_recibida: n, recibido_por: 'lidermeyer-app' }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
+        toast('✅ Recepción registrada');
+        try { if (navigator.vibrate) navigator.vibrate([20, 40, 60]); } catch (e) {}
+        abrirCuadreCostu();
+        cargarPanelCostureras();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    }
+
     iniciarPWA();
     cargar();
+    cargarPanelCostureras();
     setInterval(cargar, 7000);
+    setInterval(cargarPanelCostureras, 30000);
   </script>
 </body>
 </html>
