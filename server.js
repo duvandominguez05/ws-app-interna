@@ -1252,14 +1252,15 @@ function purgarArchivados(pedidos) {
 // El pedido se sube a Notion y luego se borra del servidor.
 // Notion queda como histórico, Railway sigue ligero.
 // ─────────────────────────────────────────────────────────────
-// ID hardcoded de la DB "🏆 HISTORIAL DE VENTAS — W&S Enterprise" creada en Notion.
-// Se usa si no hay variable NOTION_DB_ARCHIVO_PEDIDOS en Railway. Para cambiar de DB
-// basta con setear esa env var.
+// ID de la DB "🏆 HISTORIAL DE VENTAS — W&S Enterprise" creada en Notion (2026-05-29).
+// Hardcoded como fuente de verdad — la env var en Railway apuntaba a una DB vieja
+// (WS-Historico-Pedidos-Template.csv) con esquema incompatible. Para cambiar de DB
+// editar este valor (no usar env var por confusion historica).
 const NOTION_DB_DEFAULT = '9a40c001-02a7-457f-8010-842a1bcb2eee';
 
 async function archivarPedidoEnNotion(pedido) {
   const token = process.env.NOTION_TOKEN;
-  const dbId = process.env.NOTION_DB_ARCHIVO_PEDIDOS || NOTION_DB_DEFAULT;
+  const dbId = NOTION_DB_DEFAULT;
   if (!token) {
     console.log('[notion] sin token, saltando archivo');
     return { ok: false, motivo: 'sin NOTION_TOKEN' };
@@ -3311,7 +3312,7 @@ http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/api/admin/diag-notion') {
     try {
       const dbEnv = process.env.NOTION_DB_ARCHIVO_PEDIDOS || null;
-      const dbUsada = dbEnv || NOTION_DB_DEFAULT;
+      const dbUsada = NOTION_DB_DEFAULT; // forzado al ID nuevo, env var ignorada
       // Verificar que la DB es accesible
       let info = null;
       let error = null;
