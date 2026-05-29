@@ -807,6 +807,37 @@ async function tomarProximoDiseno() {
   }
 }
 
+// Helper para barra de pago (solo se renderiza si la persona puede ver finanzas).
+function _barraPago(p, puedeVerFinanzas) {
+  if (!puedeVerFinanzas) return '';
+  if (typeof p.total !== 'number' || p.total <= 0) return '';
+  const abonado = typeof p.abonado === 'number' ? p.abonado : 0;
+  const pct = Math.min(100, Math.round((abonado / p.total) * 100));
+  const completo = abonado >= p.total;
+  const colorBar = completo ? '#34d399' : (pct >= 50 ? '#fbbf24' : '#fca5a5');
+  const fmt = (n) => '$' + Math.round(n || 0).toLocaleString('es-CO');
+  return `<div style="margin-top:6px;background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;">
+    <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:var(--text-muted);font-weight:600;margin-bottom:3px;">
+      <span>${fmt(abonado)} / ${fmt(p.total)}</span>
+      <span style="color:${colorBar};font-weight:800;">${completo ? '✓ pagado' : pct + '%'}</span>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;">
+      <div style="height:100%;background:${colorBar};width:${pct}%;transition:width 200ms;"></div>
+    </div>
+  </div>`;
+}
+
+// Una persona puede ver finanzas del pedido si:
+// - Es admin (Camilo, Graciela)
+// - Es la vendedora dueña del pedido
+function _puedeVerFinanzas(p) {
+  const persona = getPersonaActual();
+  if (!persona) return false;
+  if ((persona.roles || []).includes('admin')) return true;
+  if (p.vendedora && p.vendedora === persona.nombre) return true;
+  return false;
+}
+
 function _miDiaBloqueVentas(nombrePersona) {
   const mias = _miDiaActivos().filter(p => p.vendedora === nombrePersona);
   const hoyStr = new Date().toISOString().slice(0,10);
@@ -816,6 +847,7 @@ function _miDiaBloqueVentas(nombrePersona) {
     const isWarn = p.estado === 'bandeja' && !p.stickerVenta;
     const urgenciaTxt = _urgenciaFechaCorta(p.fechaEntrega);
     const estadoLabel = ESTADO_LABELS[p.estado] || p.estado;
+    // Es SU venta → puede ver finanzas del pedido
     return '<div class="midia-card' + (isWarn ? ' warn' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">'
       + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
       + '<div class="midia-card-meta">'
@@ -824,8 +856,24 @@ function _miDiaBloqueVentas(nombrePersona) {
         + (urgenciaTxt ? ' · ' + urgenciaTxt : '')
         + (isWarn ? ' · <span style="color:#fcd34d;font-weight:700;">⚠️ Falta sticker</span>' : '')
       + '</div>'
+      + _barraPago(p, true) // siempre ven barra en su propia venta
     + '</div>';
   }).join('') || '<div class="midia-empty">✨ Sin ventas registradas todavia. Cuando llegue un comprobante por WA aparece aqui.</div>';
+  // Mini resumen "por cobrar" — solo si hay pedidos con total y saldo
+  const conSaldo = mias.filter(p => typeof p.total === 'number' && p.total > 0 && (p.abonado || 0) < p.total && p.estado !== 'enviado-final');
+  const saldoTotal = conSaldo.reduce((s, p) => s + (p.total - (p.abonado || 0)), 0);
+  const cobrarBlock = conSaldo.length > 0
+    ? `<div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:1px;color:#fbbf24;font-weight:800;">💰 Por cobrar</div>
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${conSaldo.length} pedido${conSaldo.length !== 1 ? 's' : ''} con saldo</div>
+          </div>
+          <div style="font-size:1.15rem;font-weight:800;color:#fcd34d;font-variant-numeric:tabular-nums;">$${Math.round(saldoTotal).toLocaleString('es-CO')}</div>
+        </div>
+      </div>`
+    : '';
+
   return `
     <article class="midia-bloque" style="--bloque-color:#34d399;">
       <header class="midia-bloque-head">
@@ -835,6 +883,7 @@ function _miDiaBloqueVentas(nombrePersona) {
           <small>${hoy.length} hoy · ${mias.length} activas ${sinSticker.length ? ' · ⚠️ '+sinSticker.length+' sin sticker' : ''}</small>
         </div>
       </header>
+      ${cobrarBlock}
       <div class="midia-cards">${cards}</div>
       <div class="midia-actions">
         <button class="midia-btn" onclick="abrirRolMovil('ventas')">Ver todas mis ventas</button>
