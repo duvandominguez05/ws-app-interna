@@ -2495,6 +2495,107 @@ http.createServer(async (req, res) => {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // ── POST /api/admin/vincular-facturas-huerfanas — crea pedidos para facturas sin pedido_id ──
+  // Útil para arreglar facturas históricas que se crearon sin pedido en la app.
+  // Query: ?dryRun=1 para solo ver qué pasaría sin modificar nada.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/vincular-facturas-huerfanas')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const dryRun = u.searchParams.get('dryRun') === '1';
+      const facturas = db.leerFacturas(500, 0) || [];
+      const pedidos = leerPedidos();
+      const accionesPropuestas = [];
+      let maxId = Math.max(0, ...pedidos.map(p => p.id || 0));
+      for (const f of facturas) {
+        if (f.pedido_id) continue; // ya vinculada
+        if (f.tipo !== 'factura') continue; // ignoramos cotizaciones
+        // Buscar pedido existente del mismo cliente/telefono
+        const tel = String(f.cliente_telefono || '').replace(/\D/g, '');
+        let pedidoExist = null;
+        if (tel) {
+          pedidoExist = pedidos.find(p => String(p.telefono || '').replace(/\D/g, '') === tel);
+        }
+        if (!pedidoExist && f.cliente_nombre) {
+          // Match por nombre exacto (case-insensitive)
+          const nm = String(f.cliente_nombre).toLowerCase().trim();
+          pedidoExist = pedidos.find(p => String(p.cliente || '').toLowerCase().trim() === nm
+            || String(p.equipo || '').toLowerCase().trim() === nm);
+        }
+        if (pedidoExist) {
+          accionesPropuestas.push({
+            accion: 'vincular',
+            factura_id: f.id,
+            factura_numero: f.numero,
+            pedido_id: pedidoExist.id,
+            cliente: f.cliente_nombre,
+            total: f.total,
+          });
+          if (!dryRun) {
+            // Actualizar factura.pedido_id (necesita helper en db) y total del pedido si no tiene
+            db.raw.prepare('UPDATE facturas SET pedido_id = ? WHERE id = ?').run(pedidoExist.id, f.id);
+            if ((!pedidoExist.total || pedidoExist.total === 0) && f.total) {
+              pedidoExist.total = Number(f.total);
+              _recalcularEstadoPago(pedidoExist);
+              pedidoExist.historial = pedidoExist.historial || [];
+              pedidoExist.historial.push({
+                fecha: new Date().toISOString(),
+                por: 'admin-vincular-huerfanas',
+                accion: 'set-total',
+                nota: `Total $${pedidoExist.total.toLocaleString('es-CO')} tomado de factura huérfana #${f.numero}`,
+              });
+            }
+          }
+        } else {
+          // Crear pedido nuevo desde los datos de la factura
+          const nuevoId = ++maxId;
+          const nuevoPedido = {
+            id: nuevoId,
+            cliente: f.cliente_nombre || ('Cliente +57 ' + tel),
+            equipo: f.cliente_nombre || ('Cliente +57 ' + tel),
+            telefono: f.cliente_telefono || null,
+            vendedora: f.vendedora || null,
+            estado: 'bandeja',
+            origenFacturaHuerfana: f.id,
+            total: Number(f.total) || null,
+            abonado: 0,
+            pagos: [],
+            fechaVenta: (f.fecha || f.creado_en || new Date().toISOString()).slice(0, 10),
+            ultimoMovimiento: new Date().toISOString(),
+            historial: [{
+              fecha: new Date().toISOString(),
+              por: 'admin-vincular-huerfanas',
+              accion: 'crear-pedido',
+              nota: `Pedido creado desde factura huérfana #${f.numero}`,
+            }],
+          };
+          _recalcularEstadoPago(nuevoPedido);
+          accionesPropuestas.push({
+            accion: 'crear',
+            factura_id: f.id,
+            factura_numero: f.numero,
+            nuevo_pedido_id: nuevoId,
+            cliente: f.cliente_nombre,
+            vendedora: f.vendedora,
+            total: f.total,
+          });
+          if (!dryRun) {
+            pedidos.push(nuevoPedido);
+            db.raw.prepare('UPDATE facturas SET pedido_id = ? WHERE id = ?').run(nuevoId, f.id);
+          }
+        }
+      }
+      if (!dryRun && accionesPropuestas.length) {
+        db.guardarPedidos(pedidos);
+      }
+      return json(res, 200, {
+        dryRun, total: accionesPropuestas.length,
+        acciones: accionesPropuestas,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/pagos-pedido/:id — estado financiero detallado de un pedido ──
   if (req.method === 'GET' && /^\/api\/admin\/pagos-pedido\/\d+/.test(req.url)) {
     try {
