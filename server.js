@@ -4607,6 +4607,7 @@ http.createServer(async (req, res) => {
   }
 
   // ── POST /api/arreglos — reemplaza lista completa ────────────
+  // Si llegan arreglos NUEVOS (id no existia en BD), notifica al disenador.
   if (req.method === 'POST' && req.url === '/api/arreglos') {
     let body = '';
     req.on('data', d => body += d);
@@ -4614,8 +4615,38 @@ http.createServer(async (req, res) => {
       try {
         const { arreglos } = JSON.parse(body);
         if (!Array.isArray(arreglos)) return json(res, 400, { error: 'arreglos debe ser array' });
+        // Detectar nuevos arreglos (id no estaba en DB)
+        const previos = db.leerArreglos();
+        const idsPrev = new Set(previos.map(a => a.id));
+        const nuevos = arreglos.filter(a => a && a.id && !idsPrev.has(a.id));
         db.guardarArreglos(arreglos);
-        return json(res, 200, { ok: true, total: arreglos.length });
+        // Notificar fuera del response (no bloquear cliente)
+        if (nuevos.length) {
+          (async () => {
+            for (const n of nuevos) {
+              try {
+                const tel = '⚠️ *ARREGLO NUEVO*\n\n' +
+                  `👕 *Equipo:* ${n.equipo || 'Sin equipo'}\n` +
+                  `📝 *Falta:* ${n.faltante || 'Sin detalle'}\n` +
+                  `🎨 *Asignado a:* ${n.disenador || 'Sin asignar'}` +
+                  (n.pedidoId ? `\n📦 *Pedido:* #${n.pedidoId}` : '');
+                notificarTelegramDuvan(tel).catch(()=>{});
+                if (n.disenador && n.disenador !== 'Sin asignar') {
+                  const link = 'https://ws-app-interna-production.up.railway.app/#/mi-dia';
+                  const msgWA = `🔧 *Nuevo arreglo asignado a ti*\n\n` +
+                    `👕 Equipo: ${n.equipo || 'Sin equipo'}\n` +
+                    `📝 Falta: ${n.faltante || 'Sin detalle'}\n` +
+                    (n.pedidoId ? `📦 Pedido: #${n.pedidoId}\n` : '') +
+                    `\nReenvía el archivo corregido a calandra por WeTransfer.\n` +
+                    `Cuando lo mandes, marca como "Re-enviado" en tu app.\n\n` +
+                    `🔗 ${link}`;
+                  await notificarWAPersona(n.disenador, msgWA);
+                }
+              } catch (e) { console.error('[arreglo-nuevo notif]', e.message); }
+            }
+          })();
+        }
+        return json(res, 200, { ok: true, total: arreglos.length, nuevosDetectados: nuevos.length });
       } catch { return json(res, 400, { error: 'JSON inválido' }); }
     });
     return;
