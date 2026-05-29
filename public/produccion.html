@@ -462,11 +462,12 @@
       <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:10px;">Costurera</div>
       <div id="costu-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px;"></div>
 
-      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Cantidad</div>
-      <input type="number" id="costu-cantidad" inputmode="numeric" placeholder="Ej: 24" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;color:#fff;font-size:1.2rem;font-weight:700;text-align:center;margin-bottom:14px;" />
-
-      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Prenda</div>
-      <input type="text" id="costu-prenda" placeholder="Ej: Camiseta + pantaloneta" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;color:#fff;font-size:0.95rem;margin-bottom:14px;" />
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;">Prendas del lote</div>
+        <div style="font-size:0.78rem;color:#a0a0a0;">Total: <span id="total-prendas" style="color:#34d399;font-weight:800;font-variant-numeric:tabular-nums;">0</span></div>
+      </div>
+      <div id="prendas-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
+      <button type="button" onclick="agregarOtraPrenda()" style="width:100%;background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.18);color:#a0a0a0;padding:10px;border-radius:10px;font-size:0.82rem;cursor:pointer;margin-bottom:18px;">+ Otra prenda</button>
 
       <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Notas (opcional)</div>
       <textarea id="costu-notas" placeholder="Cualquier nota para la costurera..." rows="2" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;color:#fff;font-size:0.92rem;resize:vertical;margin-bottom:20px;font-family:inherit;"></textarea>
@@ -708,18 +709,74 @@
       return costurerasDisponibles;
     }
 
+    // ─── Conteo de prendas con +/- ───
+    const PRENDAS_BASE = [
+      { name: 'Camiseta',    icon: '🎽' },
+      { name: 'Pantaloneta', icon: '🩳' },
+      { name: 'Pantalón',    icon: '👖' },
+      { name: 'Peto',        icon: '🦺' },
+      { name: 'Medias',      icon: '🧦' },
+      { name: 'Buzo',        icon: '🧥' },
+    ];
+    let prendasConteo = {};
+    let prendasExtra = [];
+
+    function renderPrendasRows() {
+      const cont = document.getElementById('prendas-rows');
+      const todas = [
+        ...PRENDAS_BASE,
+        ...prendasExtra.map(n => ({ name: n, icon: '🪡', extra: true })),
+      ];
+      cont.innerHTML = todas.map(p => {
+        const cant = prendasConteo[p.name] || 0;
+        const dim = cant === 0 ? 'opacity:0.55;' : '';
+        return `<div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px 12px;${dim}">
+          <div style="font-size:1.4rem;width:30px;text-align:center;">${p.icon}</div>
+          <div style="flex:1;font-size:0.95rem;font-weight:600;color:#fff;">${esc(p.name)}</div>
+          <button type="button" onclick="ajustarPrenda('${p.name.replace(/'/g,'\\\'')}', -1)" style="width:42px;height:42px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);color:#fff;border-radius:10px;font-size:1.3rem;font-weight:800;cursor:pointer;">−</button>
+          <div style="min-width:42px;text-align:center;font-size:1.25rem;font-weight:800;color:${cant > 0 ? '#34d399' : '#666'};font-variant-numeric:tabular-nums;">${cant}</div>
+          <button type="button" onclick="ajustarPrenda('${p.name.replace(/'/g,'\\\'')}', 1)" style="width:42px;height:42px;background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.40);color:#34d399;border-radius:10px;font-size:1.3rem;font-weight:800;cursor:pointer;">+</button>
+        </div>`;
+      }).join('');
+      actualizarTotalPrendas();
+    }
+
+    function ajustarPrenda(nombre, delta) {
+      const actual = prendasConteo[nombre] || 0;
+      prendasConteo[nombre] = Math.max(0, actual + delta);
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+      renderPrendasRows();
+    }
+
+    function actualizarTotalPrendas() {
+      const total = Object.values(prendasConteo).reduce((s, n) => s + (n || 0), 0);
+      const el = document.getElementById('total-prendas');
+      if (el) el.textContent = total;
+    }
+
+    function agregarOtraPrenda() {
+      const nombre = prompt('Nombre de la prenda (ej: Peto entrenador, Coleto):');
+      if (!nombre || !nombre.trim()) return;
+      const trim = nombre.trim();
+      if (prendasExtra.includes(trim) || PRENDAS_BASE.some(p => p.name === trim)) {
+        toast('Esa prenda ya está en la lista', 'error');
+        return;
+      }
+      prendasExtra.push(trim);
+      prendasConteo[trim] = 1;
+      renderPrendasRows();
+    }
+
     async function abrirModalCostu(p) {
       costuPedidoActual = p;
       costuSlugSeleccionada = null;
       await cargarCostureras();
-      // Prellenar campos
-      const items = itemsPedido(p);
-      const totalCant = items.reduce((s, i) => s + (parseInt(i.cantidad, 10) || 0), 0);
-      const prendaPrimera = items[0]?.prenda || '';
+      // Reset conteo de prendas
+      prendasConteo = {};
+      prendasExtra = [];
       document.getElementById('costu-pedido-info').textContent = '#' + p.id + ' · ' + (p.equipo || p.telefono || 'Pedido');
-      document.getElementById('costu-cantidad').value = totalCant || '';
-      document.getElementById('costu-prenda').value = prendaPrimera;
       document.getElementById('costu-notas').value = '';
+      renderPrendasRows();
       // Render botones costureras
       const grid = document.getElementById('costu-grid');
       grid.innerHTML = costurerasDisponibles.map(c =>
@@ -762,12 +819,14 @@
         toast('Escoge una costurera primero', 'error');
         return;
       }
-      const cantidad = parseInt(document.getElementById('costu-cantidad').value, 10);
-      if (!cantidad || cantidad < 1) {
-        toast('Pon la cantidad de prendas', 'error');
+      // Calcular total y descripcion desde prendasConteo
+      const conteoArr = Object.entries(prendasConteo).filter(([_, n]) => n > 0);
+      const cantidad = conteoArr.reduce((s, [_, n]) => s + n, 0);
+      if (cantidad < 1) {
+        toast('Agregá al menos una prenda con + ', 'error');
         return;
       }
-      const prenda = document.getElementById('costu-prenda').value.trim();
+      const prenda = conteoArr.map(([nombre, n]) => `${n} ${nombre}`).join(' + ');
       const notas = document.getElementById('costu-notas').value.trim();
       const btn = document.getElementById('costu-confirmar-btn');
       const txtOrig = btn.innerHTML;
