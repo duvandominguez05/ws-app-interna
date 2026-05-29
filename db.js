@@ -117,6 +117,32 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_clientes_telefono ON clientes(telefono);
   CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(nombre);
 
+  CREATE TABLE IF NOT EXISTS documentos_salientes_wa (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT UNIQUE,
+    instance TEXT,
+    vendedora TEXT NOT NULL,
+    cliente_telefono TEXT,
+    cliente_push_name TEXT,
+    file_name_original TEXT,
+    tipo_mime TEXT,
+    drive_file_id TEXT,
+    drive_link TEXT,
+    bytes INTEGER,
+    es_factura INTEGER,
+    gemini_analizado INTEGER DEFAULT 0,
+    gemini_resultado TEXT,
+    factura_id INTEGER,
+    pedido_id INTEGER,
+    revisado INTEGER DEFAULT 0,
+    fecha_captura TEXT NOT NULL,
+    fecha_revision TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_docwa_vendedora ON documentos_salientes_wa(vendedora);
+  CREATE INDEX IF NOT EXISTS idx_docwa_cliente ON documentos_salientes_wa(cliente_telefono);
+  CREATE INDEX IF NOT EXISTS idx_docwa_fecha ON documentos_salientes_wa(fecha_captura);
+  CREATE INDEX IF NOT EXISTS idx_docwa_revisado ON documentos_salientes_wa(revisado);
+
   CREATE TABLE IF NOT EXISTS costureras_movimientos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pedido_id INTEGER,
@@ -786,6 +812,91 @@ function leerMovimientosCosturaSinAviso7Dias(limiteIso) {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// DOCUMENTOS SALIENTES WHATSAPP (captura facturas manuales de vendedoras)
+// ═════════════════════════════════════════════════════════════════
+
+const _docwaInsert = db.prepare(`
+  INSERT OR IGNORE INTO documentos_salientes_wa
+    (message_id, instance, vendedora, cliente_telefono, cliente_push_name,
+     file_name_original, tipo_mime, drive_file_id, drive_link, bytes,
+     es_factura, gemini_analizado, gemini_resultado, factura_id, pedido_id,
+     revisado, fecha_captura)
+  VALUES
+    (@message_id, @instance, @vendedora, @cliente_telefono, @cliente_push_name,
+     @file_name_original, @tipo_mime, @drive_file_id, @drive_link, @bytes,
+     @es_factura, @gemini_analizado, @gemini_resultado, @factura_id, @pedido_id,
+     @revisado, @fecha_captura)
+`);
+const _docwaListSemana = db.prepare(`
+  SELECT * FROM documentos_salientes_wa
+  WHERE fecha_captura >= @desde
+  ORDER BY fecha_captura DESC
+`);
+const _docwaListNoRevisados = db.prepare(`
+  SELECT * FROM documentos_salientes_wa
+  WHERE revisado = 0
+  ORDER BY fecha_captura DESC
+`);
+const _docwaPorId = db.prepare(`SELECT * FROM documentos_salientes_wa WHERE id = ?`);
+const _docwaMarcarRevisado = db.prepare(`
+  UPDATE documentos_salientes_wa
+  SET revisado = 1, es_factura = @es_factura, factura_id = @factura_id, fecha_revision = @fecha_revision
+  WHERE id = @id
+`);
+const _docwaSetGemini = db.prepare(`
+  UPDATE documentos_salientes_wa
+  SET gemini_analizado = 1, es_factura = @es_factura, gemini_resultado = @gemini_resultado
+  WHERE id = @id
+`);
+
+function insertDocumentoSalienteWA(data) {
+  const row = {
+    message_id: data.message_id || null,
+    instance: data.instance || null,
+    vendedora: data.vendedora,
+    cliente_telefono: data.cliente_telefono || null,
+    cliente_push_name: data.cliente_push_name || null,
+    file_name_original: data.file_name_original || null,
+    tipo_mime: data.tipo_mime || null,
+    drive_file_id: data.drive_file_id || null,
+    drive_link: data.drive_link || null,
+    bytes: data.bytes || null,
+    es_factura: data.es_factura == null ? null : (data.es_factura ? 1 : 0),
+    gemini_analizado: data.gemini_analizado ? 1 : 0,
+    gemini_resultado: data.gemini_resultado || null,
+    factura_id: data.factura_id || null,
+    pedido_id: data.pedido_id || null,
+    revisado: data.revisado ? 1 : 0,
+    fecha_captura: data.fecha_captura || new Date().toISOString(),
+  };
+  return _docwaInsert.run(row);
+}
+function leerDocumentosSalientesWASemana(desdeIso) {
+  return _docwaListSemana.all({ desde: desdeIso });
+}
+function leerDocumentosSalientesWANoRevisados() {
+  return _docwaListNoRevisados.all();
+}
+function leerDocumentoSalienteWAporId(id) {
+  return _docwaPorId.get(id);
+}
+function marcarDocumentoSalienteRevisado(id, esFactura, facturaId) {
+  return _docwaMarcarRevisado.run({
+    id,
+    es_factura: esFactura ? 1 : 0,
+    factura_id: facturaId || null,
+    fecha_revision: new Date().toISOString(),
+  });
+}
+function setDocumentoSalienteGemini(id, esFactura, resultado) {
+  return _docwaSetGemini.run({
+    id,
+    es_factura: esFactura ? 1 : 0,
+    gemini_resultado: typeof resultado === 'string' ? resultado : JSON.stringify(resultado || {}),
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════
 module.exports = {
@@ -816,4 +927,8 @@ module.exports = {
   leerMovimientosCosturaPendientes, leerMovimientosCostureraPorSlug,
   leerMovimientosCostureraPendientes, leerMovimientosCosturaSemana,
   leerMovimientosCosturaSinAviso7Dias,
+  // Documentos salientes WhatsApp (captura facturas manuales)
+  insertDocumentoSalienteWA, leerDocumentosSalientesWASemana,
+  leerDocumentosSalientesWANoRevisados, leerDocumentoSalienteWAporId,
+  marcarDocumentoSalienteRevisado, setDocumentoSalienteGemini,
 };

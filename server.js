@@ -551,6 +551,102 @@ function guardarComprobanteDetectado(registro) {
   db.upsertComprobante(registro);
 }
 
+// ═════════════════════════════════════════════════════════════════
+// CAPTURA DOCUMENTOS SALIENTES DE VENDEDORAS (facturas hechas manual)
+// Las 4 vendedoras (Betty, Ney, Wendy, Paola) mandan PDFs/imagenes de
+// facturas a sus clientes. Este listener intercepta esos mensajes,
+// sube el archivo a Drive y guarda metadata en BD para revision.
+// ═════════════════════════════════════════════════════════════════
+async function capturarDocumentoSalienteVendedora({ instance, vendedora, messageKey, message, messageType, telefonoCliente, pushName }) {
+  try {
+    if (db.leerDocumentoSalienteWAporId) {
+      // Evitar duplicados por message_id (UNIQUE en tabla)
+    }
+    // Descargar el medio via Evolution
+    const media = await descargarImagenEvolution(instance, messageKey);
+    if (!media || !media.base64) {
+      console.log(`[doc-saliente] no se pudo descargar ${vendedora}→${telefonoCliente}`);
+      return null;
+    }
+
+    // Determinar extension/nombre original
+    let fileNameOriginal = '';
+    let ext = '';
+    let mimeType = media.mimeType || 'application/octet-stream';
+    if (messageType === 'documentMessage' || messageType === 'documentWithCaptionMessage') {
+      const doc = message?.documentMessage
+        || message?.documentWithCaptionMessage?.message?.documentMessage
+        || {};
+      fileNameOriginal = doc.fileName || '';
+      mimeType = doc.mimetype || mimeType;
+      ext = (fileNameOriginal.split('.').pop() || '').toLowerCase();
+      if (!ext && mimeType.includes('pdf')) ext = 'pdf';
+      if (!ext) ext = mimeType.split('/').pop() || 'bin';
+    } else if (messageType === 'imageMessage') {
+      ext = (mimeType.split('/').pop() || 'jpg').toLowerCase();
+      if (ext === 'jpeg') ext = 'jpg';
+    }
+
+    // Filtro: solo PDF e imagenes (descartar videos, audios, etc)
+    const tiposAceptados = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
+    if (!tiposAceptados.includes(ext)) {
+      console.log(`[doc-saliente] tipo no aceptado: ${ext} (${vendedora}→${telefonoCliente})`);
+      return null;
+    }
+
+    // Calcular bytes aproximados desde base64
+    const bytes = Math.floor((media.base64.length * 3) / 4);
+    // Filtro: descartar archivos sospechosamente pequeños (<5KB suele ser ruido)
+    if (bytes < 5000) {
+      console.log(`[doc-saliente] muy pequeño ${bytes}b — descartado (${vendedora}→${telefonoCliente})`);
+      return null;
+    }
+
+    // Subir a Drive (carpeta FACTURAS, prefijo WA- para distinguir)
+    const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }).replace(/\//g, '-');
+    const tituloLimpio = (fileNameOriginal || `${vendedora}-${telefonoCliente}`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const tituloArchivo = `WA-${vendedora}-${fecha}-${telefonoCliente}-${tituloLimpio}.${ext}`;
+
+    let subida = null;
+    try {
+      subida = await driveSync.subirArchivo({
+        titulo: tituloArchivo,
+        mimeType,
+        contentBase64: media.base64,
+        parentId: driveSync.FOLDER_FACTURAS,
+      });
+      try { await driveSync.hacerArchivoPublico(subida.id); } catch (e) {}
+    } catch (e) {
+      console.error('[doc-saliente upload Drive err]', e.message);
+      // Aún sin Drive, guardamos metadata para no perder el evento
+    }
+
+    // Guardar metadata
+    const insertResult = db.insertDocumentoSalienteWA({
+      message_id: messageKey?.id || null,
+      instance,
+      vendedora,
+      cliente_telefono: telefonoCliente,
+      cliente_push_name: pushName || null,
+      file_name_original: fileNameOriginal || null,
+      tipo_mime: mimeType,
+      drive_file_id: subida?.id || null,
+      drive_link: subida?.viewLink || null,
+      bytes,
+      es_factura: null,
+      gemini_analizado: 0,
+      revisado: 0,
+      fecha_captura: new Date().toISOString(),
+    });
+
+    console.log(`[doc-saliente] CAPTURADO ${vendedora}→${telefonoCliente} ${ext.toUpperCase()} ${bytes}b → ${subida?.viewLink || 'sin Drive'}`);
+    return { id: insertResult?.lastInsertRowid, drive: subida };
+  } catch (e) {
+    console.error('[doc-saliente capturar err]', e.message);
+    return null;
+  }
+}
+
 // Resumen del dia de una vendedora — cuenta ventas con/sin sticker + total $.
 // Usado en los WA inmediato/90min para motivar con ranking.
 function resumenDiaVendedora(vendedora) {
@@ -2224,6 +2320,45 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/docs-wa — lista documentos salientes capturados ──
+  // Query: ?desde=ISO|semana|hoy   ?solo=pendientes
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/docs-wa')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const desde = u.searchParams.get('desde') || 'semana';
+      const solo = u.searchParams.get('solo') || '';
+      let docs;
+      if (solo === 'pendientes') {
+        docs = db.leerDocumentosSalientesWANoRevisados();
+      } else {
+        let desdeIso;
+        if (desde === 'hoy') {
+          desdeIso = new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z';
+        } else if (desde === 'semana') {
+          const d = new Date(); d.setDate(d.getDate() - 7);
+          desdeIso = d.toISOString();
+        } else {
+          desdeIso = desde;
+        }
+        docs = db.leerDocumentosSalientesWASemana(desdeIso);
+      }
+      // Agrupar por vendedora
+      const porVendedora = {};
+      for (const d of docs) {
+        if (!porVendedora[d.vendedora]) porVendedora[d.vendedora] = [];
+        porVendedora[d.vendedora].push({
+          id: d.id, cliente: d.cliente_telefono, push: d.cliente_push_name,
+          mime: d.tipo_mime, bytes: d.bytes, drive: d.drive_link,
+          revisado: !!d.revisado, esFactura: d.es_factura,
+          gemini: !!d.gemini_analizado, fecha: d.fecha_captura,
+        });
+      }
+      return json(res, 200, { total: docs.length, porVendedora });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/diag-drive-fact — diagnostico subida a Drive ──
   if (req.method === 'GET' && req.url === '/api/admin/diag-drive-fact') {
     try {
@@ -3329,6 +3464,53 @@ http.createServer(async (req, res) => {
             }
           } catch (errImg) {
             console.error('[imagen error]', errImg);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // LISTENER DOCUMENTOS SALIENTES DE VENDEDORAS — captura facturas WA
+        // Las 4 instancias (ws-ventas, ws-ney, ws wendy, ws-paola) mandan PDFs/imagenes
+        // a clientes. Las interceptamos para no perder ninguna factura manual.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' &&
+            (eventData?.messageType === 'documentMessage' ||
+             eventData?.messageType === 'documentWithCaptionMessage' ||
+             eventData?.messageType === 'imageMessage')) {
+          try {
+            const fromMe = eventData.key?.fromMe === true;
+            const instance = payload.instance;
+            const vendedoraDoc = INSTANCIA_A_VENDEDORA[instance]
+              || INSTANCIA_A_VENDEDORA[String(instance).toLowerCase().replace(/[\s_]+/g, '-')];
+            const remoteJid = eventData.key?.remoteJid || '';
+            const esGrupo = remoteJid.endsWith('@g.us');
+            // Solo: saliente + instancia de vendedora + chat 1-a-1 + remoteJid valido
+            if (fromMe && vendedoraDoc && !esGrupo && remoteJid) {
+              const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              const pushName = eventData.pushName || '';
+              // Saltar proveedores conocidos (ya no nos sirven sus docs)
+              const TELEFONOS_PROVEEDORES_DOC = (process.env.TELEFONOS_PROVEEDORES || '')
+                .split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean);
+              if (!TELEFONOS_PROVEEDORES_DOC.includes(telefonoCliente)) {
+                // Procesar en background
+                (async () => {
+                  try {
+                    await capturarDocumentoSalienteVendedora({
+                      instance,
+                      vendedora: vendedoraDoc,
+                      messageKey: eventData.key,
+                      message: eventData.message,
+                      messageType: eventData.messageType,
+                      telefonoCliente,
+                      pushName,
+                    });
+                  } catch (eDoc) {
+                    console.error('[doc-saliente async err]', eDoc.message);
+                  }
+                })();
+              }
+            }
+          } catch (errDocSal) {
+            console.error('[doc-saliente listener err]', errDocSal);
           }
         }
 
