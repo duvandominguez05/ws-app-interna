@@ -1260,22 +1260,49 @@ async function archivarPedidoEnNotion(pedido) {
     return { ok: false, motivo: 'no configurado' };
   }
   try {
-    // Las opciones del select de vendedora en Notion: "Betty", "ney", "wendy", "paola"
-    const venRaw = String(pedido.vendedora || '').toLowerCase();
-    const VEN_MAP = { 'betty': 'Betty', 'ney': 'ney', 'wendy': 'wendy', 'paola': 'paola' };
-    const vendedoraNotion = VEN_MAP[venRaw] || null;
+    // Mapeo a las opciones EXACTAS del select en Notion (todas con Capitalize)
+    const VEN_MAP = { 'betty': 'Betty', 'ney': 'Ney', 'wendy': 'Wendy', 'paola': 'Paola', 'graciela': 'Graciela' };
+    const vendedoraNotion = VEN_MAP[String(pedido.vendedora || '').toLowerCase()] || null;
+    const DIS_MAP = { 'camilo': 'Camilo', 'oscar': 'Oscar', 'ney': 'Ney', 'wendy': 'Wendy', 'paola': 'Paola' };
+    const disenadorNotion = DIS_MAP[String(pedido.disenadorAsignado || '').toLowerCase()] || (pedido.disenadorAsignado ? 'Sin asignar' : null);
 
-    // Formatear items / prendas
-    let itemsTxt = '';
-    if (Array.isArray(pedido.items) && pedido.items.length) {
-      itemsTxt = pedido.items.map(i => {
-        if (typeof i === 'string') return i;
-        if (i && typeof i === 'object') return [i.prenda, i.tela, i.cantidad].filter(Boolean).join(' ');
-        return '';
-      }).filter(Boolean).join(', ').slice(0, 1900);
+    // Origen — derivado de las marcas del pedido
+    let origenNotion = 'Manual';
+    if (pedido.origenFacturaHuerfana) origenNotion = 'Huérfano';
+    else if (pedido.origenComprobante) origenNotion = 'Comprobante';
+    else if (pedido.origenHuerfano) origenNotion = 'Huérfano';
+    else if (pedido.stickerVenta || pedido.origenBot) origenNotion = 'Sticker';
+
+    // Prendas — extraer de items
+    const PRENDAS_OPCIONES = new Set(['Camiseta', 'Pantaloneta', 'Pantalón', 'Peto', 'Medias', 'Buzo', 'Chaqueta', 'Sudadera', 'Polo', 'Uniforme completo']);
+    const prendasDetectadas = new Set();
+    if (Array.isArray(pedido.items)) {
+      for (const it of pedido.items) {
+        const txt = String(typeof it === 'string' ? it : (it && it.prenda) || '').trim();
+        for (const op of PRENDAS_OPCIONES) {
+          if (txt.toLowerCase().includes(op.toLowerCase())) prendasDetectadas.add(op);
+        }
+      }
     }
 
-    // Fecha creado: pedido.creadoEn puede venir como "d/m/yyyy" o ISO
+    // Bancos — extraer de pagos
+    const BANCOS_OPCIONES = new Set(['Bancolombia', 'Nequi', 'Daviplata', 'Davivienda', 'Efectivo', 'Otro']);
+    const bancosDetectados = new Set();
+    if (Array.isArray(pedido.pagos)) {
+      for (const pg of pedido.pagos) {
+        const banco = String(pg.banco || '').trim();
+        if (BANCOS_OPCIONES.has(banco)) bancosDetectados.add(banco);
+        else if (banco) bancosDetectados.add('Otro');
+      }
+    }
+
+    // Notas — items + nota original
+    const itemsTxt = Array.isArray(pedido.items) && pedido.items.length
+      ? pedido.items.map(i => typeof i === 'string' ? i : [i.prenda, i.tela, i.cantidad].filter(Boolean).join(' ')).filter(Boolean).join(', ')
+      : '';
+    const notasFinales = [pedido.notas || '', itemsTxt ? `Items: ${itemsTxt}` : ''].filter(Boolean).join(' | ').slice(0, 1900);
+
+    // Conversión de fechas
     function aIsoDate(f) {
       if (!f) return null;
       const m = String(f).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -1283,24 +1310,31 @@ async function archivarPedidoEnNotion(pedido) {
       const t = new Date(f);
       return isNaN(t.getTime()) ? null : t.toISOString().slice(0, 10);
     }
-    const fechaCreadoISO = aIsoDate(pedido.creadoEn);
-    const fechaEntregadoISO = aIsoDate(pedido.ultimoMovimiento) || new Date().toISOString().slice(0, 10);
+    const fechaVentaISO = aIsoDate(pedido.fechaVenta) || aIsoDate(pedido.creadoEn);
+    const fechaEntregaISO = aIsoDate(pedido.ultimoMovimiento) || new Date().toISOString().slice(0, 10);
 
-    // Teléfono como número (Notion lo tiene como number)
-    const telNum = parseInt(String(pedido.telefono || '').replace(/\D/g, '')) || null;
+    // Teléfono como string formateado (Notion phone_number)
+    const telStr = String(pedido.telefono || '').trim() || null;
+
+    // Cliente / Equipo (title) — combinar
+    const clienteEquipo = pedido.equipo || pedido.cliente || `Pedido #${pedido.id}`;
 
     const props = {
-      'Equipo': { title: [{ text: { content: String(pedido.equipo || 'Sin equipo').slice(0, 1900) } }] },
-      'Estado': { select: { name: 'Entregado' } },
-      'Fecha entregado': { date: { start: fechaEntregadoISO } },
-      'ID original': { number: pedido.id || null },
+      'Cliente / Equipo': { title: [{ text: { content: String(clienteEquipo).slice(0, 1900) } }] },
+      'Estado Final': { select: { name: 'Entregado' } },
+      'Fecha de entrega': { date: { start: fechaEntregaISO } },
+      'ID App': { number: pedido.id || null },
+      'Origen': { select: { name: origenNotion } },
     };
-    if (pedido.cliente) props['Cliente'] = { rich_text: [{ text: { content: String(pedido.cliente).slice(0, 1900) } }] };
     if (vendedoraNotion) props['Vendedora'] = { select: { name: vendedoraNotion } };
-    if (telNum) props['Telefono'] = { number: telNum };
-    if (fechaCreadoISO) props['Fecha creado'] = { date: { start: fechaCreadoISO } };
-    if (itemsTxt) props['Items / Prendas'] = { rich_text: [{ text: { content: itemsTxt } }] };
+    if (disenadorNotion) props['Diseñador'] = { select: { name: disenadorNotion } };
+    if (telStr) props['Teléfono'] = { phone_number: telStr };
+    if (fechaVentaISO) props['Fecha de venta'] = { date: { start: fechaVentaISO } };
     if (pedido.total) props['Total'] = { number: Number(pedido.total) };
+    if (pedido.abonado) props['Abonado'] = { number: Number(pedido.abonado) };
+    if (notasFinales) props['Notas'] = { rich_text: [{ text: { content: notasFinales } }] };
+    if (prendasDetectadas.size > 0) props['Prendas'] = { multi_select: [...prendasDetectadas].map(name => ({ name })) };
+    if (bancosDetectados.size > 0) props['Banco'] = { multi_select: [...bancosDetectados].map(name => ({ name })) };
 
     const r = await fetch('https://api.notion.com/v1/pages', {
       method: 'POST',
