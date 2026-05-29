@@ -2320,6 +2320,25 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/resumen-semanal — dispara el resumen del domingo manualmente ──
+  // Util para probar sin esperar al domingo o regenerar el reporte.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/resumen-semanal')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const enviar = u.searchParams.get('enviar') === '1';
+      const data = await generarResumenSemanalAdmin();
+      const texto = construirMensajeResumenSemanal(data);
+      let enviadoWA = false;
+      if (enviar) {
+        await responderJefe(texto);
+        enviadoWA = true;
+      }
+      return json(res, 200, { data, texto, enviadoWA });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/docs-wa — lista documentos salientes capturados ──
   // Query: ?desde=ISO|semana|hoy   ?solo=pendientes
   if (req.method === 'GET' && req.url.startsWith('/api/admin/docs-wa')) {
@@ -5721,6 +5740,169 @@ async function cron7pmTick() {
 setInterval(cron7pmTick, 60 * 1000);
 setTimeout(cron7pmTick, 45 * 1000);
 console.log('[cron-7pm] activado — snapshot ventas-por-confirmar 7 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON DOMINGO 7 PM — Resumen semanal para el dueño (Camilo)
+// Compila: ventas semana + facturas + docs WA pendientes + atrasados
+// + estado del tablero. Manda WA personal a Camilo.
+// ═══════════════════════════════════════════════════════════════════
+const CRON_DOM_FILE = path.join(__dirname, 'data', 'cron_dom_ultimo.json');
+function _yaDomingoEstaSemana() {
+  try {
+    if (!fs.existsSync(CRON_DOM_FILE)) return false;
+    const ultimo = JSON.parse(fs.readFileSync(CRON_DOM_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ultimo.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcarDomingoEstaSemana() {
+  try {
+    fs.mkdirSync(path.dirname(CRON_DOM_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(CRON_DOM_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now() }));
+  } catch (e) { console.error('[cron-dom] no se pudo marcar:', e.message); }
+}
+function _esDomingoEnBogota() {
+  const ahoraUtc = new Date();
+  // Bogotá = UTC-5. Construyo un Date en hora Bogotá usando offset
+  const bogotaMs = ahoraUtc.getTime() - 5 * 60 * 60 * 1000;
+  const bogotaDate = new Date(bogotaMs);
+  return bogotaDate.getUTCDay() === 0; // 0 = domingo
+}
+
+async function generarResumenSemanalAdmin() {
+  const ahora = Date.now();
+  const haceSemana = ahora - 7 * 24 * 60 * 60 * 1000;
+  const isoSemana = new Date(haceSemana).toISOString();
+  const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+
+  // 1) VENTAS de la semana (comprobantes detectados)
+  const comprobantes = db.leerComprobantes();
+  const ventasSemana = comprobantes.filter(c => new Date(c.ts).getTime() >= haceSemana);
+  const ventasPorVend = {};
+  let ventasTotalMonto = 0;
+  for (const v of ventasSemana) {
+    const vend = v.vendedora || 'Sin vendedora';
+    if (!ventasPorVend[vend]) ventasPorVend[vend] = { n: 0, monto: 0 };
+    ventasPorVend[vend].n++;
+    ventasPorVend[vend].monto += (v.monto || 0);
+    ventasTotalMonto += (v.monto || 0);
+  }
+
+  // 2) FACTURAS hechas en la app esta semana
+  let facturasSemana = [];
+  try {
+    const allFact = db.leerFacturas(500, 0) || [];
+    facturasSemana = allFact.filter(f => f.tipo === 'factura' && (f.creado_en || f.fecha) >= isoSemana);
+  } catch {}
+  const facturasMonto = facturasSemana.reduce((s, f) => s + (f.total || 0), 0);
+
+  // 3) DOCS WA capturados pendientes revisar
+  let docsWAPendientes = [];
+  try { docsWAPendientes = db.leerDocumentosSalientesWANoRevisados() || []; } catch {}
+  const docsPorVend = {};
+  for (const d of docsWAPendientes) {
+    if (!docsPorVend[d.vendedora]) docsPorVend[d.vendedora] = 0;
+    docsPorVend[d.vendedora]++;
+  }
+
+  // 4) PEDIDOS — atrasados, por estado
+  const pedidos = leerPedidos();
+  const activos = pedidos.filter(p => p && p.estado && p.estado !== 'enviado-final');
+  const porEstado = {};
+  for (const p of activos) {
+    porEstado[p.estado] = (porEstado[p.estado] || 0) + 1;
+  }
+  // Atrasados: fechaEntrega < hoy y no esta en enviado-final
+  const hoyIso = new Date().toISOString().slice(0, 10);
+  const atrasados = activos.filter(p => {
+    const fe = (p.fechaEntrega || '').slice(0, 10);
+    return fe && fe < hoyIso;
+  });
+
+  // 5) COMPROBANTES sin sticker (los que el cron 8PM aún no logró marcar)
+  let sinSticker = 0;
+  const dbgPedidoMov = {};
+  for (const p of pedidos) {
+    if (!p.telefono) continue;
+    const tel = String(p.telefono).replace(/\D/g, '');
+    dbgPedidoMov[tel] = Math.max(dbgPedidoMov[tel] || 0, p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0);
+  }
+  for (const v of ventasSemana) {
+    const tel = String(v.telefono || '').replace(/\D/g, '');
+    const lastMov = dbgPedidoMov[tel] || 0;
+    if (lastMov < new Date(v.ts).getTime()) sinSticker++;
+  }
+
+  return {
+    hoyBogota,
+    ventasSemana: { count: ventasSemana.length, monto: ventasTotalMonto, porVendedora: ventasPorVend },
+    facturasSemana: { count: facturasSemana.length, monto: facturasMonto },
+    docsWAPendientes: { count: docsWAPendientes.length, porVendedora: docsPorVend },
+    pedidos: { activos: activos.length, porEstado, atrasados: atrasados.length, atrasadosDetalle: atrasados.slice(0, 5).map(p => ({ id: p.id, cliente: p.nombre, fechaEntrega: p.fechaEntrega, estado: p.estado })) },
+    comprobantesSinSticker: sinSticker,
+  };
+}
+
+function construirMensajeResumenSemanal(r) {
+  const fmt = (n) => _formatearMontoCOP ? _formatearMontoCOP(n) : `$${(n||0).toLocaleString('es-CO')}`;
+  const lineasVentas = Object.entries(r.ventasSemana.porVendedora)
+    .sort((a,b) => b[1].monto - a[1].monto)
+    .map(([v, d]) => `  • ${v}: ${d.n} (${fmt(d.monto)})`)
+    .join('\n') || '  • Sin ventas detectadas';
+  const lineasDocs = Object.entries(r.docsWAPendientes.porVendedora)
+    .map(([v, n]) => `  • ${v}: ${n} docs`)
+    .join('\n') || '  • Ninguno';
+  const lineasEstado = Object.entries(r.pedidos.porEstado)
+    .sort((a,b) => b[1] - a[1])
+    .map(([e, n]) => `  • ${e}: ${n}`)
+    .join('\n');
+  const lineasAtrasados = r.pedidos.atrasadosDetalle
+    .map(p => `  • #${p.id} ${p.cliente} — entrega ${p.fechaEntrega} (${p.estado})`)
+    .join('\n');
+
+  return `📊 *RESUMEN SEMANAL — Domingo ${r.hoyBogota}*
+
+💰 *VENTAS DETECTADAS (7 días)*
+Total: *${r.ventasSemana.count}* ventas — *${fmt(r.ventasSemana.monto)}*
+${lineasVentas}
+
+📄 *FACTURAS EMITIDAS EN APP (7 días)*
+${r.facturasSemana.count} facturas — ${fmt(r.facturasSemana.monto)}
+
+📥 *DOCUMENTOS WA SIN REVISAR* (${r.docsWAPendientes.count} total)
+${lineasDocs}
+${r.docsWAPendientes.count > 0 ? '\n👉 Revisá: https://ws-app-interna-production.up.railway.app/api/admin/docs-wa?solo=pendientes' : ''}
+
+⚠️ *COMPROBANTES SIN STICKER esta semana*: ${r.comprobantesSinSticker}
+${r.comprobantesSinSticker > 0 ? '_(vendedoras olvidaron poner sticker → revisar)_' : '_(todas las vendedoras marcaron sus ventas ✓)_'}
+
+🚨 *PEDIDOS ATRASADOS HOY*: ${r.pedidos.atrasados}
+${lineasAtrasados || '_(ninguno)_'}
+
+📋 *TABLERO ACTIVO (${r.pedidos.activos} pedidos)*
+${lineasEstado || '_(vacío)_'}
+
+_Buen domingo. Decisiones para mañana._`;
+}
+
+async function cronDomingoTick() {
+  try {
+    if (!_esDomingoEnBogota()) return;
+    const hora = _huelaPMBogota();
+    if (hora !== 19) return; // 7 PM Bogotá
+    if (_yaDomingoEstaSemana()) return;
+    console.log('[cron-dom] disparando resumen semanal admin...');
+    const data = await generarResumenSemanalAdmin();
+    const texto = construirMensajeResumenSemanal(data);
+    await responderJefe(texto);
+    _marcarDomingoEstaSemana();
+    console.log('[cron-dom] enviado');
+  } catch (e) { console.error('[cron-dom error]', e.message); }
+}
+setInterval(cronDomingoTick, 60 * 1000);
+setTimeout(cronDomingoTick, 60 * 1000);
+console.log('[cron-dom] activado — resumen semanal admin domingo 7 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
