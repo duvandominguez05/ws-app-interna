@@ -1664,6 +1664,61 @@ http.createServer(async (req, res) => {
     return json(res, 200, { ok: true });
   }
 
+  // ── POST /api/admin/limpiar-pedidos-vacios?dryRun=1 — borra pedidos del bot sin info real ──
+  // Pedidos creados por sticker/bot/comprobante que llevan >7 días sin nombre, sin cliente,
+  // sin items y sin total quedaron "vacíos". El tablero los muestra como cards en blanco.
+  // Este endpoint los purga (excluye los que tienen equipo/cliente/total/fotosCostura).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/limpiar-pedidos-vacios')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const dryRun = u.searchParams.get('dryRun') === '1';
+      const minDias = parseInt(u.searchParams.get('minDias') || '3', 10);
+      const ahora = Date.now();
+      const pedidos = leerPedidos();
+      const esVacio = (p) => {
+        if (p.estado === 'enviado-final') return false;
+        if (p.stickerVenta) return false;
+        const eq = String(p.equipo || '').trim();
+        const cli = String(p.cliente || '').trim();
+        const tel = String(p.telefono || '').replace(/\D/g, '');
+        const total = Number(p.total || 0);
+        const hayItems = Array.isArray(p.items) && p.items.length > 0;
+        const hayFotos = Array.isArray(p.fotosCostura) && p.fotosCostura.length > 0;
+        // Si tiene cualquier dato real, NO es vacío
+        if (eq.length >= 2) return false;
+        if (cli.length >= 2) return false;
+        if (total > 0) return false;
+        if (hayItems) return false;
+        if (hayFotos) return false;
+        if (p.disenadorAsignado) return false;
+        // Edad mínima — no borrar pedidos del día (aún se están armando)
+        const ts = new Date(p.ultimoMovimiento || p.creadoEn || 0).getTime();
+        if (!ts) return false;
+        const dias = (ahora - ts) / 86400000;
+        if (dias < minDias) return false;
+        // Solo borrar los creados por sistema (bot/comprobante/etc), nunca manuales
+        const creadoPorSistema = p.origenBot || p.origenComprobante || p.origenHuerfano || p.origenFacturaHuerfana;
+        return !!creadoPorSistema;
+      };
+      const candidatos = pedidos.filter(esVacio);
+      const muestra = candidatos.slice(0, 20).map(p => ({
+        id: p.id, vendedora: p.vendedora, estado: p.estado, tel: p.telefono,
+        dias: Math.floor((ahora - new Date(p.ultimoMovimiento || p.creadoEn || 0).getTime()) / 86400000),
+        origen: p.origenBot ? 'bot' : p.origenComprobante ? 'comprobante' : p.origenHuerfano ? 'huerfano' : p.origenFacturaHuerfana ? 'facturaHuerfana' : '?',
+      }));
+      if (dryRun) {
+        return json(res, 200, { dryRun: true, total: candidatos.length, muestra });
+      }
+      const ids = candidatos.map(p => p.id);
+      const limpios = pedidos.filter(p => !ids.includes(p.id));
+      guardarPedidos(limpios);
+      console.log(`[limpiar-pedidos-vacios] eliminados ${candidatos.length} pedidos del bot sin datos (minDias=${minDias})`);
+      return json(res, 200, { ok: true, eliminados: candidatos.length, ids, total_antes: pedidos.length, total_despues: limpios.length });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/pedidos/limpiar-basura — borra pedidos sin teléfono Y sin vendedora ──
   // Útil para limpiar el spam del lector de tablero foto cuando Gemini equivoca.
   if (req.method === 'POST' && req.url === '/api/pedidos/limpiar-basura') {
@@ -1855,10 +1910,8 @@ http.createServer(async (req, res) => {
         if (recuperadosDelBot > 0) console.log(`[POST /api/pedidos] protegidos ${recuperadosDelBot} pedidos bot que cliente intento borrar via cache`);
         merged.sort((a, b) => a.id - b.id);
 
-        // ─── DETECCIÓN DE CAMBIOS para disparar notificaciones WA ───
-        // (antes de guardar) Identificar:
-        //   1) Diseñador recién asignado (existing.disenadorAsignado vacío → nuevo tiene valor)
-        //   2) Estado avanzó a 'listo' (avisar a la vendedora)
+        // ─── DETECCIÓN DE CAMBIOS para disparar notificaciones WA + historial ───
+        const personaReq = leerPersonaRequest(req);
         const cambiosDisenador = [];
         const cambiosListo = [];
         for (const p of merged) {
@@ -1871,6 +1924,33 @@ http.createServer(async (req, res) => {
           // Pedido pasa a 'listo'
           if (e.estado !== 'listo' && p.estado === 'listo') {
             cambiosListo.push({ pedido: p });
+          }
+          // Historial server-side: registrar cualquier cambio de estado/vendedora/disenadorAsignado
+          // si la entrada no la trae ya el cliente (evita duplicar)
+          const hubo = [];
+          if (e.estado !== p.estado) hubo.push({ campo: 'estado', de: e.estado, a: p.estado });
+          if ((e.vendedora || '') !== (p.vendedora || '')) hubo.push({ campo: 'vendedora', de: e.vendedora || '', a: p.vendedora || '' });
+          if ((e.disenadorAsignado || '') !== (p.disenadorAsignado || '')) hubo.push({ campo: 'disenadorAsignado', de: e.disenadorAsignado || '', a: p.disenadorAsignado || '' });
+          if (hubo.length > 0) {
+            p.historial = p.historial || [];
+            const fecha = p.ultimoMovimiento || new Date().toISOString();
+            const por = personaReq ? personaReq.slug : (p.ultimoMovimientoPor || 'desconocido');
+            // Solo registrar si no hay una entrada idéntica en los últimos 3 segundos (evita duplicar
+            // si el cliente ya envió historial por su lado)
+            const ultimoHist = p.historial[p.historial.length - 1];
+            const dupe = ultimoHist
+              && Math.abs(new Date(ultimoHist.fecha || 0).getTime() - new Date(fecha).getTime()) < 3000
+              && ultimoHist.por === por
+              && JSON.stringify(ultimoHist.cambios || {}) === JSON.stringify(Object.fromEntries(hubo.map(h => [h.campo, { de: h.de, a: h.a }])));
+            if (!dupe) {
+              p.historial.push({
+                fecha,
+                por,
+                accion: 'sync',
+                cambios: Object.fromEntries(hubo.map(h => [h.campo, { de: h.de, a: h.a }])),
+              });
+              if (personaReq) p.ultimoMovimientoPor = personaReq.slug;
+            }
           }
         }
 
@@ -2865,6 +2945,83 @@ http.createServer(async (req, res) => {
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ── POST /api/admin/resubir-facturas-sin-drive ──
+  // Toma todas las facturas con drive_file_id=null y sube un .txt resumen a Drive.
+  // Esto es backup para facturas viejas que se crearon antes de tener Drive conectado.
+  // El PDF original no se conserva, pero queda registro accesible.
+  if (req.method === 'POST' && req.url === '/api/admin/resubir-facturas-sin-drive') {
+    (async () => {
+      try {
+        const facturas = db.leerFacturas(500, 0);
+        const sinDrive = facturas.filter(f => !f.drive_file_id);
+        const acciones = [];
+        for (const f of sinDrive) {
+          try {
+            const items = Array.isArray(f.items) ? f.items : (typeof f.items === 'string' ? JSON.parse(f.items || '[]') : []);
+            const fmt = n => '$' + (Number(n)||0).toLocaleString('es-CO');
+            const lineas = [
+              `═══════════════════════════════════════════`,
+              `  ${(f.tipo === 'cotizacion' ? 'COTIZACIÓN' : 'FACTURA').toUpperCase()} #${f.numero}`,
+              `═══════════════════════════════════════════`,
+              ``,
+              `Fecha:      ${f.fecha || '-'}`,
+              `Cliente:    ${f.cliente_nombre || '-'}`,
+              `Teléfono:   ${f.cliente_telefono || '-'}`,
+              `NIT:        ${f.cliente_nit || '-'}`,
+              `Correo:     ${f.cliente_correo || '-'}`,
+              `Vendedora:  ${f.vendedora || '-'}`,
+              ``,
+              `─── ITEMS ───`,
+            ];
+            items.forEach((it, idx) => {
+              lineas.push(`${idx+1}. ${it.descripcion || it.concepto || '-'}`);
+              lineas.push(`   Cant: ${it.cantidad || 1}  |  Vr.Unit: ${fmt(it.precio || it.valor || 0)}  |  Subtotal: ${fmt((it.cantidad || 1) * (it.precio || it.valor || 0))}`);
+            });
+            lineas.push(``);
+            lineas.push(`─── TOTALES ───`);
+            lineas.push(`Subtotal:   ${fmt(f.subtotal)}`);
+            lineas.push(`Abono:      ${fmt(f.abono)}`);
+            lineas.push(`TOTAL:      ${fmt(f.total)}`);
+            if (f.notas) {
+              lineas.push(``);
+              lineas.push(`Notas: ${f.notas}`);
+            }
+            lineas.push(``);
+            lineas.push(`─── RECONSTRUCCIÓN ───`);
+            lineas.push(`Este archivo se generó como backup tardío en Drive.`);
+            lineas.push(`El PDF original no existe. Para regenerarlo, abrir la factura en la app y exportar de nuevo.`);
+            lineas.push(`Factura ID interna: ${f.id}`);
+            lineas.push(`Creada: ${f.creado_en || '-'}`);
+            const contenido = lineas.join('\n');
+            const buff = Buffer.from(contenido, 'utf8');
+            const parentId = f.tipo === 'cotizacion' ? driveSync.FOLDER_COTIZACIONES : driveSync.FOLDER_FACTURAS;
+            const titulo = `${f.tipo === 'cotizacion' ? 'COTIZACION' : 'FACTURA'} ${f.numero}${f.cliente_nombre ? ' - ' + f.cliente_nombre : ''}.txt`;
+            const subida = await driveSync.subirArchivo({
+              titulo,
+              mimeType: 'text/plain; charset=utf-8',
+              contentBase64: buff.toString('base64'),
+              parentId,
+            });
+            try { await driveSync.hacerArchivoPublico(subida.id); } catch (eP) { console.warn('[resubir] no público:', eP.message); }
+            db.setFacturaDrive(f.id, subida.id, subida.viewLink);
+            acciones.push({ factura_id: f.id, numero: f.numero, ok: true, drive_id: subida.id, link: subida.viewLink });
+          } catch (eF) {
+            acciones.push({ factura_id: f.id, numero: f.numero, ok: false, error: eF.message });
+          }
+        }
+        return json(res, 200, {
+          total: sinDrive.length,
+          exitosas: acciones.filter(a => a.ok).length,
+          fallidas: acciones.filter(a => !a.ok).length,
+          acciones,
+        });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
   }
 
   // ── GET /api/admin/diag-eventos — diagnostico: cuantos eventos hay por tipo/fecha ──

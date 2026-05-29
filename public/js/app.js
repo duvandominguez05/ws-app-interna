@@ -6617,24 +6617,37 @@ async function avanzarRapidoTablero(id, proximoEstado, textoAccion) {
     ? '¿Confirmar entrega de "' + etiqueta + '"?\n\nSe archiva en Notion automaticamente.'
     : '¿' + textoAccion + ' — "' + etiqueta + '"?';
   if (!confirm(mensaje)) return;
+  // UI optimista
+  const estadoAnterior = p.estado;
   p.estado = proximoEstado;
   p.ultimoMovimiento = new Date().toISOString();
-  guardar();
   toast('✅ ' + textoAccion, 'success');
   render();
-  if (esCierre) {
-    setTimeout(async () => {
-      try {
-        toast('⏳ Archivando en Notion...', 'info');
-        const r = await fetch('/api/pedidos/' + id + '/archivar', { method: 'POST' });
-        const data = await r.json();
-        if (r.ok && data.ok) {
-          eliminadosLocales.add(id);
-          await hardSyncFromServer(true);
-          toast('📁 Pedido #' + id + ' archivado en Notion', 'success');
-        }
-      } catch (e) { console.error('[auto-archivar]', e); }
-    }, 600);
+  // Server-side: usar endpoint /avanzar para registrar historial con la persona del header
+  try {
+    const r = await fetch('/api/pedidos/' + id + '/avanzar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado: proximoEstado }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'fallo en avanzar');
+    if (data.archivado) {
+      // El server auto-archivó a Notion al pasar a enviado-final
+      eliminadosLocales.add(id);
+      pedidos = pedidos.filter(x => x.id !== id);
+      render();
+      toast('📁 Pedido #' + id + ' archivado en Notion', 'success');
+    } else {
+      // Persistir el cambio local también (para que el próximo guardar() no lo regrese)
+      guardar();
+    }
+  } catch (e) {
+    // Rollback si falla
+    console.error('[avanzar-rapido]', e);
+    p.estado = estadoAnterior;
+    render();
+    toast('Error al avanzar: ' + e.message, 'error');
   }
 }
 
