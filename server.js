@@ -1252,12 +1252,17 @@ function purgarArchivados(pedidos) {
 // El pedido se sube a Notion y luego se borra del servidor.
 // Notion queda como histórico, Railway sigue ligero.
 // ─────────────────────────────────────────────────────────────
+// ID hardcoded de la DB "🏆 HISTORIAL DE VENTAS — W&S Enterprise" creada en Notion.
+// Se usa si no hay variable NOTION_DB_ARCHIVO_PEDIDOS en Railway. Para cambiar de DB
+// basta con setear esa env var.
+const NOTION_DB_DEFAULT = '9a40c001-02a7-457f-8010-842a1bcb2eee';
+
 async function archivarPedidoEnNotion(pedido) {
   const token = process.env.NOTION_TOKEN;
-  const dbId = process.env.NOTION_DB_ARCHIVO_PEDIDOS;
-  if (!token || !dbId) {
-    console.log('[notion] sin token o db_id, saltando archivo');
-    return { ok: false, motivo: 'no configurado' };
+  const dbId = process.env.NOTION_DB_ARCHIVO_PEDIDOS || NOTION_DB_DEFAULT;
+  if (!token) {
+    console.log('[notion] sin token, saltando archivo');
+    return { ok: false, motivo: 'sin NOTION_TOKEN' };
   }
   try {
     // Mapeo a las opciones EXACTAS del select en Notion (todas con Capitalize)
@@ -3300,6 +3305,64 @@ http.createServer(async (req, res) => {
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ── POST /api/admin/migrar-pedidos-a-notion?dryRun=1&estados=todos|cerrados ──
+  // Sube pedidos existentes a la DB de Notion (histórico). Útil para poblar la DB
+  // de una vez con los pedidos que ya cerraron o están en curso, sin esperar al
+  // ciclo natural de archivar.
+  // estados=cerrados → solo los enviado-final/listo (default)
+  // estados=todos → TODOS los activos (riesgo de duplicado si alguno ya estaba)
+  // estados=conpagos → solo los que tienen abonado > 0 (recomendado para historico)
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/migrar-pedidos-a-notion')) {
+    (async () => {
+      try {
+        const u = new URL(req.url, `http://${req.headers.host}`);
+        const dryRun = u.searchParams.get('dryRun') === '1';
+        const estadosParam = u.searchParams.get('estados') || 'conpagos';
+        const idsParam = u.searchParams.get('ids');
+        const pedidos = leerPedidos();
+        let candidatos;
+        if (idsParam) {
+          const setIds = new Set(idsParam.split(',').map(s => parseInt(s.trim())).filter(Boolean));
+          candidatos = pedidos.filter(p => setIds.has(p.id));
+        } else if (estadosParam === 'cerrados') {
+          candidatos = pedidos.filter(p => ['enviado-final', 'listo'].includes(p.estado));
+        } else if (estadosParam === 'todos') {
+          candidatos = pedidos.slice();
+        } else { // conpagos (default)
+          candidatos = pedidos.filter(p => (p.abonado || 0) > 0);
+        }
+        if (dryRun) {
+          return json(res, 200, {
+            dryRun: true,
+            total: candidatos.length,
+            preview: candidatos.slice(0, 30).map(p => ({
+              id: p.id, vendedora: p.vendedora, estado: p.estado, equipo: p.equipo,
+              telefono: p.telefono, total: p.total, abonado: p.abonado,
+            })),
+          });
+        }
+        const acciones = [];
+        for (const p of candidatos) {
+          const r = await archivarPedidoEnNotion(p);
+          if (r.ok) {
+            acciones.push({ id: p.id, equipo: p.equipo, ok: true, notionPageId: r.notionPageId });
+          } else {
+            acciones.push({ id: p.id, equipo: p.equipo, ok: false, motivo: r.motivo, detalle: r.detalle });
+          }
+        }
+        return json(res, 200, {
+          total: candidatos.length,
+          ok: acciones.filter(a => a.ok).length,
+          fallos: acciones.filter(a => !a.ok).length,
+          acciones,
+        });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
   }
 
   // ── POST /api/admin/resubir-facturas-sin-drive ──
