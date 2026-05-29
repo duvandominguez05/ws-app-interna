@@ -2182,9 +2182,15 @@ async function limpiarBandejaVieja(diasUmbral = 30) {
 
 async function eliminarPedidoBandeja(id, event) {
   event.stopPropagation();
-  if (!confirm(`¿Eliminar pedido #${id}?`)) return;
-  // Marcar como eliminado ANTES del DELETE para que el merge del POST no lo reviva
-  eliminadosLocales.add(id);
+  const p = pedidos.find(x => x.id === id);
+  const esProtegido = p && (p.origenBot || p.origenFacturaHuerfana || p.origenHuerfano || p.origenComprobante);
+  const aviso = esProtegido
+    ? `¿Eliminar pedido #${id}?\n\n⚠️ Este pedido fue creado por el sistema (sticker/factura/comprobante). Si lo borrás solo en este dispositivo, el server puede recrearlo. Para borrarlo en serio hay que borrar también la factura/comprobante origen.`
+    : `¿Eliminar pedido #${id}?`;
+  if (!confirm(aviso)) return;
+  // Solo marcar como eliminado local si NO es protegido (los protegidos los recrea el server
+  // y deben aparecer en todos los dispositivos — eliminadosLocales rompía esa coherencia)
+  if (!esProtegido) eliminadosLocales.add(id);
   pedidos = pedidos.filter(x => x.id !== id);
   render();
   // Intentar DELETE con un retry si falla (red caída por un instante, etc.)
@@ -3488,9 +3494,24 @@ function hardSyncFromServer(silencioso = false) {
     .then(data => {
       const srv = Array.isArray(data) ? data : (data.pedidos || []);
       const archivados = new Set(data.archivados || []);
+      // Si el server devuelve un pedido creado por sistema (origenBot, origenFacturaHuerfana,
+      // origenHuerfano, origenComprobante), siempre lo aceptamos — y limpiamos la marca de
+      // "eliminado local" si la había, porque el server lo recreó intencionalmente.
+      const esProtegido = p => p.origenBot || p.origenFacturaHuerfana || p.origenHuerfano || p.origenComprobante;
+      let limpiados = 0;
       const filtrados = srv
-        .filter(p => !eliminadosLocales.has(p.id))
-        .filter(p => !archivados.has(p.id));
+        .filter(p => {
+          if (archivados.has(p.id)) return false;
+          if (esProtegido(p)) {
+            if (eliminadosLocales.has(p.id)) {
+              eliminadosLocales.delete(p.id);
+              limpiados++;
+            }
+            return true;
+          }
+          return !eliminadosLocales.has(p.id);
+        });
+      if (limpiados > 0) console.log(`[sync] limpiados ${limpiados} pedido(s) de eliminadosLocales (recreados por server)`);
       const map = new Map();
       filtrados.forEach(p => map.set(p.id, { ...p }));
       const nuevos = Array.from(map.values());
@@ -6694,9 +6715,15 @@ async function archivarUnPedidoNotion(id) {
 async function eliminarPedidoCualquierEstado(id) {
   const p = pedidos.find(x => x.id === id);
   if (!p) return;
+  const esProtegido = p.origenBot || p.origenFacturaHuerfana || p.origenHuerfano || p.origenComprobante;
   const etiqueta = (p.equipo || p.telefono || '(sin nombre)') + ' #' + id;
-  if (!confirm('¿Eliminar permanentemente el pedido "' + etiqueta + '"?\n\nNo se puede deshacer.')) return;
-  eliminadosLocales.add(id);
+  const aviso = esProtegido
+    ? '¿Eliminar permanentemente el pedido "' + etiqueta + '"?\n\n⚠️ Este pedido fue creado por el sistema (sticker/factura/comprobante). Si lo borrás solo en este dispositivo, el server puede recrearlo. Para borrarlo en serio hay que borrar también la factura/comprobante origen.'
+    : '¿Eliminar permanentemente el pedido "' + etiqueta + '"?\n\nNo se puede deshacer.';
+  if (!confirm(aviso)) return;
+  // Solo marcamos como eliminado local si NO es protegido (los protegidos los recrea el server
+  // y deben quedar visibles en TODOS los dispositivos — coherencia multi-device)
+  if (!esProtegido) eliminadosLocales.add(id);
   pedidos = pedidos.filter(x => x.id !== id);
   const modal = document.getElementById('modal-detalle-pedido');
   if (modal) modal.remove();
