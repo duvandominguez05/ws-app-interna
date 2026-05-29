@@ -388,17 +388,11 @@
       <p>Deja esta pantalla como app en el celular de produccion.</p>
       <button onclick="instalarApp()">Instalar ahora</button>
     </div>
-    <section class="guide" aria-label="Como usar">
+    <section class="guide" aria-label="Como usar" id="guide-prim" style="display:none;">
       <div class="guide-step"><div class="guide-num">1</div><strong>Escoge donde estas</strong><span>Usa los botones de filtro.</span></div>
       <div class="guide-step"><div class="guide-num">2</div><strong>Busca el pedido</strong><span>Los urgentes salen primero.</span></div>
       <div class="guide-step"><div class="guide-num">3</div><strong>Toca el boton grande</strong><span>Asi avanza el trabajo.</span></div>
     </section>
-    <nav class="role-row">
-      <a class="role-link" href="/#/movil">Areas</a>
-      <a class="role-link" href="/#/ventas">Ventas</a>
-      <a class="role-link" href="/#/diseno">Diseno</a>
-      <a class="role-link active" href="/produccion.html">Produccion</a>
-    </nav>
     <div class="summary">
       <div class="summary-card"><strong id="s-urgentes">0</strong><span>Urgentes</span></div>
       <div class="summary-card"><strong id="s-hoy">0</strong><span>Hoy</span></div>
@@ -432,6 +426,34 @@
     </div>
   </div>
 
+  <!-- Modal envio a costurera (PASO 1 — cierre del cuello de botella) -->
+  <div class="modal" id="modal-costurera" onclick="cerrarModalCostu(event)" style="display:none;">
+    <div class="sheet" onclick="event.stopPropagation()" style="background:#0e0e10;border-radius:18px;padding:22px 18px;max-width:480px;margin:auto;border:1px solid rgba(255,255,255,0.08);box-shadow:0 24px 80px rgba(0,0,0,0.7);">
+      <div class="sheet-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:18px;">
+        <div>
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700;margin-bottom:6px;">PASO 1 DE 1</div>
+          <h2 style="font-size:1.25rem;font-weight:800;letter-spacing:-0.02em;color:#fff;">¿A quién le mandás este lote?</h2>
+          <div id="costu-pedido-info" style="font-size:0.82rem;color:#a0a0a0;margin-top:4px;"></div>
+        </div>
+        <button onclick="cerrarModalCostu()" style="background:rgba(255,255,255,0.06);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:1rem;cursor:pointer;flex-shrink:0;">✕</button>
+      </div>
+
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:10px;">Costurera</div>
+      <div id="costu-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px;"></div>
+
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Cantidad</div>
+      <input type="number" id="costu-cantidad" inputmode="numeric" placeholder="Ej: 24" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:14px;color:#fff;font-size:1.2rem;font-weight:700;text-align:center;margin-bottom:14px;" />
+
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Prenda</div>
+      <input type="text" id="costu-prenda" placeholder="Ej: Camiseta + pantaloneta" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;color:#fff;font-size:0.95rem;margin-bottom:14px;" />
+
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;margin-bottom:8px;">Notas (opcional)</div>
+      <textarea id="costu-notas" placeholder="Cualquier nota para la costurera..." rows="2" style="width:100%;background:#1a1a1c;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;color:#fff;font-size:0.92rem;resize:vertical;margin-bottom:20px;font-family:inherit;"></textarea>
+
+      <button id="costu-confirmar-btn" onclick="confirmarEnvioCostu()" style="width:100%;background:linear-gradient(180deg,#8b5cf6 0%,#7c3aed 100%);border:1px solid rgba(139,92,246,0.5);color:#fff;font-size:1.1rem;font-weight:800;padding:18px;border-radius:12px;cursor:pointer;box-shadow:0 4px 16px rgba(139,92,246,0.4);min-height:56px;">📦 Enviar a costurera</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -459,11 +481,11 @@
       'listo': 'Listo'
     };
     const ACCIONES = {
-      'enviado-calandra': { proximo: 'llego-impresion', texto: 'Llego impresion', clase: 'a-cyan' },
-      'llego-impresion': { proximo: 'corte', texto: 'Pasar a corte', clase: 'a-purple' },
-      'corte': { proximo: 'costura', texto: 'Pasar a costura', clase: 'a-purple' },
-      'costura': { proximo: 'calidad', texto: 'Pasar a revision', clase: 'a-green' },
-      'calidad': { proximo: 'listo', texto: 'Revision OK', clase: 'a-green' },
+      'enviado-calandra': { proximo: 'llego-impresion', texto: '📦 Recibí tela de calandra', clase: 'a-cyan' },
+      'llego-impresion': { proximo: 'corte', texto: '✂️ Empezar a cortar', clase: 'a-purple' },
+      'corte': { proximo: 'costura', texto: '🧵 Enviar a costurera', clase: 'a-purple' },
+      'costura': { proximo: 'calidad', texto: '🔍 Mandar a revisión', clase: 'a-green' },
+      'calidad': { proximo: 'listo', texto: '✅ Aprobado, listo', clase: 'a-green' },
       'listo': { proximo: 'enviado-final', texto: 'Entregado', clase: 'a-dark' }
     };
 
@@ -627,6 +649,10 @@
     async function avanzar(id, proximo, texto) {
       const p = pedidos.find(x => x.id === id);
       if (!p) return;
+      // CIERRE CUELLO DE BOTELLA: al pasar a costura, exigir asignar costurera
+      if (proximo === 'costura') {
+        return abrirModalCostu(p);
+      }
       const nombre = p.equipo || '#' + id;
       const msg = proximo === 'enviado-final' ? 'Confirmar entrega de ' + nombre + '?' : texto + ' - ' + nombre + '?';
       if (!confirm(msg)) return;
@@ -643,6 +669,112 @@
         cargar();
       } catch (e) {
         toast('Error: ' + e.message, 'error');
+      }
+    }
+
+    // ─── Modal envio a costurera ───
+    let costuPedidoActual = null;
+    let costuSlugSeleccionada = null;
+    let costurerasDisponibles = [];
+
+    async function cargarCostureras() {
+      if (costurerasDisponibles.length) return costurerasDisponibles;
+      try {
+        const r = await fetch('/api/costureras');
+        const data = await r.json();
+        costurerasDisponibles = Array.isArray(data.costureras) ? data.costureras : [];
+      } catch (e) { console.warn('[costureras]', e.message); }
+      return costurerasDisponibles;
+    }
+
+    async function abrirModalCostu(p) {
+      costuPedidoActual = p;
+      costuSlugSeleccionada = null;
+      await cargarCostureras();
+      // Prellenar campos
+      const items = itemsPedido(p);
+      const totalCant = items.reduce((s, i) => s + (parseInt(i.cantidad, 10) || 0), 0);
+      const prendaPrimera = items[0]?.prenda || '';
+      document.getElementById('costu-pedido-info').textContent = '#' + p.id + ' · ' + (p.equipo || p.telefono || 'Pedido');
+      document.getElementById('costu-cantidad').value = totalCant || '';
+      document.getElementById('costu-prenda').value = prendaPrimera;
+      document.getElementById('costu-notas').value = '';
+      // Render botones costureras
+      const grid = document.getElementById('costu-grid');
+      grid.innerHTML = costurerasDisponibles.map(c =>
+        '<button onclick="seleccionarCostu(\'' + c.slug + '\', this)" type="button" data-slug="' + c.slug + '" ' +
+        'style="background:rgba(255,255,255,0.04);border:2px solid rgba(255,255,255,0.10);color:#fff;padding:14px 8px;border-radius:12px;font-size:1.05rem;font-weight:700;cursor:pointer;min-height:60px;transition:all 150ms;">' +
+        '🧵 ' + c.nombre + '</button>'
+      ).join('');
+      // Mostrar modal
+      const modal = document.getElementById('modal-costurera');
+      modal.style.display = 'flex';
+      modal.style.alignItems = 'center';
+      modal.style.justifyContent = 'center';
+      modal.style.padding = '20px';
+      cerrarDetalle();
+    }
+
+    function seleccionarCostu(slug, btn) {
+      costuSlugSeleccionada = slug;
+      // Reset todos los botones
+      document.querySelectorAll('#costu-grid button').forEach(b => {
+        b.style.background = 'rgba(255,255,255,0.04)';
+        b.style.borderColor = 'rgba(255,255,255,0.10)';
+      });
+      // Marcar elegido
+      btn.style.background = 'rgba(139,92,246,0.20)';
+      btn.style.borderColor = '#8b5cf6';
+      try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+    }
+
+    function cerrarModalCostu(ev) {
+      if (ev && ev.target.id !== 'modal-costurera') return;
+      document.getElementById('modal-costurera').style.display = 'none';
+      costuPedidoActual = null;
+      costuSlugSeleccionada = null;
+    }
+
+    async function confirmarEnvioCostu() {
+      if (!costuPedidoActual) return;
+      if (!costuSlugSeleccionada) {
+        toast('Escoge una costurera primero', 'error');
+        return;
+      }
+      const cantidad = parseInt(document.getElementById('costu-cantidad').value, 10);
+      if (!cantidad || cantidad < 1) {
+        toast('Pon la cantidad de prendas', 'error');
+        return;
+      }
+      const prenda = document.getElementById('costu-prenda').value.trim();
+      const notas = document.getElementById('costu-notas').value.trim();
+      const btn = document.getElementById('costu-confirmar-btn');
+      const txtOrig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Enviando...';
+      try {
+        const r = await fetch('/api/costureras/envio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pedido_id: costuPedidoActual.id,
+            costurera_slug: costuSlugSeleccionada,
+            cantidad,
+            prenda: prenda || null,
+            observaciones: notas || null,
+            enviado_por: 'lidermeyer-app',
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'no se pudo enviar');
+        toast('✅ Lote enviado. Avisamos a la costurera.');
+        try { if (navigator.vibrate) navigator.vibrate([20, 40, 60]); } catch (e) {}
+        cerrarModalCostu();
+        cargar();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = txtOrig;
       }
     }
     async function patchPedido(id, cambios) {
