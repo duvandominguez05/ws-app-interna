@@ -5839,7 +5839,7 @@ async function generarResumenSemanalAdmin() {
     ventasSemana: { count: ventasSemana.length, monto: ventasTotalMonto, porVendedora: ventasPorVend },
     facturasSemana: { count: facturasSemana.length, monto: facturasMonto },
     docsWAPendientes: { count: docsWAPendientes.length, porVendedora: docsPorVend },
-    pedidos: { activos: activos.length, porEstado, atrasados: atrasados.length, atrasadosDetalle: atrasados.slice(0, 5).map(p => ({ id: p.id, cliente: p.nombre, fechaEntrega: p.fechaEntrega, estado: p.estado })) },
+    pedidos: { activos: activos.length, porEstado, atrasados: atrasados.length, atrasadosDetalle: atrasados.slice(0, 5).map(p => ({ id: p.id, cliente: p.cliente || p.equipo || 'Sin nombre', fechaEntrega: p.fechaEntrega, estado: p.estado })) },
     comprobantesSinSticker: sinSticker,
   };
 }
