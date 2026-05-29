@@ -2328,12 +2328,13 @@ http.createServer(async (req, res) => {
       const enviar = u.searchParams.get('enviar') === '1';
       const data = await generarResumenSemanalAdmin();
       const texto = construirMensajeResumenSemanal(data);
-      let enviadoWA = false;
+      let enviadoWA = false, enviadoTG = false;
       if (enviar) {
         await responderJefe(texto);
         enviadoWA = true;
+        try { await notificarTelegramDuvan(texto); enviadoTG = true; } catch (e) {}
       }
-      return json(res, 200, { data, texto, enviadoWA });
+      return json(res, 200, { data, texto, enviadoWA, enviadoTG });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
@@ -5895,9 +5896,11 @@ async function cronDomingoTick() {
     console.log('[cron-dom] disparando resumen semanal admin...');
     const data = await generarResumenSemanalAdmin();
     const texto = construirMensajeResumenSemanal(data);
+    // Doble canal: WA personal + Telegram admin
     await responderJefe(texto);
+    try { await notificarTelegramDuvan(texto); } catch (e) { console.error('[cron-dom tg]', e.message); }
     _marcarDomingoEstaSemana();
-    console.log('[cron-dom] enviado');
+    console.log('[cron-dom] enviado WA+TG');
   } catch (e) { console.error('[cron-dom error]', e.message); }
 }
 setInterval(cronDomingoTick, 60 * 1000);
