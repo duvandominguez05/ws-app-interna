@@ -2746,6 +2746,68 @@ http.createServer(async (req, res) => {
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // ── POST /api/admin/vincular-comprobantes-huerfanos?dryRun=1 ──
+  // Toma todos los comprobantes_detectados y los suma al "abonado" del pedido
+  // del mismo telefono activo. Necesario para que el resumen domingo refleje
+  // cartera real (sin esto, todos los abonado=0 a pesar de $7M+ en comprobantes).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/vincular-comprobantes-huerfanos')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const dryRun = u.searchParams.get('dryRun') === '1';
+      const comps = db.leerComprobantes();
+      const acciones = [];
+      let totalVinculado = 0;
+      for (const c of comps) {
+        if (!c.monto || c.monto <= 0) continue;
+        if (!c.telefono) continue;
+        // Saltar si ya fue procesado por el handler en vivo (tiene pedidoAutoCreado
+        // O vimos arriba que se vinculo)
+        if (c.vinculadoBulk) continue;
+        if (dryRun) {
+          const pedidos = leerPedidos();
+          const tel = String(c.telefono).replace(/\D/g, '');
+          const candidatos = pedidos.filter(x => {
+            if (!x.telefono) return false;
+            if (x.estado === 'enviado-final') return false;
+            return String(x.telefono).replace(/\D/g, '') === tel;
+          });
+          if (candidatos.length === 0) {
+            acciones.push({ comp_id: c.id || c.messageId, monto: c.monto, tel, motivo: 'sin-pedido-activo' });
+          } else {
+            acciones.push({ comp_id: c.id || c.messageId, monto: c.monto, tel, pedidoId: candidatos[0].id, dryRun: true });
+            totalVinculado += c.monto;
+          }
+          continue;
+        }
+        // Vinculacion real
+        const r = vincularComprobanteAPedido({
+          telefono: c.telefono,
+          monto: c.monto,
+          banco: c.banco,
+          fecha: c.fecha,
+          comprobante_id: c.id || c.messageId,
+        });
+        if (r.vinculado) {
+          totalVinculado += c.monto;
+          // Marcar comprobante como ya procesado para evitar doble-conteo
+          try { db.marcarComprobanteVinculado && db.marcarComprobanteVinculado(c.id || c.messageId); } catch {}
+        }
+        acciones.push({ comp_id: c.id || c.messageId, monto: c.monto, tel: c.telefono, ...r });
+      }
+      return json(res, 200, {
+        dryRun,
+        total: acciones.length,
+        vinculados: acciones.filter(a => a.vinculado || a.dryRun).length,
+        sinPedido: acciones.filter(a => !a.vinculado && !a.dryRun && (a.motivo === 'sin-pedido' || a.motivo === 'sin-pedido-activo')).length,
+        duplicados: acciones.filter(a => a.motivo === 'duplicado').length,
+        totalMontoVinculado: totalVinculado,
+        acciones: acciones.slice(0, 50),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/vincular-facturas-huerfanas — crea pedidos para facturas sin pedido_id ──
   // Útil para arreglar facturas históricas que se crearon sin pedido en la app.
   // Query: ?dryRun=1 para solo ver qué pasaría sin modificar nada.
