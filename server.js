@@ -573,6 +573,122 @@ function guardarComprobanteDetectado(registro) {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// HELPERS DE PAGO 50/50 — campos abonado/pagos[]/total/pagadoCompleto
+// Trabajan sobre el JSON del pedido (la tabla pedidos guarda data TEXT).
+// Diseño conservador: si total no esta definido, NO se bloquea nada.
+// La visibilidad de campos financieros la filtra _filtrarPedidoSegunRol.
+// ═════════════════════════════════════════════════════════════════
+function _inicializarPagosPedido(p) {
+  if (!Array.isArray(p.pagos)) p.pagos = [];
+  if (typeof p.abonado !== 'number') p.abonado = 0;
+  if (typeof p.total !== 'number') p.total = p.total ?? null;
+}
+
+// Recalcula abonado desde pagos[] (fuente de verdad) y pagadoCompleto.
+function _recalcularEstadoPago(p) {
+  _inicializarPagosPedido(p);
+  p.abonado = (p.pagos || []).reduce((s, x) => s + (Number(x.monto) || 0), 0);
+  p.saldoPendiente = (typeof p.total === 'number' && p.total > 0)
+    ? Math.max(0, p.total - p.abonado)
+    : null;
+  p.pagadoCompleto = (typeof p.total === 'number' && p.total > 0)
+    ? (p.abonado >= p.total)
+    : false;
+  return p;
+}
+
+// Anade un pago al pedido. Dedup por comprobante_id si viene.
+// Devuelve true si se anadio (false si era duplicado).
+function _anadirPagoAPedido(p, pago) {
+  _inicializarPagosPedido(p);
+  if (pago.comprobante_id) {
+    const yaExiste = p.pagos.some(x => x.comprobante_id === pago.comprobante_id);
+    if (yaExiste) return false;
+  }
+  p.pagos.push({
+    monto: Number(pago.monto) || 0,
+    fecha: pago.fecha || new Date().toISOString(),
+    banco: pago.banco || null,
+    origen: pago.origen || 'manual',
+    comprobante_id: pago.comprobante_id || null,
+    nota: pago.nota || null,
+  });
+  _recalcularEstadoPago(p);
+  // Log al historial del pedido
+  p.historial = p.historial || [];
+  p.historial.push({
+    fecha: new Date().toISOString(),
+    por: pago.origen === 'comprobante' ? 'comprobante-bot' : 'manual',
+    accion: 'agregar-pago',
+    nota: `Pago $${(Number(pago.monto)||0).toLocaleString('es-CO')}${pago.banco ? ' ('+pago.banco+')' : ''}`,
+  });
+  return true;
+}
+
+// Intenta vincular comprobante recien detectado a pedido(s) y sumar al abonado.
+// Si pedidoId es conocido → directo. Si no, busca por telefono entre activos.
+function vincularComprobanteAPedido({ pedidoId, telefono, monto, banco, fecha, comprobante_id }) {
+  if (!monto) return { vinculado: false, motivo: 'sin-monto' };
+  const pedidos = leerPedidos();
+  let pedido = null;
+  if (pedidoId) {
+    pedido = pedidos.find(x => x.id === pedidoId);
+  }
+  if (!pedido && telefono) {
+    const tel = String(telefono).replace(/\D/g, '');
+    // Buscar pedido activo (no enviado-final) con mismo telefono, mas reciente
+    const candidatos = pedidos.filter(x => {
+      if (!x.telefono) return false;
+      if (x.estado === 'enviado-final') return false;
+      return String(x.telefono).replace(/\D/g, '') === tel;
+    }).sort((a, b) => {
+      const ta = new Date(a.ultimoMovimiento || a.fecha || 0).getTime();
+      const tb = new Date(b.ultimoMovimiento || b.fecha || 0).getTime();
+      return tb - ta;
+    });
+    pedido = candidatos[0] || null;
+  }
+  if (!pedido) return { vinculado: false, motivo: 'sin-pedido' };
+  const agregado = _anadirPagoAPedido(pedido, {
+    monto, banco, fecha,
+    comprobante_id,
+    origen: 'comprobante',
+  });
+  if (!agregado) return { vinculado: false, motivo: 'duplicado', pedidoId: pedido.id };
+  db.guardarPedidos(pedidos);
+  return {
+    vinculado: true,
+    pedidoId: pedido.id,
+    abonado: pedido.abonado,
+    total: pedido.total,
+    saldoPendiente: pedido.saldoPendiente,
+    pagadoCompleto: pedido.pagadoCompleto,
+  };
+}
+
+// Si una factura tiene pedido_id y total, sincroniza pedido.total con factura.total.
+function syncTotalDesdeFactura(factura) {
+  if (!factura || !factura.pedido_id || !factura.total) return;
+  const pedidos = leerPedidos();
+  const p = pedidos.find(x => x.id === factura.pedido_id);
+  if (!p) return;
+  _inicializarPagosPedido(p);
+  // Solo seteamos si el pedido no tenia total (no pisar valor manual del admin)
+  if (p.total == null || p.total === 0) {
+    p.total = Number(factura.total) || null;
+    _recalcularEstadoPago(p);
+    p.historial = p.historial || [];
+    p.historial.push({
+      fecha: new Date().toISOString(),
+      por: 'factura-link',
+      accion: 'set-total',
+      nota: `Total $${(p.total||0).toLocaleString('es-CO')} tomado de factura #${factura.numero}`,
+    });
+    db.guardarPedidos(pedidos);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
 // CAPTURA DOCUMENTOS SALIENTES DE VENDEDORAS (facturas hechas manual)
 // Las 4 vendedoras (Betty, Ney, Wendy, Paola) mandan PDFs/imagenes de
 // facturas a sus clientes. Este listener intercepta esos mensajes,
@@ -2341,6 +2457,147 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/pagos-pedido/:id — estado financiero detallado de un pedido ──
+  if (req.method === 'GET' && /^\/api\/admin\/pagos-pedido\/\d+/.test(req.url)) {
+    try {
+      const id = parseInt(req.url.match(/^\/api\/admin\/pagos-pedido\/(\d+)/)[1], 10);
+      const pedidos = leerPedidos();
+      const p = pedidos.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+      _recalcularEstadoPago(p);
+      return json(res, 200, {
+        pedido: {
+          id: p.id, cliente: p.cliente, equipo: p.equipo, vendedora: p.vendedora,
+          telefono: p.telefono, estado: p.estado, fechaEntrega: p.fechaEntrega,
+        },
+        total: p.total,
+        abonado: p.abonado,
+        saldoPendiente: p.saldoPendiente,
+        pagadoCompleto: p.pagadoCompleto,
+        pagos: p.pagos || [],
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
+  // ── GET /api/admin/pagos-resumen — overview de cartera + pedidos con saldo ──
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/pagos-resumen')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const incluirSinTotal = u.searchParams.get('sintotal') === '1';
+      const pedidos = leerPedidos();
+      const conTotal = [];
+      const sinTotal = [];
+      let carteraViva = 0;
+      let abonadoTotal = 0;
+      let totalAcordadoTotal = 0;
+      for (const p of pedidos) {
+        if (p.estado === 'enviado-final') continue; // ya despachados no cuentan a cartera
+        _recalcularEstadoPago(p);
+        const row = {
+          id: p.id, cliente: p.cliente, equipo: p.equipo, vendedora: p.vendedora,
+          estado: p.estado, fechaEntrega: p.fechaEntrega,
+          total: p.total, abonado: p.abonado, saldoPendiente: p.saldoPendiente,
+          pagadoCompleto: p.pagadoCompleto,
+          numPagos: (p.pagos || []).length,
+        };
+        if (typeof p.total === 'number' && p.total > 0) {
+          conTotal.push(row);
+          totalAcordadoTotal += p.total;
+          abonadoTotal += p.abonado;
+          if (p.saldoPendiente > 0) carteraViva += p.saldoPendiente;
+        } else if (incluirSinTotal) {
+          sinTotal.push(row);
+        }
+      }
+      // Top 5 saldos mayores
+      const topSaldos = conTotal
+        .filter(r => r.saldoPendiente > 0)
+        .sort((a, b) => b.saldoPendiente - a.saldoPendiente)
+        .slice(0, 10);
+      return json(res, 200, {
+        resumen: {
+          carteraViva,
+          abonadoTotal,
+          totalAcordadoTotal,
+          pedidosConTotal: conTotal.length,
+          pedidosPagados: conTotal.filter(r => r.pagadoCompleto).length,
+          pedidosConSaldo: conTotal.filter(r => r.saldoPendiente > 0).length,
+          pedidosSinTotal: sinTotal.length,
+        },
+        topSaldos,
+        sinTotal: incluirSinTotal ? sinTotal : undefined,
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
+  // ── POST /api/admin/pagos-pedido/:id/agregar — registrar pago manual ──
+  // Body: { monto, banco?, nota?, fecha? }
+  if (req.method === 'POST' && /^\/api\/admin\/pagos-pedido\/\d+\/agregar/.test(req.url)) {
+    const id = parseInt(req.url.match(/^\/api\/admin\/pagos-pedido\/(\d+)/)[1], 10);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        if (!data.monto) return json(res, 400, { error: 'monto requerido' });
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        const ok = _anadirPagoAPedido(p, {
+          monto: data.monto,
+          banco: data.banco || 'manual',
+          fecha: data.fecha || new Date().toISOString(),
+          nota: data.nota || null,
+          origen: 'manual',
+        });
+        if (!ok) return json(res, 200, { ok: false, motivo: 'duplicado' });
+        db.guardarPedidos(pedidos);
+        return json(res, 200, {
+          ok: true,
+          abonado: p.abonado,
+          saldoPendiente: p.saldoPendiente,
+          pagadoCompleto: p.pagadoCompleto,
+        });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    });
+    return;
+  }
+
+  // ── POST /api/admin/pagos-pedido/:id/total — setear/editar total esperado ──
+  // Body: { total }   (admin puede definir el precio acordado cuando no hay factura)
+  if (req.method === 'POST' && /^\/api\/admin\/pagos-pedido\/\d+\/total/.test(req.url)) {
+    const id = parseInt(req.url.match(/^\/api\/admin\/pagos-pedido\/(\d+)/)[1], 10);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        const totalNuevo = data.total === null ? null : (Number(data.total) || null);
+        p.total = totalNuevo;
+        _recalcularEstadoPago(p);
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'admin',
+          accion: 'set-total',
+          nota: `Total ${totalNuevo ? '$' + totalNuevo.toLocaleString('es-CO') : 'borrado'}`,
+        });
+        db.guardarPedidos(pedidos);
+        return json(res, 200, {
+          ok: true,
+          total: p.total,
+          abonado: p.abonado,
+          saldoPendiente: p.saldoPendiente,
+          pagadoCompleto: p.pagadoCompleto,
+        });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    });
+    return;
+  }
+
   // ── GET /api/admin/alertas-calandra — preview/dispara alertas calandra +24h ──
   // Query: ?enviar=1 (envía); sin enviar solo muestra los candidatos detectados.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/alertas-calandra')) {
@@ -3490,6 +3747,35 @@ http.createServer(async (req, res) => {
 
                     guardarComprobanteDetectado(registro);
                     console.log(`[comprobante] DETECTADO ${vendedora} ← ${nombreCliente} ${analisis.banco} $${analisis.monto||'?'} (confianza=${analisis.confianza})`);
+
+                    // ─── PAGO 50/50: vincular comprobante al pedido y sumar al abonado ───
+                    try {
+                      const resVinc = vincularComprobanteAPedido({
+                        pedidoId: pedidoCreado || null,
+                        telefono: telefonoCliente,
+                        monto: analisis.monto,
+                        banco: analisis.banco,
+                        fecha: new Date().toISOString(),
+                        comprobante_id: registro.cid || (eventData.key && eventData.key.id),
+                      });
+                      if (resVinc.vinculado) {
+                        console.log(`[pago] $${analisis.monto} vinculado a pedido #${resVinc.pedidoId} (abonado=$${resVinc.abonado}${resVinc.total?'/$'+resVinc.total:''})`);
+                        // Si quedo pagado completo Y tiene total → avisar a vendedora
+                        if (resVinc.pagadoCompleto) {
+                          try {
+                            const msgPagado = `✅ *Cliente pagó 100%*\n\n` +
+                              `Pedido #${resVinc.pedidoId} — ${nombreCliente}\n` +
+                              `Total abonado: $${Number(resVinc.abonado).toLocaleString('es-CO')}\n\n` +
+                              `Cuando esté listo, ya se puede despachar.`;
+                            await notificarWAVendedora(vendedora, msgPagado);
+                          } catch (eAvi) { console.error('[pago avisar]', eAvi.message); }
+                        }
+                      } else {
+                        console.log(`[pago] no vinculado: ${resVinc.motivo}`);
+                      }
+                    } catch (ePago) {
+                      console.error('[pago vincular err]', ePago.message);
+                    }
 
                     // ─── WA INMEDIATO a la vendedora con CONTADOR DEL DIA ───
                     try {
@@ -5146,6 +5432,8 @@ http.createServer(async (req, res) => {
         if (!data.numero || !data.tipo) return json(res, 400, { error: 'numero y tipo son requeridos' });
         // Guardar registro
         const factura = db.crearFactura(data);
+        // Si factura tiene pedido_id, sincronizar pedido.total con factura.total
+        try { syncTotalDesdeFactura(factura); } catch (eSync) { console.error('[sync total]', eSync.message); }
         // Si viene PDF en base64, subir a Drive
         if (data.pdfBase64) {
           try {
