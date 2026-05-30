@@ -5186,51 +5186,60 @@ function buildDocHTML(d) {
   return `<!DOCTYPE html><html style="background:#f1f5f9;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:white !important;color-scheme:light !important}
-  .page{width:800px;min-height:1130px;margin:0 auto;background:white;position:relative;page-break-inside:avoid;}
+  html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff !important;color:#0f172a !important;color-scheme:light !important}
+  .page{width:800px;min-height:1130px;margin:0 auto;background:#ffffff !important;color:#0f172a !important;position:relative;page-break-inside:avoid;}
 
-  .header-bg { background:${color2}; color:white; padding:32px 38px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 18px 18px; margin-bottom:22px; border-bottom:6px solid ${color1}; }
+  /* RESET defensivo contra el CSS dark de la app (body#000, tbody td color:white).
+     Sin estos !important el render mostraba el fondo negro a traves de las celdas
+     transparentes y el texto en blanco invisible. */
+  .page, .page table, .page tbody, .page thead, .page tr { background:#ffffff !important; }
+  .page td, .page th { background-color: transparent; }
+  .page tbody td { color:#334155 !important; }
+  .page strong { color: inherit; }
+
+  .header-bg { background:${color2} !important; color:#ffffff !important; padding:32px 38px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 18px 18px; margin-bottom:22px; border-bottom:6px solid ${color1}; }
+  .header-bg, .header-bg * { color: inherit !important; }
   .logo-box { display:flex; align-items:center; gap:14px; }
-  .logo-icon { width:52px; height:52px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; }
-  .logo-text { font-size:26px; font-weight:900; letter-spacing:0.4px; }
-  .logo-sub { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8; font-weight:600; margin-top:2px; }
+  .logo-icon { width:52px; height:52px; background:linear-gradient(135deg, #7c3aed, #0ea5e9) !important; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; color:#ffffff !important; }
+  .logo-text { font-size:26px; font-weight:900; letter-spacing:0.4px; color:#ffffff !important; }
+  .logo-sub { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8 !important; font-weight:600; margin-top:2px; }
 
-  .company-dt { text-align:right; font-size:12px; color:#cbd5e1; line-height:1.6; }
-  .company-dt strong { color:white; font-size:14px; }
+  .company-dt { text-align:right; font-size:12px; color:#cbd5e1 !important; line-height:1.6; }
+  .company-dt strong { color:#ffffff !important; font-size:14px; }
 
-  .doc-meta { padding:0 38px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; }
+  .doc-meta { padding:0 38px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; background:#ffffff !important; }
   .doc-meta-left { display:flex; gap:36px; }
   .doc-meta-item { display:flex; flex-direction:column; gap:4px; }
-  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1.2px; }
-  .doc-meta-val { font-size:14px; color:#0f172a; font-weight:600; }
+  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8 !important; font-weight:700; letter-spacing:1.2px; }
+  .doc-meta-val { font-size:14px; color:#0f172a !important; font-weight:600; }
   .doc-title { text-align:right; }
-  .doc-title h1 { font-size:38px; color:${color1}; font-weight:900; letter-spacing:1px; line-height:1; }
-  .doc-title .num { font-size:18px; font-weight:700; color:#64748b; margin-top:4px; }
+  .doc-title h1 { font-size:38px; color:${color1} !important; font-weight:900; letter-spacing:1px; line-height:1; }
+  .doc-title .num { font-size:18px; font-weight:700; color:#64748b !important; margin-top:4px; }
 
-  .client-box { margin:0 38px 20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px 20px; }
+  .client-box { margin:0 38px 20px; background:#f8fafc !important; border:1px solid #e2e8f0; border-radius:12px; padding:18px 20px; color:#0f172a !important; }
   .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
 
-  .table-wrap { padding:0 38px; margin-bottom:18px; }
-  table { width:100%; border-collapse:separate; border-spacing:0; }
-  thead th { background:#f1f5f9; padding:11px 10px; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
+  .table-wrap { padding:0 38px; margin-bottom:18px; background:#ffffff !important; }
+  table { width:100%; border-collapse:separate; border-spacing:0; background:#ffffff !important; }
+  thead th { background:#f1f5f9 !important; padding:11px 10px !important; font-size:11px !important; font-weight:700; color:#475569 !important; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; letter-spacing:normal !important; }
   thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:8px 0 0 8px; }
   thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 8px 8px 0; }
-  tbody td { border-bottom:1px solid #e2e8f0; padding:11px 10px !important; font-size:13px !important; }
+  tbody td { border-bottom:1px solid #e2e8f0; padding:11px 10px !important; font-size:13px !important; background:#ffffff !important; }
 
-  .totals-row td { background:#f8fafc; }
-  .totals-row.final td { background:#fff; border-bottom:none; }
-  .total-val { font-size:18px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:6px 12px; border-radius:8px; display:inline-block; }
+  .totals-row td { background:#f8fafc !important; }
+  .totals-row.final td { background:#ffffff !important; border-bottom:none; }
+  .total-val { font-size:18px; font-weight:800; color:#0f172a !important; background:#e0f2fe !important; padding:6px 12px; border-radius:8px; display:inline-block; }
 
-  .footer { padding:0 38px; margin-top:8px; page-break-inside:avoid; }
-  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:10px; text-align:center; font-size:10px; font-weight:700; color:#be123c; margin-bottom:16px; line-height:1.5; }
+  .footer { padding:0 38px; margin-top:8px; page-break-inside:avoid; background:#ffffff !important; }
+  .footer-alert { background:#fff1f2 !important; border:1px solid #fecdd3; border-radius:8px; padding:10px; text-align:center; font-size:10px; font-weight:700; color:#be123c !important; margin-bottom:16px; line-height:1.5; }
 
-  .banks-title { text-align:center; font-weight:800; font-size:13px; color:#334155; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; }
-  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; page-break-inside:avoid; }
-  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; text-align:center; font-size:11px; color:#475569; line-height:1.6; page-break-inside:avoid; }
-  .cuenta strong { display:block; font-size:12px; color:#0f172a; margin-bottom:4px; }
+  .banks-title { text-align:center; font-weight:800; font-size:13px; color:#334155 !important; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; }
+  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; page-break-inside:avoid; background:#ffffff !important; }
+  .cuenta { background:#f8fafc !important; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; text-align:center; font-size:11px; color:#475569 !important; line-height:1.6; page-break-inside:avoid; }
+  .cuenta strong { display:block; font-size:12px; color:#0f172a !important; margin-bottom:4px; }
 
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-</style></head><body>
+</style></head><body style="background:#ffffff !important;color:#0f172a !important;">
 <div class="page">
   
   <div class="header-bg">
