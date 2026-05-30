@@ -5187,47 +5187,47 @@ function buildDocHTML(d) {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:white !important;color-scheme:light !important}
-  .page{width:800px;min-height:1100px;max-height:1130px;margin:0 auto;background:white;position:relative;page-break-inside:avoid;}
+  .page{width:800px;min-height:1130px;margin:0 auto;background:white;position:relative;page-break-inside:avoid;}
 
-  .header-bg { background:${color2}; color:white; padding:24px 32px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 16px 16px; margin-bottom:18px; border-bottom:5px solid ${color1}; }
-  .logo-box { display:flex; align-items:center; gap:10px; }
-  .logo-icon { width:40px; height:40px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; }
-  .logo-text { font-size:22px; font-weight:900; letter-spacing:0.3px; }
-  .logo-sub { font-size:9px; text-transform:uppercase; letter-spacing:2.5px; color:#94a3b8; font-weight:600; margin-top:1px; }
+  .header-bg { background:${color2}; color:white; padding:32px 38px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 18px 18px; margin-bottom:22px; border-bottom:6px solid ${color1}; }
+  .logo-box { display:flex; align-items:center; gap:14px; }
+  .logo-icon { width:52px; height:52px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; }
+  .logo-text { font-size:26px; font-weight:900; letter-spacing:0.4px; }
+  .logo-sub { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8; font-weight:600; margin-top:2px; }
 
-  .company-dt { text-align:right; font-size:11px; color:#cbd5e1; line-height:1.5; }
-  .company-dt strong { color:white; font-size:13px; }
+  .company-dt { text-align:right; font-size:12px; color:#cbd5e1; line-height:1.6; }
+  .company-dt strong { color:white; font-size:14px; }
 
-  .doc-meta { padding:0 32px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; }
-  .doc-meta-left { display:flex; gap:32px; }
-  .doc-meta-item { display:flex; flex-direction:column; gap:3px; }
-  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1px; }
-  .doc-meta-val { font-size:13px; color:#0f172a; font-weight:600; }
+  .doc-meta { padding:0 38px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; }
+  .doc-meta-left { display:flex; gap:36px; }
+  .doc-meta-item { display:flex; flex-direction:column; gap:4px; }
+  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1.2px; }
+  .doc-meta-val { font-size:14px; color:#0f172a; font-weight:600; }
   .doc-title { text-align:right; }
-  .doc-title h1 { font-size:30px; color:${color1}; font-weight:900; letter-spacing:0.8px; line-height:1; }
-  .doc-title .num { font-size:16px; font-weight:700; color:#64748b; margin-top:3px; }
+  .doc-title h1 { font-size:38px; color:${color1}; font-weight:900; letter-spacing:1px; line-height:1; }
+  .doc-title .num { font-size:18px; font-weight:700; color:#64748b; margin-top:4px; }
 
-  .client-box { margin:0 32px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; }
-  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+  .client-box { margin:0 38px 20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px 20px; }
+  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
 
-  .table-wrap { padding:0 32px; margin-bottom:16px; }
+  .table-wrap { padding:0 38px; margin-bottom:18px; }
   table { width:100%; border-collapse:separate; border-spacing:0; }
-  thead th { background:#f1f5f9; padding:9px 8px; font-size:10px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
-  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:6px 0 0 6px; }
-  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 6px 6px 0; }
-  tbody td { border-bottom:1px solid #e2e8f0; padding:9px 8px !important; font-size:12px !important; }
+  thead th { background:#f1f5f9; padding:11px 10px; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
+  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:8px 0 0 8px; }
+  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 8px 8px 0; }
+  tbody td { border-bottom:1px solid #e2e8f0; padding:11px 10px !important; font-size:13px !important; }
 
   .totals-row td { background:#f8fafc; }
   .totals-row.final td { background:#fff; border-bottom:none; }
-  .total-val { font-size:16px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:5px 10px; border-radius:6px; display:inline-block; }
+  .total-val { font-size:18px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:6px 12px; border-radius:8px; display:inline-block; }
 
-  .footer { padding:0 32px; margin-top:6px; page-break-inside:avoid; }
-  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:8px; text-align:center; font-size:9px; font-weight:700; color:#be123c; margin-bottom:12px; line-height:1.4; }
+  .footer { padding:0 38px; margin-top:8px; page-break-inside:avoid; }
+  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:10px; text-align:center; font-size:10px; font-weight:700; color:#be123c; margin-bottom:16px; line-height:1.5; }
 
-  .banks-title { text-align:center; font-weight:800; font-size:12px; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
-  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; page-break-inside:avoid; }
-  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; text-align:center; font-size:10px; color:#475569; line-height:1.5; page-break-inside:avoid; }
-  .cuenta strong { display:block; font-size:11px; color:#0f172a; margin-bottom:3px; }
+  .banks-title { text-align:center; font-weight:800; font-size:13px; color:#334155; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; }
+  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; page-break-inside:avoid; }
+  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; text-align:center; font-size:11px; color:#475569; line-height:1.6; page-break-inside:avoid; }
+  .cuenta strong { display:block; font-size:12px; color:#0f172a; margin-bottom:4px; }
 
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head><body>
@@ -5392,7 +5392,7 @@ async function _generarPdfBlobDesdeRegistro(registro) {
   // canvas con altura 0 (capturaba PDF vacío de 3KB). Width 800px = ancho del
   // template .page. Height 1150px = max-height del template +20px de safety.
   // Posicionamos detrás del UI con z-index:-1 para que el user no lo vea.
-  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:1150px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
+  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:1200px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
   contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
   document.body.appendChild(contenedor);
 
@@ -5406,7 +5406,7 @@ async function _generarPdfBlobDesdeRegistro(registro) {
     // width/height EXPLÍCITOS en html2canvas = la clave para que mobile no
     // genere canvas vacío. windowWidth/windowHeight aseguran el viewport
     // simulado correcto.
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: 1150, width: 800, height: 1150 },
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: 1200, width: 800, height: 1200 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
