@@ -5320,9 +5320,8 @@ function buildDocHTML(d) {
       <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta1.num}<br>${cta1.nombre}<br>${cta1.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta1.tipo}</span></div>
       <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta2.num}<br>${cta2.nombre}<br>${cta2.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta2.tipo}</span></div>
     </div>
-    <div class="cuentas" style="grid-template-columns:repeat(3, 1fr);margin-top:14px;">
-      <div class="cuenta"><strong>NEQUI</strong>350 697 47 11<br>301 663 94 30</div>
-      <div class="cuenta"><strong>NEQUI</strong>${esc((typeof NEQUI_EXTRA !== 'undefined' && NEQUI_EXTRA) || '— pendiente —')}</div>
+    <div class="cuentas" style="grid-template-columns:repeat(2, 1fr);margin-top:14px;">
+      <div class="cuenta"><strong>NEQUI</strong>350 697 47 11<br>301 663 94 30<br>${esc((typeof NEQUI_EXTRA !== 'undefined' && NEQUI_EXTRA) || '')}</div>
       <div class="cuenta"><strong>DAVIPLATA</strong>350 697 47 11<br>301 663 94 30</div>
     </div>
   </div>
@@ -5476,12 +5475,15 @@ async function generarYGuardarFactura() {
   renderDocHistorial();
 
   if (facturaServer && facturaServer.drive_link) {
-    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} guardada en Drive`, 'success');
-    mostrarModalPostFactura(facturaServer, registroLocal);
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} en Drive — abriendo WhatsApp...`, 'success');
   } else {
-    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada (sin subir a Drive)`, 'warning');
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada — abriendo compartir...`, 'info');
   }
   cerrarFormDoc();
+  // Disparar el compartir automaticamente (Web Share API en celular -> abre WA con el PDF).
+  // En PC descarga el PDF. La vendedora elige WhatsApp desde su menu nativo y manda desde
+  // SU numero, no el central.
+  try { await compartirDocWA(registroLocal.id); } catch (e) { console.warn('[share auto]', e); }
 }
 
 // Modal post-generación con botón gigante "Enviar al cliente por WA"
