@@ -6697,24 +6697,35 @@ http.createServer(async (req, res) => {
   }
 
   // ── Archivos estáticos ──────────────────────────────────────
-  let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
-  
-  if (req.url !== '/' && !fs.existsSync(filePath)) {
-    const publicPath = path.join(__dirname, 'public', req.url);
+  // Quitar query params (?v=xxx cache busters) antes de buscar el archivo
+  const urlSinQuery = (req.url || '/').split('?')[0];
+  let filePath = path.join(__dirname, urlSinQuery === '/' ? 'index.html' : urlSinQuery);
+
+  if (urlSinQuery !== '/' && !fs.existsSync(filePath)) {
+    const publicPath = path.join(__dirname, 'public', urlSinQuery);
     if (fs.existsSync(publicPath)) filePath = publicPath;
   }
-  
+
   const ext = path.extname(filePath);
   fs.readFile(filePath, (err, data) => {
     if (err) {
       fs.readFile(path.join(__dirname, 'index.html'), (e2, d2) => {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // NO cachear el HTML para que siempre tome la version mas reciente
+        // (que tiene el cache buster ?v=COMMIT actualizado para los JS/CSS)
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' });
         res.end(d2);
       });
       return;
     }
     cors(res);
-    res.writeHead(200, { 'Content-Type': mime[ext] || 'text/plain' });
+    // Cabeceras anti-cache para HTML/JS/CSS para que el browser siempre
+    // pida la version mas reciente. Imagenes (.png/.jpg/.ico) si pueden
+    // cachearse 1 dia porque cambian poco.
+    const noCache = ext === '.html' || ext === '.js' || ext === '.css' || ext === '.json';
+    const cacheHeader = noCache
+      ? { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0' }
+      : { 'Cache-Control': 'public, max-age=86400' };
+    res.writeHead(200, { 'Content-Type': mime[ext] || 'text/plain', ...cacheHeader });
     res.end(data);
   });
 
