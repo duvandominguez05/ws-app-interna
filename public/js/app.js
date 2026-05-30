@@ -5145,7 +5145,7 @@ function verDocHistorial(id) {
 
 function buildDocHTML(d) {
   const esCot   = d.tipo === 'cotizacion';
-  const titulo  = esCot ? 'COTIZACIÓN' : 'FACTURA COMERCIAL';
+  const titulo  = esCot ? 'COTIZACIÓN COMERCIAL' : 'FACTURA COMERCIAL';
   const color1  = '#0ea5e9'; // Acento primario W&S (Cyan/Azul)
   const color2  = '#1e293b'; // Fondo oscuro premium para header
 
