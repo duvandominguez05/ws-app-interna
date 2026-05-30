@@ -5425,9 +5425,10 @@ async function generarYGuardarFactura() {
   toast('Generando PDF…', 'info');
 
   let pdfBase64 = null;
+  let pdfBlob = null;
   try {
-    const blob = await _generarPdfBlobDesdeRegistro(registroLocal);
-    pdfBase64 = await _blobToBase64(blob);
+    pdfBlob = await _generarPdfBlobDesdeRegistro(registroLocal);
+    pdfBase64 = await _blobToBase64(pdfBlob);
   } catch (e) {
     console.error('[fact pdf]', e);
     toast('Error generando PDF', 'error');
@@ -5480,10 +5481,12 @@ async function generarYGuardarFactura() {
     toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada — abriendo compartir...`, 'info');
   }
   cerrarFormDoc();
-  // Disparar el compartir automaticamente (Web Share API en celular -> abre WA con el PDF).
-  // En PC descarga el PDF. La vendedora elige WhatsApp desde su menu nativo y manda desde
-  // SU numero, no el central.
-  try { await compartirDocWA(registroLocal.id); } catch (e) { console.warn('[share auto]', e); }
+  // Disparar el compartir reusando el blob ya generado (NO regenera el PDF, eso preserva
+  // el "user gesture" que navigator.share exige en mobile). 3 niveles de fallback:
+  // 1) Web Share API con el PDF (Android/iOS modernos -> abre WhatsApp + el resto)
+  // 2) wa.me con link de Drive si hay telefono del cliente
+  // 3) descargar el PDF al disco (PC o cuando los anteriores no aplican)
+  try { await compartirDocWA(registroLocal.id, pdfBlob, facturaServer); } catch (e) { console.warn('[share auto]', e); }
 }
 
 // Modal post-generación con botón gigante "Enviar al cliente por WA"
@@ -5551,59 +5554,69 @@ async function enviarFacturaPorWA(facturaId) {
   }
 }
 
-async function compartirDocWA(id) {
+async function compartirDocWA(id, blobYaGenerado, facturaServer) {
   const d = docHistorial.find(x => x.id === id);
   if (!d) return;
   const tipo   = d.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
   const nombre = `${tipo} #${d.numero} - ${d.cliente}.pdf`;
 
-  toast('Generando PDF...', 'info');
-
   try {
-    const htmlDoc = buildDocHTML(d);
+    let pdfBlob = blobYaGenerado;
+    if (!pdfBlob) {
+      toast('Generando PDF...', 'info');
+      const htmlDoc = buildDocHTML(d);
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
+      document.body.appendChild(iframe);
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(htmlDoc);
+      iframe.contentDocument.close();
+      await new Promise(r => setTimeout(r, 1000));
+      const opt = {
+        margin:      [8, 8, 8, 8],
+        filename:    nombre,
+        image:       { type: 'jpeg', quality: 0.97 },
+        html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
+        jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+      pdfBlob = await html2pdf().set(opt).from(iframe.contentDocument.body).outputPdf('blob');
+      document.body.removeChild(iframe);
+    }
 
-    // Renderizar en iframe oculto para que html2pdf capture bien
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
-    document.body.appendChild(iframe);
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(htmlDoc);
-    iframe.contentDocument.close();
-
-    await new Promise(r => setTimeout(r, 1000)); // esperar renderizado
-
-    const opt = {
-      margin:      [8, 8, 8, 8],
-      filename:    nombre,
-      image:       { type: 'jpeg', quality: 0.97 },
-      html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
-      jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    };
-
-    const pdfBlob = await html2pdf()
-      .set(opt)
-      .from(iframe.contentDocument.body)
-      .outputPdf('blob');
-
-    document.body.removeChild(iframe);
-
-    // Celular: compartir como PDF directo (abre WhatsApp)
+    // Intento 1: Web Share API con archivo PDF (mejor opción en Android/iOS modernos)
     if (navigator.canShare) {
-      const pdfFile = new File([pdfBlob], nombre, { type: 'application/pdf' });
-      if (navigator.canShare({ files: [pdfFile] })) {
-        await navigator.share({ files: [pdfFile], title: nombre });
-        return;
+      try {
+        const pdfFile = new File([pdfBlob], nombre, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [pdfFile] })) {
+          await navigator.share({ files: [pdfFile], title: nombre });
+          return;
+        }
+      } catch (errShare) {
+        if (errShare.name === 'AbortError') return; // user canceló
+        console.warn('[share] falló navigator.share con files:', errShare);
       }
     }
 
-    // PC: descargar PDF
+    // Intento 2: Si tengo el link de Drive y un teléfono, abrir wa.me con texto
+    const driveLink = facturaServer && facturaServer.drive_link ? facturaServer.drive_link : null;
+    const telRaw = (d.telefono || '').replace(/\D/g, '');
+    if (telRaw && driveLink) {
+      const telWa = telRaw.startsWith('57') ? telRaw : '57' + telRaw;
+      const tipoLow = d.tipo === 'cotizacion' ? 'cotización' : 'factura';
+      const mensaje = `Hola${d.cliente ? ' ' + d.cliente : ''}, te envío tu ${tipoLow} #${d.numero} de W&S Uniformes Deportivos.\nTotal: $${(d.total||0).toLocaleString('es-CO')}\n\nVer PDF: ${driveLink}\n\nGracias por tu compra 🙏`;
+      const urlWa = 'https://wa.me/' + telWa + '?text=' + encodeURIComponent(mensaje);
+      window.open(urlWa, '_blank');
+      toast('Abriendo WhatsApp con el cliente...', 'success');
+      return;
+    }
+
+    // Intento 3: descargar el PDF a disco (PC o cuando el resto falló)
     const url = URL.createObjectURL(pdfBlob);
     const a   = document.createElement('a');
     a.href = url; a.download = nombre;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('PDF descargado', 'success');
-
+    toast('PDF descargado — abrilo desde tu Galería y compartilo por WhatsApp', 'info');
   } catch (err) {
     if (err.name !== 'AbortError') {
       console.error(err);
