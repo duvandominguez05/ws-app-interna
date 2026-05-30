@@ -7054,14 +7054,20 @@ async function generarResumenSemanalAdmin() {
   const carteraTop = carteraDetalle.sort((a, b) => b.saldo - a.saldo).slice(0, 5);
 
   // 7) FLUJO ESTA SEMANA — nuevos, entregados
-  const pedidosNuevos = pedidos.filter(p => {
-    const ce = p.creadoEn || p.ts || p.fechaCreacion;
-    return ce && new Date(ce).getTime() >= haceSemana;
-  }).length;
+  // creadoEn viene en formato es-CO "D/M/YYYY" (no ISO), hay que parsear manualmente.
+  const _parsearFecha = (v) => {
+    if (!v) return 0;
+    if (typeof v === 'string') {
+      const mDmy = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mDmy) return new Date(parseInt(mDmy[3]), parseInt(mDmy[2]) - 1, parseInt(mDmy[1])).getTime();
+    }
+    const t = new Date(v).getTime();
+    return isNaN(t) ? 0 : t;
+  };
+  const pedidosNuevos = pedidos.filter(p => _parsearFecha(p.creadoEn || p.ts || p.fechaCreacion) >= haceSemana).length;
   const pedidosEntregados = pedidos.filter(p => {
     if (p.estado !== 'enviado-final') return false;
-    const um = p.ultimoMovimiento || p.fechaEntrega;
-    return um && new Date(um).getTime() >= haceSemana;
+    return _parsearFecha(p.ultimoMovimiento || p.fechaEntrega) >= haceSemana;
   }).length;
 
   // 8) CALANDRA — m² impresos esta semana (vinculados a pedido + huerfanos)
