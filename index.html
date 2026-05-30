@@ -791,10 +791,9 @@
         </div>
       </div>
 
-      <!-- KPIs facturación -->
-      <div id="facturas-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px;">
-        <!-- Inyectado por renderFacturasStats() -->
-      </div>
+      <!-- KPIs facturacion removidos: el user pidio que ni admin los vea por
+           riesgo de exposicion a trabajadores. La funcion renderFacturasStats()
+           queda inerte (no encuentra el div). -->
 
       <!-- Historial / Lista facturas (server-side) -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
@@ -960,6 +959,6 @@
 <div class="toast-container" id="toasts"></div>
 
 <script>window.__APP_VERSION__='2026-05-30-c2';</script>
-<script src='/js/app.js?v=2026-05-30-c4' defer></script>
+<script src='/js/app.js?v=2026-05-30-c5' defer></script>
 </body>
 </html>
