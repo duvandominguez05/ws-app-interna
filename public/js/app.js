@@ -5184,18 +5184,15 @@ function buildDocHTML(d) {
   const cta2 = CUENTAS_BANCOLOMBIA[2];
 
   return `<!DOCTYPE html><html style="background:#f1f5f9;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{font-family:'Inter',sans-serif;background:white !important;color-scheme:light !important}
+  html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:white !important;color-scheme:light !important}
   .page{width:800px;min-height:1100px;max-height:1130px;margin:0 auto;background:white;position:relative;page-break-inside:avoid;}
 
   .header-bg { background:${color2}; color:white; padding:24px 32px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 16px 16px; margin-bottom:18px; border-bottom:5px solid ${color1}; }
   .logo-box { display:flex; align-items:center; gap:10px; }
-  .logo-icon { width:40px; height:40px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; font-family:'Outfit'; }
-  .logo-text { font-family:'Outfit'; font-size:22px; font-weight:900; letter-spacing:0.3px; }
+  .logo-icon { width:40px; height:40px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; }
+  .logo-text { font-size:22px; font-weight:900; letter-spacing:0.3px; }
   .logo-sub { font-size:9px; text-transform:uppercase; letter-spacing:2.5px; color:#94a3b8; font-weight:600; margin-top:1px; }
 
   .company-dt { text-align:right; font-size:11px; color:#cbd5e1; line-height:1.5; }
@@ -5207,7 +5204,7 @@ function buildDocHTML(d) {
   .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1px; }
   .doc-meta-val { font-size:13px; color:#0f172a; font-weight:600; }
   .doc-title { text-align:right; }
-  .doc-title h1 { font-family:'Outfit'; font-size:30px; color:${color1}; font-weight:900; letter-spacing:0.8px; line-height:1; }
+  .doc-title h1 { font-size:30px; color:${color1}; font-weight:900; letter-spacing:0.8px; line-height:1; }
   .doc-title .num { font-size:16px; font-weight:700; color:#64748b; margin-top:3px; }
 
   .client-box { margin:0 32px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; }
@@ -5227,10 +5224,10 @@ function buildDocHTML(d) {
   .footer { padding:0 32px; margin-top:6px; page-break-inside:avoid; }
   .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:8px; text-align:center; font-size:9px; font-weight:700; color:#be123c; margin-bottom:12px; line-height:1.4; }
 
-  .banks-title { text-align:center; font-family:'Outfit'; font-weight:800; font-size:12px; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+  .banks-title { text-align:center; font-weight:800; font-size:12px; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
   .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; page-break-inside:avoid; }
   .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; text-align:center; font-size:10px; color:#475569; line-height:1.5; page-break-inside:avoid; }
-  .cuenta strong { display:block; font-size:11px; color:#0f172a; font-family:'Outfit'; margin-bottom:3px; }
+  .cuenta strong { display:block; font-size:11px; color:#0f172a; margin-bottom:3px; }
 
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head><body>
@@ -5379,31 +5376,40 @@ function _blobToBase64(blob) {
 
 // Helper: genera PDF blob desde un registro de documento
 async function _generarPdfBlobDesdeRegistro(registro) {
+  // No usamos iframe — en celulares el contenido a -9999px no aplicaba estilos.
+  // Renderizamos en un div del document principal (visible para el browser pero
+  // posicionado fuera de pantalla con visibility:hidden). Captura confiable.
   const htmlDoc = buildDocHTML(registro);
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1300px;border:none;background:white;';
-  document.body.appendChild(iframe);
-  iframe.contentDocument.open();
-  iframe.contentDocument.write(htmlDoc);
-  iframe.contentDocument.close();
-  // Esperar a que las fuentes Y los estilos carguen antes de capturar. Sin esto, en
-  // celulares lentos el PDF salia como texto plano sin estilos (caso "factura negra").
-  try {
-    if (iframe.contentDocument.fonts && iframe.contentDocument.fonts.ready) {
-      await iframe.contentDocument.fonts.ready;
-    }
-  } catch (e) { /* ignore */ }
-  await new Promise(r => setTimeout(r, 1500));
+  // Extraer solo el contenido del body + el style del head
+  const styleMatch = htmlDoc.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const bodyMatch = htmlDoc.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const cssInterno = styleMatch ? styleMatch[1] : '';
+  const cuerpo = bodyMatch ? bodyMatch[1] : htmlDoc;
+
+  const contenedor = document.createElement('div');
+  contenedor.id = '_pdf_render_temp';
+  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:auto;background:#ffffff;z-index:-99999;opacity:0;pointer-events:none;overflow:hidden;';
+  // Inyectar estilo scoped al contenedor para no afectar el resto de la app
+  contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
+  document.body.appendChild(contenedor);
+
+  // Esperar a que el browser aplique los estilos (1 frame + safety net)
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  await new Promise(r => setTimeout(r, 800));
+
   const opt = {
     margin: [6, 6, 6, 6],
     image: { type: 'jpeg', quality: 0.97 },
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 900 },
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
-  const pdfBlob = await html2pdf().set(opt).from(iframe.contentDocument.body).outputPdf('blob');
-  document.body.removeChild(iframe);
-  return pdfBlob;
+  try {
+    const pdfBlob = await html2pdf().set(opt).from(contenedor).outputPdf('blob');
+    return pdfBlob;
+  } finally {
+    if (contenedor.parentNode) contenedor.parentNode.removeChild(contenedor);
+  }
 }
 
 // Flow nuevo: genera factura → PDF → server → Drive → modal WA
