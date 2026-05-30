@@ -2198,7 +2198,7 @@ http.createServer(async (req, res) => {
 
   // ── GET /api/health-reacciones — confirma que el código de reacciones está vivo ──
   if (req.method === 'GET' && req.url === '/api/health-reacciones') {
-    return json(res, 200, { ok: true, version: 'sprint-5-notion-archivo', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, telegram_chat_duvan: !!process.env.TELEGRAM_CHAT_ID_DUVAN, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').filter(Boolean).length, evolution_api_key: !!process.env.EVOLUTION_API_KEY, gemini_api_key: !!process.env.GEMINI_API_KEY, notion_token: !!process.env.NOTION_TOKEN, notion_db: !!process.env.NOTION_DB_ARCHIVO_PEDIDOS });
+    return json(res, 200, { ok: true, version: 'sprint-5-notion-archivo', activas: process.env.REACCIONES_ACTIVAS === 'true', chatwoot: !!process.env.CHATWOOT_API_KEY, telegram: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_CHAT_ID, telegram_chat_duvan: !!process.env.TELEGRAM_CHAT_ID_DUVAN, wa_grupo: process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us', sticker_hashes_configurados: (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').filter(Boolean).length, evolution_api_key: !!process.env.EVOLUTION_API_KEY, gemini_api_key: !!process.env.GEMINI_API_KEY, notion_token: !!process.env.NOTION_TOKEN, notion_db: !!process.env.NOTION_DB_ARCHIVO_PEDIDOS });
   }
 
   // ── GET /api/test-detector-comprobante?instance=ws%20wendy&jid=573124858901@s.whatsapp.net&id=XXX ──
@@ -2307,7 +2307,7 @@ http.createServer(async (req, res) => {
           });
         } catch (e) { debugInfo.errores++; }
       }
-      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620';
+      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995';
       // Hash mas usado entre nuestros stickers salientes (probablemente el oficial)
       const masUsado = Object.entries(hashCount).sort((a, b) => b[1] - a[1])[0] || null;
       return json(res, 200, {
@@ -2485,7 +2485,7 @@ http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, `http://${req.headers.host}`);
         const dryRun = u.searchParams.get('dryRun') === '1';
-        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
         const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 10').all().map(r => r.fecha);
         const acciones = [];
         for (const fecha of fechas) {
@@ -2590,7 +2590,7 @@ http.createServer(async (req, res) => {
   // Para diagnosticar el reporte de Paola: dice que mandó stickers el 27-28 pero no se crearon pedidos.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-audit')) {
     try {
-      const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+      const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
       const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 10').all().map(r => r.fecha);
       const pedidos = leerPedidos();
       const tomb = idsArchivados();
@@ -2674,7 +2674,7 @@ http.createServer(async (req, res) => {
           }
         } catch {}
       }
-      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620';
+      const STICKER_VENTA_HASH = process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995';
       return json(res, 200, {
         configurado: STICKER_VENTA_HASH,
         hashesUsadosHoy: hashCount,
@@ -4260,7 +4260,7 @@ http.createServer(async (req, res) => {
             const vendedora = vendedoraDeInstancia(payload.instance);
 
             // Mapa de stickers conocidos → acción
-            const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim()).filter(Boolean);
+            const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim()).filter(Boolean);
 
             const numeroPropio = (process.env.WS_PROPIO_NUMERO || '573506974711');
             const senderNumero = senderJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
@@ -4805,7 +4805,7 @@ http.createServer(async (req, res) => {
         const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
         const force = urlObj.searchParams.get('force') === 'true';
         const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 7').all().map(r => r.fecha);
-        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+        const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
         function normTel(t) {
           const d = String(t || '').replace(/\D/g, '');
           return d.startsWith('57') ? d.slice(2) : d;
@@ -4956,7 +4956,7 @@ http.createServer(async (req, res) => {
           if (ed?.messageType !== 'stickerMessage') continue;
           const stk = ed.message?.stickerMessage || {};
           const hash = stk.fileSha256 ? Buffer.from(Object.values(stk.fileSha256)).toString('hex') : '';
-          const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+          const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
           stickers.push({
             fecha,
             instance: payload.instance || '?',
@@ -4968,7 +4968,7 @@ http.createServer(async (req, res) => {
         }
       }
       stickers.sort((a, b) => b.fecha.localeCompare(a.fecha));
-      const hashesConfig = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',');
+      const hashesConfig = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',');
       return json(res, 200, { total: stickers.length, hashesConfigurados: hashesConfig, stickers: stickers.slice(0, 50) });
     } catch (e) {
       return json(res, 500, { error: e.message });
@@ -7134,7 +7134,7 @@ async function cronStickerReprocesar() {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
     if (_ultimoStickerCronDia() === hoy) return;
 
-    const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620').split(',').map(s => s.trim());
+    const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
     const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 3').all().map(r => r.fecha);
     let recuperados = 0;
     for (const fecha of fechas) {
