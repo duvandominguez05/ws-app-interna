@@ -4441,6 +4441,8 @@ const CUENTAS_BANCOLOMBIA = {
   1: { num: '215 0000 3773', nombre: 'DUVAN DOMINGUEZ VELANDIA', cc: 'C.C. 1 030 675 743', tipo: 'CTA DE AHORROS' },
   2: { num: '912 383 287 94', nombre: 'william sneider dominguez', cc: '1.233.506.852', tipo: 'cta de ahorros' },
 };
+// Segundo número de Nequi para mostrar en la factura.
+const NEQUI_EXTRA = '322 976 13 81';
 
 function selCuenta(n) {
   docCuenta = n;
@@ -5177,8 +5179,9 @@ function buildDocHTML(d) {
     • Por la compra de +100 uniformes aplicamos descuento del 5%.
   </div>` : '';
 
-  // Cuenta bancolombia (usar la seleccionada actualmente, o la 1 por defecto)
-  const cta = CUENTAS_BANCOLOMBIA[d.cuenta || docCuenta || 1];
+  // Mostrar AMBAS cuentas Bancolombia (Duvan + William) en cada factura.
+  const cta1 = CUENTAS_BANCOLOMBIA[1];
+  const cta2 = CUENTAS_BANCOLOMBIA[2];
 
   return `<!DOCTYPE html><html style="background:#f1f5f9;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5237,12 +5240,12 @@ function buildDocHTML(d) {
     <div class="logo-box">
       <div class="logo-icon">⚡</div>
       <div>
-        <div class="logo-text">W&S TEXTIL</div>
+        <div class="logo-text">W&S UNIFORMES DEPORTIVOS</div>
         <div class="logo-sub">Producción Deportiva</div>
       </div>
     </div>
     <div class="company-dt">
-      <strong>NIT: 1030675743-0</strong><br>
+      <strong>NIT: 52271474-9</strong><br>
       Carrera 90A # 4-40, Bogotá D.C.<br>
       350 697-4711 • 301 663-9430
     </div>
@@ -5313,9 +5316,13 @@ function buildDocHTML(d) {
     </div>
 
     <div class="banks-title">Cuentas Bancarias Autorizadas</div>
-    <div class="cuentas">
-      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta.num}<br>${cta.nombre}<br>${cta.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta.tipo}</span></div>
+    <div class="cuentas" style="grid-template-columns:repeat(2, 1fr);">
+      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta1.num}<br>${cta1.nombre}<br>${cta1.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta1.tipo}</span></div>
+      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta2.num}<br>${cta2.nombre}<br>${cta2.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta2.tipo}</span></div>
+    </div>
+    <div class="cuentas" style="grid-template-columns:repeat(3, 1fr);margin-top:14px;">
       <div class="cuenta"><strong>NEQUI</strong>350 697 47 11<br>301 663 94 30</div>
+      <div class="cuenta"><strong>NEQUI</strong>${esc((typeof NEQUI_EXTRA !== 'undefined' && NEQUI_EXTRA) || '— pendiente —')}</div>
       <div class="cuenta"><strong>DAVIPLATA</strong>350 697 47 11<br>301 663 94 30</div>
     </div>
   </div>
@@ -5492,15 +5499,12 @@ function mostrarModalPostFactura(facturaServer, registroLocal) {
       <div style="text-align:center;font-size:0.85rem;color:#94a3b8;margin-bottom:6px;">${esc(facturaServer.cliente_nombre || 'Sin cliente')}</div>
       <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#10b981;margin-bottom:18px;">${fmtPeso(facturaServer.total || 0)}</div>
 
-      ${tel ? `
-        <button onclick="enviarFacturaPorWA(${facturaServer.id})" style="width:100%;background:#25d366;border:none;color:#fff;border-radius:12px;padding:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:10px;">
-          📤 Enviar por WhatsApp a ${esc(tel)}
-        </button>
-      ` : `
-        <div style="text-align:center;font-size:0.78rem;color:#fbbf24;margin-bottom:10px;padding:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:8px;">
-          ⚠️ Sin teléfono del cliente — no se puede enviar por WA
-        </div>
-      `}
+      <button onclick="compartirDocWA(${registroLocal ? registroLocal.id : 0})" style="width:100%;background:#25d366;border:none;color:#fff;border-radius:12px;padding:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:8px;">
+        📤 Compartir / Enviar al cliente
+      </button>
+      <div style="font-size:0.72rem;color:#94a3b8;text-align:center;margin-bottom:14px;line-height:1.4;">
+        Se abre el menú de compartir del celular. Elegí <strong>WhatsApp</strong> y mandalo al cliente desde TU número.
+      </div>
 
       <div style="display:flex;gap:8px;margin-bottom:10px;">
         ${facturaServer.drive_link ? `
