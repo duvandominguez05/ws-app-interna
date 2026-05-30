@@ -5160,8 +5160,8 @@ function buildDocHTML(d) {
   }).join('');
 
   const itemsValidos = d.items.filter(it => it.desc).length;
-  const filasVacias  = Array.from({ length: Math.max(0, 4 - itemsValidos) })
-    .map(() => `<tr><td style="padding:12px 10px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
+  const filasVacias  = Array.from({ length: Math.max(0, 2 - itemsValidos) })
+    .map(() => `<tr><td style="padding:6px 8px;">&nbsp;</td><td></td><td></td><td></td></tr>`).join('');
 
   const abonoFila = !esCot && d.abono > 0 ? `<tr>
     <td colspan="2" style="border:none;"></td>
@@ -5190,48 +5190,48 @@ function buildDocHTML(d) {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{font-family:'Inter',sans-serif;background:white !important;color-scheme:light !important}
-  .page{width:800px;min-height:900px;margin:0 auto;background:white;position:relative;}
-  
-  .header-bg { background:${color2}; color:white; padding:40px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 20px 20px; margin-bottom:30px; border-bottom:6px solid ${color1}; }
+  .page{width:800px;min-height:1100px;max-height:1130px;margin:0 auto;background:white;position:relative;page-break-inside:avoid;}
+
+  .header-bg { background:${color2}; color:white; padding:24px 32px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 16px 16px; margin-bottom:18px; border-bottom:5px solid ${color1}; }
   .logo-box { display:flex; align-items:center; gap:10px; }
-  .logo-icon { width:45px; height:45px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; font-family:'Outfit'; }
-  .logo-text { font-family:'Outfit'; font-size:28px; font-weight:900; letter-spacing:0.5px; }
-  .logo-sub { font-size:11px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8; font-weight:600; margin-top:2px; }
-  
-  .company-dt { text-align:right; font-size:12px; color:#cbd5e1; line-height:1.6; }
-  .company-dt strong { color:white; font-size:14px; }
-  
-  .doc-meta { padding:0 40px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:30px; }
-  .doc-meta-left { display:flex; gap:40px; }
-  .doc-meta-item { display:flex; flex-direction:column; gap:4px; }
-  .doc-meta-lbl { font-size:11px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1px; }
-  .doc-meta-val { font-size:14px; color:#0f172a; font-weight:600; }
+  .logo-icon { width:40px; height:40px; background:linear-gradient(135deg, #7c3aed, #0ea5e9); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; font-family:'Outfit'; }
+  .logo-text { font-family:'Outfit'; font-size:22px; font-weight:900; letter-spacing:0.3px; }
+  .logo-sub { font-size:9px; text-transform:uppercase; letter-spacing:2.5px; color:#94a3b8; font-weight:600; margin-top:1px; }
+
+  .company-dt { text-align:right; font-size:11px; color:#cbd5e1; line-height:1.5; }
+  .company-dt strong { color:white; font-size:13px; }
+
+  .doc-meta { padding:0 32px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px; }
+  .doc-meta-left { display:flex; gap:32px; }
+  .doc-meta-item { display:flex; flex-direction:column; gap:3px; }
+  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8; font-weight:700; letter-spacing:1px; }
+  .doc-meta-val { font-size:13px; color:#0f172a; font-weight:600; }
   .doc-title { text-align:right; }
-  .doc-title h1 { font-family:'Outfit'; font-size:36px; color:${color1}; font-weight:900; letter-spacing:1px; line-height:1; }
-  .doc-title .num { font-size:18px; font-weight:700; color:#64748b; margin-top:4px; }
-  
-  .client-box { margin:0 40px 30px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:20px; }
-  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-  
-  .table-wrap { padding:0 40px; margin-bottom:30px; }
+  .doc-title h1 { font-family:'Outfit'; font-size:30px; color:${color1}; font-weight:900; letter-spacing:0.8px; line-height:1; }
+  .doc-title .num { font-size:16px; font-weight:700; color:#64748b; margin-top:3px; }
+
+  .client-box { margin:0 32px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; }
+  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+
+  .table-wrap { padding:0 32px; margin-bottom:16px; }
   table { width:100%; border-collapse:separate; border-spacing:0; }
-  thead th { background:#f1f5f9; padding:12px 10px; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
-  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:8px 0 0 8px; }
-  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 8px 8px 0; }
-  tbody td { border-bottom:1px solid #e2e8f0; }
-  
+  thead th { background:#f1f5f9; padding:9px 8px; font-size:10px; font-weight:700; color:#475569; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; }
+  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:6px 0 0 6px; }
+  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 6px 6px 0; }
+  tbody td { border-bottom:1px solid #e2e8f0; padding:9px 8px !important; font-size:12px !important; }
+
   .totals-row td { background:#f8fafc; }
   .totals-row.final td { background:#fff; border-bottom:none; }
-  .total-val { font-size:18px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:6px 12px; border-radius:8px; display:inline-block; }
-  
-  .footer { padding:0 40px; margin-top:10px; }
-  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:8px; padding:12px; text-align:center; font-size:10px; font-weight:700; color:#be123c; margin-bottom:20px; line-height:1.5; }
-  
-  .banks-title { text-align:center; font-family:'Outfit'; font-weight:800; font-size:14px; color:#334155; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; }
-  .cuentas { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
-  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; font-size:11px; color:#475569; line-height:1.6; }
-  .cuenta strong { display:block; font-size:13px; color:#0f172a; font-family:'Outfit'; margin-bottom:4px; }
-  
+  .total-val { font-size:16px; font-weight:800; color:#0f172a; background:#e0f2fe; padding:5px 10px; border-radius:6px; display:inline-block; }
+
+  .footer { padding:0 32px; margin-top:6px; page-break-inside:avoid; }
+  .footer-alert { background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:8px; text-align:center; font-size:9px; font-weight:700; color:#be123c; margin-bottom:12px; line-height:1.4; }
+
+  .banks-title { text-align:center; font-family:'Outfit'; font-weight:800; font-size:12px; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; page-break-inside:avoid; }
+  .cuenta { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; text-align:center; font-size:10px; color:#475569; line-height:1.5; page-break-inside:avoid; }
+  .cuenta strong { display:block; font-size:11px; color:#0f172a; font-family:'Outfit'; margin-bottom:3px; }
+
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head><body>
 <div class="page">
@@ -5381,17 +5381,25 @@ function _blobToBase64(blob) {
 async function _generarPdfBlobDesdeRegistro(registro) {
   const htmlDoc = buildDocHTML(registro);
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1300px;border:none;background:white;';
   document.body.appendChild(iframe);
   iframe.contentDocument.open();
   iframe.contentDocument.write(htmlDoc);
   iframe.contentDocument.close();
-  await new Promise(r => setTimeout(r, 1000));
+  // Esperar a que las fuentes Y los estilos carguen antes de capturar. Sin esto, en
+  // celulares lentos el PDF salia como texto plano sin estilos (caso "factura negra").
+  try {
+    if (iframe.contentDocument.fonts && iframe.contentDocument.fonts.ready) {
+      await iframe.contentDocument.fonts.ready;
+    }
+  } catch (e) { /* ignore */ }
+  await new Promise(r => setTimeout(r, 1500));
   const opt = {
-    margin: [8, 8, 8, 8],
+    margin: [6, 6, 6, 6],
     image: { type: 'jpeg', quality: 0.97 },
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 900 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak: { mode: ['avoid-all'] },
   };
   const pdfBlob = await html2pdf().set(opt).from(iframe.contentDocument.body).outputPdf('blob');
   document.body.removeChild(iframe);
