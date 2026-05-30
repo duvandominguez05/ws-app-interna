@@ -7038,18 +7038,85 @@ async function generarResumenSemanalAdmin() {
     if (lastMov < new Date(v.ts).getTime()) sinSticker++;
   }
 
+  // 6) CARTERA POR COBRAR — pedidos NO entregados con saldo > 0
+  const carteraDetalle = pedidos
+    .filter(p => p && p.estado && p.estado !== 'enviado-final')
+    .map(p => ({
+      id: p.id,
+      cliente: p.cliente || p.equipo || 'Sin nombre',
+      vendedora: p.vendedora || '-',
+      total: p.total || 0,
+      abonado: p.abonado || 0,
+      saldo: Math.max(0, (p.total || 0) - (p.abonado || 0)),
+    }))
+    .filter(x => x.saldo > 0);
+  const carteraTotal = carteraDetalle.reduce((s, x) => s + x.saldo, 0);
+  const carteraTop = carteraDetalle.sort((a, b) => b.saldo - a.saldo).slice(0, 5);
+
+  // 7) FLUJO ESTA SEMANA — nuevos, entregados
+  const pedidosNuevos = pedidos.filter(p => {
+    const ce = p.creadoEn || p.ts || p.fechaCreacion;
+    return ce && new Date(ce).getTime() >= haceSemana;
+  }).length;
+  const pedidosEntregados = pedidos.filter(p => {
+    if (p.estado !== 'enviado-final') return false;
+    const um = p.ultimoMovimiento || p.fechaEntrega;
+    return um && new Date(um).getTime() >= haceSemana;
+  }).length;
+
+  // 8) CALANDRA — m² impresos esta semana (vinculados a pedido + huerfanos)
+  let m2SemanaCalandra = 0;
+  let archivosSemanaCalandra = 0;
+  for (const p of pedidos) {
+    if (!p.wetransfer || !p.wetransfer.archivos) continue;
+    for (const a of p.wetransfer.archivos) {
+      if (!a.fechaEnvio) continue;
+      if (new Date(a.fechaEnvio).getTime() < haceSemana) continue;
+      m2SemanaCalandra += (a.m2 || 0);
+      archivosSemanaCalandra++;
+    }
+  }
+  try {
+    const huerfanos = (typeof gmailWT !== 'undefined' && gmailWT.leerHuerfanos) ? gmailWT.leerHuerfanos() : [];
+    for (const h of huerfanos) {
+      const f = h.fecha;
+      if (!f) continue;
+      if (new Date(f).getTime() < haceSemana) continue;
+      m2SemanaCalandra += (h.archivo?.m2 || 0);
+      archivosSemanaCalandra++;
+    }
+  } catch {}
+
+  // 9) ARREGLOS esta semana
+  let arreglosSemana = 0;
+  try {
+    const allArr = db.leerArreglos() || [];
+    arreglosSemana = allArr.filter(a => {
+      const f = a.creado_en || a.fecha || a.ts;
+      return f && new Date(f).getTime() >= haceSemana;
+    }).length;
+  } catch {}
+
+  // 10) TOP VENDEDORA (la de mayor monto vendido)
+  const topVendEntry = Object.entries(ventasPorVend).sort((a, b) => b[1].monto - a[1].monto)[0];
+  const topVendedora = topVendEntry ? { nombre: topVendEntry[0], n: topVendEntry[1].n, monto: topVendEntry[1].monto } : null;
+
   return {
     hoyBogota,
-    ventasSemana: { count: ventasSemana.length, monto: ventasTotalMonto, porVendedora: ventasPorVend },
+    ventasSemana: { count: ventasSemana.length, monto: ventasTotalMonto, porVendedora: ventasPorVend, top: topVendedora },
     facturasSemana: { count: facturasSemana.length, monto: facturasMonto },
     docsWAPendientes: { count: docsWAPendientes.length, porVendedora: docsPorVend },
     pedidos: { activos: activos.length, porEstado, atrasados: atrasados.length, atrasadosDetalle: atrasados.slice(0, 5).map(p => ({ id: p.id, cliente: p.cliente || p.equipo || 'Sin nombre', fechaEntrega: p.fechaEntrega, estado: p.estado })) },
     comprobantesSinSticker: sinSticker,
+    cartera: { totalPendiente: carteraTotal, pedidosCount: carteraDetalle.length, top: carteraTop },
+    flujoSemana: { nuevos: pedidosNuevos, entregados: pedidosEntregados, arreglos: arreglosSemana },
+    calandraSemana: { m2: m2SemanaCalandra, archivos: archivosSemanaCalandra },
   };
 }
 
 function construirMensajeResumenSemanal(r) {
   const fmt = (n) => _formatearMontoCOP ? _formatearMontoCOP(n) : `$${(n||0).toLocaleString('es-CO')}`;
+  const fmtM2 = (n) => `${Math.round(n || 0).toLocaleString('es-CO')} m²`;
   const lineasVentas = Object.entries(r.ventasSemana.porVendedora)
     .sort((a,b) => b[1].monto - a[1].monto)
     .map(([v, d]) => `  • ${v}: ${d.n} (${fmt(d.monto)})`)
@@ -7064,6 +7131,12 @@ function construirMensajeResumenSemanal(r) {
   const lineasAtrasados = r.pedidos.atrasadosDetalle
     .map(p => `  • #${p.id} ${p.cliente} — entrega ${p.fechaEntrega} (${p.estado})`)
     .join('\n');
+  const lineasCartera = (r.cartera?.top || [])
+    .map(c => `  • #${c.id} ${c.cliente} (${c.vendedora}) — ${fmt(c.saldo)}`)
+    .join('\n') || '  • _(nadie debe nada)_';
+  const topVendTxt = r.ventasSemana.top
+    ? `🏆 ${r.ventasSemana.top.nombre} — ${fmt(r.ventasSemana.top.monto)} en ${r.ventasSemana.top.n} ventas`
+    : '_(sin datos)_';
 
   return `📊 *RESUMEN SEMANAL — Domingo ${r.hoyBogota}*
 
@@ -7071,8 +7144,23 @@ function construirMensajeResumenSemanal(r) {
 Total: *${r.ventasSemana.count}* ventas — *${fmt(r.ventasSemana.monto)}*
 ${lineasVentas}
 
+${topVendTxt}
+
 📄 *FACTURAS EMITIDAS EN APP (7 días)*
 ${r.facturasSemana.count} facturas — ${fmt(r.facturasSemana.monto)}
+
+🏭 *PRODUCCIÓN CALANDRA (7 días)*
+${fmtM2(r.calandraSemana?.m2)} impresos en ${r.calandraSemana?.archivos || 0} archivos enviados
+
+🔄 *FLUJO DE PEDIDOS (7 días)*
+🆕 Nuevos: ${r.flujoSemana?.nuevos || 0}
+📦 Entregados: ${r.flujoSemana?.entregados || 0}
+🛠️ Arreglos: ${r.flujoSemana?.arreglos || 0}
+
+💳 *CARTERA POR COBRAR* (${r.cartera?.pedidosCount || 0} pedidos)
+Total pendiente: *${fmt(r.cartera?.totalPendiente)}*
+Top deudas:
+${lineasCartera}
 
 📥 *DOCUMENTOS WA SIN REVISAR* (${r.docsWAPendientes.count} total)
 ${lineasDocs}
@@ -7087,6 +7175,7 @@ ${lineasAtrasados || '_(ninguno)_'}
 📋 *TABLERO ACTIVO (${r.pedidos.activos} pedidos)*
 ${lineasEstado || '_(vacío)_'}
 
+_Para incluir ganancia neta + compras de tela hace falta capturar esa data — pendiente Fase B._
 _Buen domingo. Decisiones para mañana._`;
 }
 
