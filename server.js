@@ -7070,28 +7070,34 @@ async function generarResumenSemanalAdmin() {
     return _parsearFecha(p.ultimoMovimiento || p.fechaEntrega) >= haceSemana;
   }).length;
 
-  // 8) CALANDRA — m² impresos esta semana (vinculados a pedido + huerfanos)
-  let m2SemanaCalandra = 0;
+  // 8) CALANDRA — metros lineales impresos esta semana
+  // Los m2 guardados estan en cm de largo de tela (convencion del parser de gmail-wt).
+  // Dividimos por 100 al display para mostrar metros lineales reales.
+  // Los huerfanos pueden tener dos eventos por archivo: 'enviado' y 'descargado'.
+  // Solo contamos 'enviado' (la produccion real); 'descargado' es eco del mismo PDF.
+  let cmSemanaCalandra = 0;
   let archivosSemanaCalandra = 0;
   for (const p of pedidos) {
     if (!p.wetransfer || !p.wetransfer.archivos) continue;
     for (const a of p.wetransfer.archivos) {
       if (!a.fechaEnvio) continue;
       if (new Date(a.fechaEnvio).getTime() < haceSemana) continue;
-      m2SemanaCalandra += (a.m2 || 0);
+      cmSemanaCalandra += (a.m2 || 0);
       archivosSemanaCalandra++;
     }
   }
   try {
     const huerfanos = (typeof gmailWT !== 'undefined' && gmailWT.leerHuerfanos) ? gmailWT.leerHuerfanos() : [];
     for (const h of huerfanos) {
+      if (h.accion !== 'enviado') continue; // descartar 'descargado' para no duplicar
       const f = h.fecha;
       if (!f) continue;
       if (new Date(f).getTime() < haceSemana) continue;
-      m2SemanaCalandra += (h.archivo?.m2 || 0);
+      cmSemanaCalandra += (h.archivo?.m2 || 0);
       archivosSemanaCalandra++;
     }
   } catch {}
+  const metrosSemanaCalandra = cmSemanaCalandra / 100; // cm -> metros lineales
 
   // 9) ARREGLOS esta semana
   let arreglosSemana = 0;
@@ -7116,13 +7122,13 @@ async function generarResumenSemanalAdmin() {
     comprobantesSinSticker: sinSticker,
     cartera: { totalPendiente: carteraTotal, pedidosCount: carteraDetalle.length, top: carteraTop },
     flujoSemana: { nuevos: pedidosNuevos, entregados: pedidosEntregados, arreglos: arreglosSemana },
-    calandraSemana: { m2: m2SemanaCalandra, archivos: archivosSemanaCalandra },
+    calandraSemana: { metros: metrosSemanaCalandra, archivos: archivosSemanaCalandra },
   };
 }
 
 function construirMensajeResumenSemanal(r) {
   const fmt = (n) => _formatearMontoCOP ? _formatearMontoCOP(n) : `$${(n||0).toLocaleString('es-CO')}`;
-  const fmtM2 = (n) => `${Math.round(n || 0).toLocaleString('es-CO')} m²`;
+  const fmtMetros = (n) => `${(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 })} m`;
   const lineasVentas = Object.entries(r.ventasSemana.porVendedora)
     .sort((a,b) => b[1].monto - a[1].monto)
     .map(([v, d]) => `  • ${v}: ${d.n} (${fmt(d.monto)})`)
@@ -7156,7 +7162,7 @@ ${topVendTxt}
 ${r.facturasSemana.count} facturas — ${fmt(r.facturasSemana.monto)}
 
 🏭 *PRODUCCIÓN CALANDRA (7 días)*
-${fmtM2(r.calandraSemana?.m2)} impresos en ${r.calandraSemana?.archivos || 0} archivos enviados
+${fmtMetros(r.calandraSemana?.metros)} lineales impresos en ${r.calandraSemana?.archivos || 0} archivos enviados
 
 🔄 *FLUJO DE PEDIDOS (7 días)*
 🆕 Nuevos: ${r.flujoSemana?.nuevos || 0}

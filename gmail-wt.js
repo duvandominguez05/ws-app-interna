@@ -208,10 +208,22 @@ function parsearArchivo(nombreArchivo) {
     base: nombre,          // nombre sin metadatos
   };
 
-  // Extraer m² del sufijo _NUM al final
-  const m2Match = nombre.match(/_(\d[\d,]*)$/);
+  // Extraer LARGO del sufijo _NUM al final.
+  // CONVENCION DE LOS DISENADORES: el numero esta en CENTIMETROS.
+  // Para obtener METROS LINEALES hay que dividir por 100 (esto se hace al
+  // mostrar en cron domingo y dashboard, no aqui — para no romper datos viejos).
+  // Ejemplos:
+  //   _60      -> 60 cm  = 0.60 m
+  //   _317     -> 317 cm = 3.17 m
+  //   _1.000   -> 1000 cm = 10.00 m (punto separador de miles)
+  //   _1,342   -> 1342 cm = 13.42 m (coma separador de miles)
+  // Aceptamos ambos separadores. Guardamos como cm; el campo se llama m2 por
+  // compatibilidad pero su unidad real es CENTIMETROS de largo de tela.
+  const m2Match = nombre.match(/_(\d[\d,.]*)$/);
   if (m2Match) {
-    datos.m2 = parseInt(m2Match[1].replace(/,/g, ''), 10);
+    const raw = m2Match[1].replace(/[,.]/g, '');
+    const cm = parseInt(raw, 10);
+    datos.m2 = isNaN(cm) ? null : cm;
     nombre = nombre.slice(0, m2Match.index).trim();
   }
 
