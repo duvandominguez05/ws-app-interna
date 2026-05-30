@@ -5476,20 +5476,23 @@ async function generarYGuardarFactura() {
   renderDocHistorial();
 
   if (facturaServer && facturaServer.drive_link) {
-    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} en Drive — abriendo WhatsApp...`, 'success');
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} guardada en Drive`, 'success');
   } else {
-    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada — abriendo compartir...`, 'info');
+    toast(`${docTipo === 'cotizacion' ? 'Cotización' : 'Factura'} #${numStr} generada`, 'info');
   }
   cerrarFormDoc();
-  // Disparar el compartir reusando el blob ya generado (NO regenera el PDF, eso preserva
-  // el "user gesture" que navigator.share exige en mobile). 3 niveles de fallback:
-  // 1) Web Share API con el PDF (Android/iOS modernos -> abre WhatsApp + el resto)
-  // 2) wa.me con link de Drive si hay telefono del cliente
-  // 3) descargar el PDF al disco (PC o cuando los anteriores no aplican)
-  try { await compartirDocWA(registroLocal.id, pdfBlob, facturaServer); } catch (e) { console.warn('[share auto]', e); }
+  // Guardar blob + facturaServer en variables globales para que el modal post-factura
+  // pueda compartir SIN regenerar el PDF y con user gesture FRESCO (el click del boton
+  // dentro del modal). Esto evita que el navegador bloquee window.open / navigator.share.
+  window._ultimoFacturaBlob = pdfBlob;
+  window._ultimoFacturaServer = facturaServer;
+  window._ultimoFacturaRegistro = registroLocal;
+  mostrarModalPostFactura(facturaServer || { tipo: docTipo, numero: numStr, cliente_nombre: cliente, cliente_telefono: telefono, total }, registroLocal);
 }
 
-// Modal post-generación con botón gigante "Enviar al cliente por WA"
+// Modal post-generación: el blob ya está listo en window._ultimoFacturaBlob.
+// El click del usuario aquí es un user gesture FRESCO -> navigator.share y window.open
+// no son bloqueados por el navegador móvil.
 function mostrarModalPostFactura(facturaServer, registroLocal) {
   const tipoLabel = facturaServer.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
   const tipoEmoji = facturaServer.tipo === 'cotizacion' ? '🧾' : '📄';
@@ -5504,11 +5507,11 @@ function mostrarModalPostFactura(facturaServer, registroLocal) {
       <div style="text-align:center;font-size:0.85rem;color:#94a3b8;margin-bottom:6px;">${esc(facturaServer.cliente_nombre || 'Sin cliente')}</div>
       <div style="text-align:center;font-size:1.3rem;font-weight:800;color:#10b981;margin-bottom:18px;">${fmtPeso(facturaServer.total || 0)}</div>
 
-      <button onclick="compartirDocWA(${registroLocal ? registroLocal.id : 0})" style="width:100%;background:#25d366;border:none;color:#fff;border-radius:12px;padding:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:8px;">
-        📤 Compartir / Enviar al cliente
+      <button onclick="compartirFacturaUltima()" style="width:100%;background:#25d366;border:none;color:#fff;border-radius:12px;padding:16px;font-size:1rem;font-weight:800;cursor:pointer;margin-bottom:8px;">
+        📤 Enviar al cliente por WhatsApp
       </button>
       <div style="font-size:0.72rem;color:#94a3b8;text-align:center;margin-bottom:14px;line-height:1.4;">
-        Se abre el menú de compartir del celular. Elegí <strong>WhatsApp</strong> y mandalo al cliente desde TU número.
+        Se abre WhatsApp ${tel ? `con el chat de ${esc(tel)}` : 'para que elijas el contacto'}. Mandás desde <strong>TU número</strong>.
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -5517,7 +5520,7 @@ function mostrarModalPostFactura(facturaServer, registroLocal) {
             👁️ Ver en Drive
           </a>
         ` : ''}
-        <button onclick="descargarFacturaDelHistorial(${registroLocal ? registroLocal.id : 0})" style="flex:1;background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:10px;padding:10px;font-size:0.82rem;font-weight:600;cursor:pointer;">
+        <button onclick="descargarFacturaUltima()" style="flex:1;background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;border-radius:10px;padding:10px;font-size:0.82rem;font-weight:600;cursor:pointer;">
           💾 Descargar PDF
         </button>
       </div>
@@ -5528,6 +5531,68 @@ function mostrarModalPostFactura(facturaServer, registroLocal) {
   `;
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
+}
+
+// Compartir usando el blob ya generado. Se llama desde el click del botón en el modal,
+// por lo que el user gesture es válido y navigator.share/window.open no son bloqueados.
+async function compartirFacturaUltima() {
+  const blob = window._ultimoFacturaBlob;
+  const facturaServer = window._ultimoFacturaServer || {};
+  const registro = window._ultimoFacturaRegistro;
+  if (!blob || !registro) {
+    toast('No hay factura para compartir', 'error');
+    return;
+  }
+  const tipo   = registro.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const nombre = `${tipo} #${registro.numero} - ${registro.cliente}.pdf`;
+
+  // Intento 1: Web Share API con el PDF (móvil moderno)
+  if (navigator.canShare) {
+    try {
+      const pdfFile = new File([blob], nombre, { type: 'application/pdf' });
+      if (navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({ files: [pdfFile], title: nombre });
+        document.getElementById('modal-post-factura')?.remove();
+        return;
+      }
+    } catch (errShare) {
+      if (errShare.name === 'AbortError') return;
+      console.warn('[share] navigator.share files falló:', errShare);
+    }
+  }
+
+  // Intento 2: wa.me con texto + link de Drive (si hay teléfono del cliente y link)
+  const driveLink = facturaServer.drive_link || '';
+  const telRaw = (registro.telefono || '').replace(/\D/g, '');
+  if (telRaw && driveLink) {
+    const telWa = telRaw.startsWith('57') ? telRaw : '57' + telRaw;
+    const tipoLow = registro.tipo === 'cotizacion' ? 'cotización' : 'factura';
+    const mensaje = `Hola${registro.cliente ? ' ' + registro.cliente : ''}, te envío tu ${tipoLow} #${registro.numero} de W&S Uniformes Deportivos.\nTotal: $${(registro.total||0).toLocaleString('es-CO')}\n\nVer PDF: ${driveLink}\n\nGracias por tu compra 🙏`;
+    const urlWa = 'https://wa.me/' + telWa + '?text=' + encodeURIComponent(mensaje);
+    window.open(urlWa, '_blank');
+    document.getElementById('modal-post-factura')?.remove();
+    return;
+  }
+
+  // Intento 3: descargar PDF (último recurso)
+  descargarFacturaUltima();
+}
+
+function descargarFacturaUltima() {
+  const blob = window._ultimoFacturaBlob;
+  const registro = window._ultimoFacturaRegistro;
+  if (!blob || !registro) {
+    toast('No hay factura para descargar', 'error');
+    return;
+  }
+  const tipo   = registro.tipo === 'cotizacion' ? 'Cotización' : 'Factura';
+  const nombre = `${tipo} #${registro.numero} - ${registro.cliente}.pdf`;
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('PDF descargado', 'success');
 }
 
 function descargarFacturaDelHistorial(id) {
