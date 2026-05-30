@@ -6864,10 +6864,30 @@ async function enviarResumenComprobantes() {
       console.log(`[resumen-8pm] enviado a ${vendedora}: ${items.length} sin sticker / ${dia.conSticker} con sticker`);
     }
 
-    // Resumen consolidado a Duvan por Telegram
+    // Resumen consolidado al jefe (Camilo) + Graciela por WA + Duvan por Telegram.
+    // Adicional al WA a cada vendedora (arriba), los admins reciben el consolidado.
     const totalPorV = Object.entries(porVendedora).map(([v, l]) => `• *${v}*: ${l.length}`).join('\n');
+    // Detalle por vendedora con totales del dia y monto vendido
+    const detalleAdmin = Object.entries(porVendedora).map(([v, l]) => {
+      const dia = resumenDiaVendedora(v);
+      return `*${v.toUpperCase()}*\n  • Confirmadas con sticker: ${dia.conSticker}\n  • Total vendido hoy: ${_formatearMontoCOP(dia.totalMonto)}\n  • Sin sticker: ${l.length}`;
+    }).join('\n\n');
     const totalDetectados = recientes.length;
     const totalSinMarcar = sinMarcar.length;
+    const totalMontoHoy = Object.entries(porVendedora).reduce((s, [v]) => s + resumenDiaVendedora(v).totalMonto, 0);
+
+    const adminText = `📊 *CIERRE DEL DIA — 8 PM*\n\n` +
+      `💰 Total vendido hoy: *${_formatearMontoCOP(totalMontoHoy)}*\n` +
+      `📥 Comprobantes detectados: *${totalDetectados}*\n` +
+      `⚠️ Sin sticker (vendedoras olvidaron marcar): *${totalSinMarcar}*\n\n` +
+      `${detalleAdmin}\n\n` +
+      `_Las vendedoras ya recibieron su recordatorio para subir el sticker._`;
+
+    // WA al jefe (Camilo)
+    try { await responderJefe(adminText); } catch (e) { console.error('[resumen-8pm jefe]', e.message); }
+    // WA a Graciela (si esta configurada)
+    try { await notificarWAPersona('graciela', adminText); } catch (e) { console.error('[resumen-8pm graciela]', e.message); }
+    // TG a Duvan (mantener canal de respaldo)
     const tgText = `📊 *Resumen 8 PM — Comprobantes detectados*\n\nHoy se detectaron *${totalDetectados}* comprobantes en los WA de las vendedoras.\n*${totalSinMarcar}* están sin marcar:\n\n${totalPorV}\n\nLas vendedoras ya recibieron su recordatorio.`;
     try { await notificarTelegram(tgText); } catch {}
   } catch (e) {
