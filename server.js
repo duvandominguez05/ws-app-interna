@@ -218,7 +218,7 @@ const WA_NUMS_PERSONA = {
   camilo:     '573124858901',
   duvan:      process.env.WA_DUVAN || '573124858901', // owner (mismo numero que Camilo)
   oscar:      process.env.WA_OSCAR || null,
-  graciela:   process.env.WA_GRACIELA || null,
+  graciela:   process.env.WA_GRACIELA || '573232287390',
   lidermeyer: process.env.WA_LIDERMEYER || null,
   marcela:    process.env.WA_MARCELA || null,
   cristina:   process.env.WA_CRISTINA || null,
