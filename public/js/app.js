@@ -5388,8 +5388,10 @@ async function _generarPdfBlobDesdeRegistro(registro) {
 
   const contenedor = document.createElement('div');
   contenedor.id = '_pdf_render_temp';
-  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:auto;background:#ffffff;z-index:-99999;opacity:0;pointer-events:none;overflow:hidden;';
-  // Inyectar estilo scoped al contenedor para no afectar el resto de la app
+  // El elemento DEBE estar visible para el browser (sin opacity:0 ni display:none)
+  // para que html2canvas capture el contenido. Lo posicionamos arriba del viewport
+  // (top negativo) para que el user no lo vea durante la generación.
+  contenedor.style.cssText = 'position:fixed;left:0;top:-99999px;width:800px;height:auto;background:#ffffff;pointer-events:none;';
   contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
   document.body.appendChild(contenedor);
 
