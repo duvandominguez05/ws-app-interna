@@ -5388,21 +5388,25 @@ async function _generarPdfBlobDesdeRegistro(registro) {
 
   const contenedor = document.createElement('div');
   contenedor.id = '_pdf_render_temp';
-  // El elemento DEBE estar visible para el browser (sin opacity:0 ni display:none)
-  // para que html2canvas capture el contenido. Lo posicionamos arriba del viewport
-  // (top negativo) para que el user no lo vea durante la generación.
-  contenedor.style.cssText = 'position:fixed;left:0;top:-99999px;width:800px;height:auto;background:#ffffff;pointer-events:none;';
+  // CRITICO: width Y height explícitos. En mobile, height:auto resultaba en
+  // canvas con altura 0 (capturaba PDF vacío de 3KB). Width 800px = ancho del
+  // template .page. Height 1150px = max-height del template +20px de safety.
+  // Posicionamos detrás del UI con z-index:-1 para que el user no lo vea.
+  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:1150px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
   contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
   document.body.appendChild(contenedor);
 
-  // Esperar a que el browser aplique los estilos (1 frame + safety net)
+  // Esperar layout/render
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   await new Promise(r => setTimeout(r, 800));
 
   const opt = {
     margin: [6, 6, 6, 6],
     image: { type: 'jpeg', quality: 0.97 },
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800 },
+    // width/height EXPLÍCITOS en html2canvas = la clave para que mobile no
+    // genere canvas vacío. windowWidth/windowHeight aseguran el viewport
+    // simulado correcto.
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: 1150, width: 800, height: 1150 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
