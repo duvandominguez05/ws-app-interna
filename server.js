@@ -1467,6 +1467,17 @@ const INSTANCIA_A_VENDEDORA = {
   'ws paola':  'Paola',
 };
 const VENDEDORAS_DISENADORAS = new Set(['Ney', 'Wendy', 'Paola']);
+const DISENADOR_FULL_TIME_DEFAULT = 'Oscar'; // a quien le caen los pedidos de vendedoras que NO disenan
+
+// Regla de auto-asignacion de disenador al crear/avanzar pedido:
+//   - Si la vendedora tambien disena (Ney/Wendy/Paola) -> ella misma
+//   - Si no (Betty, Graciela, Camilo) -> Oscar (diseñador full-time)
+// Camilo decidio en la fase de adopcion lunes 2026-06-01 que Oscar recibe los
+// pedidos de Betty (que es la que mas vende y no disena).
+function asignarDisenadorAutomatico(vendedora) {
+  if (VENDEDORAS_DISENADORAS.has(vendedora)) return vendedora;
+  return DISENADOR_FULL_TIME_DEFAULT;
+}
 
 function vendedoraDeInstancia(instance) {
   if (!instance) return 'Betty';
@@ -2584,6 +2595,44 @@ http.createServer(async (req, res) => {
       }
     })();
     return;
+  }
+
+  // ── POST /api/admin/asignar-disenadores-pendientes ──
+  // Recorre pedidos en 'hacer-diseno' SIN diseñador asignado y aplica la regla:
+  //   vendedora-diseñadora (Ney/Wendy/Paola) -> ella misma
+  //   resto -> Oscar (diseñador full-time)
+  // Pasarle ?dryRun=1 para ver que tomaria sin escribir.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/asignar-disenadores-pendientes')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host}`);
+      const dryRun = u.searchParams.get('dryRun') === '1';
+      const pedidos = leerPedidos();
+      const asignaciones = [];
+      let cambios = 0;
+      for (const p of pedidos) {
+        if (p.estado !== 'hacer-diseno') continue;
+        if (p.disenadorAsignado) continue;
+        const vendedora = p.vendedora || '';
+        const disenador = asignarDisenadorAutomatico(vendedora);
+        asignaciones.push({ pedidoId: p.id, equipo: p.equipo, vendedora, disenadorAsignado: disenador });
+        if (!dryRun) {
+          p.disenadorAsignado = disenador;
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'asignador-automatico',
+            accion: 'asignar-disenador',
+            nota: `Asignado a ${disenador} (vendedora=${vendedora})`,
+          });
+          cambios++;
+        }
+      }
+      if (!dryRun && cambios > 0) guardarPedidos(pedidos, leerNextId());
+      return json(res, 200, { dryRun, total: asignaciones.length, cambios, asignaciones });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
   }
 
   // ── GET /api/admin/sticker-audit — cruza cada sticker fromMe + hash correcto con su pedido ──
@@ -4296,9 +4345,10 @@ http.createServer(async (req, res) => {
                   cotizacion.ultimoMovimiento = new Date().toISOString();
                   cotizacion.stickerVenta = stickerHash;
                   cotizacion.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
-                  // Auto-asignar diseñador si la vendedora también diseña (Ney/Wendy/Paola)
-                  if (VENDEDORAS_DISENADORAS.has(vendedora) && !cotizacion.disenadorAsignado) {
-                    cotizacion.disenadorAsignado = vendedora;
+                  // Auto-asignar diseñador (vendedora-diseñadora se asigna a si misma;
+                  // si no disena, va a Oscar).
+                  if (!cotizacion.disenadorAsignado) {
+                    cotizacion.disenadorAsignado = asignarDisenadorAutomatico(vendedora);
                   }
                   guardarPedidos(pedidos, leerNextId());
                   console.log(`[sticker-venta] cotización #${cotizacion.id} → hacer-diseno (vendedora=${vendedora}, dis=${cotizacion.disenadorAsignado||'-'}) (${nombreCliente})`);
@@ -4332,9 +4382,9 @@ http.createServer(async (req, res) => {
                         nuevoPd.stickerVenta = stickerHash;
                         nuevoPd.fechaVenta = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
                         if (contactoChatwoot) nuevoPd.contactoChatwoot = contactoChatwoot;
-                        // Auto-asignar diseñador si la vendedora también diseña (solo si no tenia)
-                        if (VENDEDORAS_DISENADORAS.has(vendedora) && !nuevoPd.disenadorAsignado) {
-                          nuevoPd.disenadorAsignado = vendedora;
+                        // Auto-asignar diseñador (vendedora-diseñadora -> ella; resto -> Oscar)
+                        if (!nuevoPd.disenadorAsignado) {
+                          nuevoPd.disenadorAsignado = asignarDisenadorAutomatico(vendedora);
                         }
                         guardarPedidos(pp, leerNextId());
                       }
