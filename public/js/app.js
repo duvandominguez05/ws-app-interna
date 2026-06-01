@@ -5326,9 +5326,8 @@ function buildDocHTML(d) {
       <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta1.num}<br>${cta1.nombre}<br>${cta1.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta1.tipo}</span></div>
       <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta2.num}<br>${cta2.nombre}<br>${cta2.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta2.tipo}</span></div>
     </div>
-    <div class="cuentas" style="grid-template-columns:repeat(2, 1fr);margin-top:14px;">
-      <div class="cuenta"><strong>NEQUI</strong>350 697 47 11<br>301 663 94 30<br>${esc((typeof NEQUI_EXTRA !== 'undefined' && NEQUI_EXTRA) || '')}</div>
-      <div class="cuenta"><strong>DAVIPLATA</strong>350 697 47 11<br>301 663 94 30</div>
+    <div class="cuentas" style="grid-template-columns:1fr;margin-top:14px;">
+      <div class="cuenta"><strong>LLAVE BRE-B</strong>350 697 47 11<br>301 663 94 30<br>322 976 13 81</div>
     </div>
   </div>
 
