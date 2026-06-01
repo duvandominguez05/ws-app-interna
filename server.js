@@ -1711,7 +1711,11 @@ http.createServer(async (req, res) => {
     const nuevos = pedidos.filter(p => p.id !== id);
     if (nuevos.length === pedidos.length) return json(res, 404, { error: 'Pedido no encontrado' });
     guardarPedidos(nuevos);
-    console.log(`[api] Pedido #${id} eliminado`);
+    // CRITICO: agregar tombstone para que el cliente PWA no lo resucite al
+    // sincronizar su localStorage, y para que el cron de stickers-historicos
+    // no lo recree. Sin esto, el pedido vuelve en cuestion de minutos.
+    agregarTombstone(id);
+    console.log(`[api] Pedido #${id} eliminado + tombstone agregado`);
     return json(res, 200, { ok: true });
   }
 
