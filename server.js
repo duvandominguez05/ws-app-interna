@@ -1247,6 +1247,53 @@ function purgarArchivados(pedidos) {
   return pedidos.filter(p => !archivados.has(p.id));
 }
 
+// ── TELEFONOS DESCARTADOS ─────────────────────────────────────────────
+// Cuando se borra un pedido, su telefono se agrega a esta lista para que
+// el sticker-handler y el reprocesador-historico NO recreen el pedido
+// automaticamente. Camilo confirma esto el 2026-06-01 tras notar que
+// pedidos borrados volvian a aparecer porque el cron reprocesaba el
+// sticker historico y creaba un pedido nuevo.
+//
+// La lista expira a los 60 dias (asumiendo que si el cliente vuelve a
+// comprar despues, ya es otra venta y conviene crearle un pedido fresco).
+// Se puede limpiar manualmente via POST /api/admin/quitar-telefono-descartado.
+const TEL_DESCARTADOS_FILE = path.join(__dirname, 'data', 'telefonos-descartados.json');
+function leerTelefonosDescartados() {
+  try {
+    if (!fs.existsSync(TEL_DESCARTADOS_FILE)) return [];
+    const arr = JSON.parse(fs.readFileSync(TEL_DESCARTADOS_FILE, 'utf8'));
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function guardarTelefonosDescartados(arr) {
+  try {
+    fs.mkdirSync(path.dirname(TEL_DESCARTADOS_FILE), { recursive: true });
+    fs.writeFileSync(TEL_DESCARTADOS_FILE, JSON.stringify(arr, null, 2));
+  } catch (e) { console.error('[tel-descartados]', e.message); }
+}
+function normTel(t) {
+  const s = String(t || '').replace(/\D/g, '');
+  return s.length >= 10 ? s.slice(-10) : s;
+}
+function agregarTelefonoDescartado(tel, motivo) {
+  const norm = normTel(tel);
+  if (!norm || norm.length < 8) return;
+  const lista = leerTelefonosDescartados();
+  const hace60d = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const filtrada = lista.filter(t => t.ts >= hace60d);
+  if (!filtrada.find(t => t.tel === norm)) {
+    filtrada.push({ tel: norm, motivo: motivo || 'borrado manual', ts: Date.now() });
+    guardarTelefonosDescartados(filtrada);
+  }
+}
+function esTelefonoDescartado(tel) {
+  const norm = normTel(tel);
+  if (!norm) return false;
+  const lista = leerTelefonosDescartados();
+  const hace60d = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  return lista.some(t => t.tel === norm && t.ts >= hace60d);
+}
+
 // ─────────────────────────────────────────────────────────────
 // NOTION — Archivar pedidos entregados (enviado-final)
 // El pedido se sube a Notion y luego se borra del servidor.
@@ -1708,14 +1755,21 @@ http.createServer(async (req, res) => {
   if (req.method === 'DELETE' && req.url.startsWith('/api/pedidos/') && !req.url.includes('limpiar-basura')) {
     const id = parseInt(req.url.split('/')[3]);
     const pedidos = leerPedidos();
+    const pedidoBorrado = pedidos.find(p => p.id === id);
     const nuevos = pedidos.filter(p => p.id !== id);
     if (nuevos.length === pedidos.length) return json(res, 404, { error: 'Pedido no encontrado' });
     guardarPedidos(nuevos);
-    // CRITICO: agregar tombstone para que el cliente PWA no lo resucite al
-    // sincronizar su localStorage, y para que el cron de stickers-historicos
-    // no lo recree. Sin esto, el pedido vuelve en cuestion de minutos.
+    // CRITICO 1: tombstone por ID para que el cliente PWA no lo resucite al
+    // sincronizar su localStorage.
     agregarTombstone(id);
-    console.log(`[api] Pedido #${id} eliminado + tombstone agregado`);
+    // CRITICO 2: agregar el TELEFONO a descartados (60 dias) para que el
+    // reprocesador-historico de stickers y el handler en tiempo real no
+    // recreen un pedido nuevo del mismo cliente. Sin esto, el cron 10PM
+    // vuelve a crear el pedido al detectar el sticker viejo.
+    if (pedidoBorrado && pedidoBorrado.telefono) {
+      agregarTelefonoDescartado(pedidoBorrado.telefono, `pedido #${id} borrado`);
+    }
+    console.log(`[api] Pedido #${id} eliminado + tombstone + telefono descartado (${pedidoBorrado?.telefono || 'sin tel'})`);
     return json(res, 200, { ok: true });
   }
 
@@ -2275,6 +2329,42 @@ http.createServer(async (req, res) => {
     return json(res, 200, { tombstones: leerTombstones() });
   }
 
+  // ── TELEFONOS DESCARTADOS — admin ──
+  if (req.method === 'GET' && req.url === '/api/admin/telefonos-descartados') {
+    return json(res, 200, { items: leerTelefonosDescartados() });
+  }
+  // POST /api/admin/telefonos-descartados — body: { telefonos: ['573124858901', ...], motivo? }
+  // Para agregar manualmente tels a la lista (ej. para los pedidos ya borrados antes del fix).
+  if (req.method === 'POST' && req.url === '/api/admin/telefonos-descartados') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { telefonos, motivo } = JSON.parse(body || '{}');
+        if (!Array.isArray(telefonos)) return json(res, 400, { error: 'telefonos debe ser un array' });
+        let agregados = 0;
+        for (const t of telefonos) {
+          const antes = leerTelefonosDescartados().length;
+          agregarTelefonoDescartado(t, motivo || 'agregado manual via admin');
+          if (leerTelefonosDescartados().length > antes) agregados++;
+        }
+        return json(res, 200, { ok: true, agregados, total: leerTelefonosDescartados().length });
+      } catch (e) { return json(res, 500, { error: e.message }); }
+    });
+    return;
+  }
+  // DELETE /api/admin/telefonos-descartados/:tel — quitar uno (si fue por error)
+  if (req.method === 'DELETE' && req.url.startsWith('/api/admin/telefonos-descartados/')) {
+    try {
+      const tel = normTel(req.url.split('/')[4]);
+      const lista = leerTelefonosDescartados();
+      const nueva = lista.filter(t => t.tel !== tel);
+      if (nueva.length === lista.length) return json(res, 404, { error: 'no estaba en la lista' });
+      guardarTelefonosDescartados(nueva);
+      return json(res, 200, { ok: true, removido: tel });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // ── GET /api/admin/sticker-detectar — lista stickers enviados POR NOSOTROS hoy y ofrece hash ──
   // Cuando una vendedora envia el sticker oficial, este endpoint captura el hash.
   if (req.method === 'GET' && req.url === '/api/admin/sticker-detectar') {
@@ -2515,6 +2605,13 @@ http.createServer(async (req, res) => {
             const remoteJid = ed.key?.remoteJid || '';
             const tel = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
             if (tel.length < 6) continue;
+            // Si el telefono fue descartado (pedido borrado), no recrear.
+            // Esto evita el bug reportado por Camilo: borraba pedidos y volvian
+            // a aparecer porque el cron reprocesaba el sticker historico.
+            if (esTelefonoDescartado(tel)) {
+              console.log(`[reprocesador] saltado — tel ${tel} esta en descartados`);
+              continue;
+            }
             const instance = ev.instance || '?';
             const vendedora = vendedoraDeInstancia(instance);
             const pushName = ed.pushName || '';
@@ -4323,7 +4420,12 @@ http.createServer(async (req, res) => {
 
             const esStickerVenta = STICKERS_VENTA.includes(stickerHash);
 
-            if (esStickerVenta && esDeNuestroWA) {
+            if (esStickerVenta && esDeNuestroWA && esTelefonoDescartado(remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, ''))) {
+              // Telefono fue borrado a proposito (lista de descartados). No procesar.
+              const telDescartado = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              console.log(`[sticker-venta] IGNORADO — tel ${telDescartado} esta en descartados`);
+              resultadoApi = { ok: true, ignorado: 'tel-descartado', telefono: telDescartado };
+            } else if (esStickerVenta && esDeNuestroWA) {
               // Sticker mandado DESDE el WA de ventas hacia un cliente
               const telefonoCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
               const { nombre: nombreCliente, contactoChatwoot } = await resolverCliente(remoteJid, telefonoCliente, pushName);
