@@ -1289,10 +1289,32 @@ function agregarTelefonoDescartado(tel, motivo) {
 function esTelefonoDescartado(tel) {
   const norm = normTel(tel);
   if (!norm) return false;
+  // Bloqueo PERMANENTE primero (proveedores confirmados por Camilo 27-may-2026
+  // mas los del env var TELEFONOS_PROVEEDORES en Railway). Estos NUNCA expiran.
+  if (PROVEEDORES_PERMANENTES.has(norm)) return true;
+  // Bloqueo temporal (60 dias) por pedidos borrados
   const lista = leerTelefonosDescartados();
   const hace60d = Date.now() - 60 * 24 * 60 * 60 * 1000;
   return lista.some(t => t.tel === norm && t.ts >= hace60d);
 }
+
+// PROVEEDORES_PERMANENTES — lista hardcodeada de telefonos que NO son clientes.
+// Camilo los confirmo el 27-may-2026: maquila / calandra / satelites / tela.
+// Adicional al env var TELEFONOS_PROVEEDORES en Railway (que se concatena).
+// Estos numeros NUNCA crean pedido, NUNCA por sticker, NUNCA por comprobante,
+// NUNCA por reprocesador. Sin TTL.
+const PROVEEDORES_HARDCODED = [
+  '573118761960',
+  '573118146068',
+  '573106259863',
+  '573225919823',
+  '573162674879',
+];
+const PROVEEDORES_PERMANENTES = new Set([
+  ...PROVEEDORES_HARDCODED.map(t => normTel(t)),
+  ...(process.env.TELEFONOS_PROVEEDORES || '')
+    .split(',').map(s => normTel(s.trim())).filter(Boolean),
+]);
 
 // ─────────────────────────────────────────────────────────────
 // NOTION — Archivar pedidos entregados (enviado-final)
