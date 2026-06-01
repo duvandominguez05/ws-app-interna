@@ -11,8 +11,12 @@ const SIGUIENTE = {
   'enviado-calandra': 'llego-impresion',
   'llego-impresion':  'corte',
   'corte':            'costura',
-  'costura':          'calidad',
-  'en-satelite':      'calidad',
+  // Antes: costura/en-satelite -> calidad -> listo (2 pasos).
+  // Camilo pidio simplificar: desde costura/en-satelite va DIRECTO a listo
+  // con un solo boton "Revision OK". El estado 'calidad' queda solo como
+  // fallback para pedidos que YA esten ahi (siguen pasando a listo).
+  'costura':          'listo',
+  'en-satelite':      'listo',
   'calidad':          'listo',
   'listo':            'enviado-final',
 };
@@ -2833,8 +2837,8 @@ function getBandejaBotonLabel(estado) {
     'enviado-calandra': 'Llego impresion',
     'llego-impresion': 'Pasar a corte',
     'corte': 'Pasar a costura',
-    'costura': 'Pasar a revision',
-    'en-satelite': 'Pasar a revision',
+    'costura': 'Revision OK',
+    'en-satelite': 'Revision OK',
     'calidad': 'Revision OK',
     'listo': 'Entregar / Enviar',
   };
@@ -6446,8 +6450,8 @@ function renderTableroPrincipal() {
           'enviado-calandra': { proximo: 'llego-impresion', texto: '✅ Llegó impresión', color: '#0ea5e9' },
           'llego-impresion':  { proximo: 'corte',           texto: '→ Pasar a corte', color: '#f97316' },
           'corte':            { proximo: 'costura',         texto: '→ Pasar a costura', color: '#a855f7' },
-          'costura':          { proximo: 'calidad',         texto: '→ Pasar a revision', color: '#eab308' },
-          'en-satelite':      { proximo: 'calidad',         texto: '→ Recibido / revision', color: '#eab308' },
+          'costura':          { proximo: 'listo',           texto: '✅ Revision OK', color: '#22c55e' },
+          'en-satelite':      { proximo: 'listo',           texto: '✅ Revision OK', color: '#22c55e' },
           'calidad':          { proximo: 'listo',           texto: '✅ Revision OK', color: '#22c55e' },
           'listo':            { proximo: 'enviado-final',   texto: '📦 Entregado al cliente', color: '#16a34a' },
         };
