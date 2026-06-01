@@ -5396,11 +5396,13 @@ async function _generarPdfBlobDesdeRegistro(registro) {
 
   const contenedor = document.createElement('div');
   contenedor.id = '_pdf_render_temp';
-  // CRITICO: width Y height explícitos. En mobile, height:auto resultaba en
-  // canvas con altura 0 (capturaba PDF vacío de 3KB). Width 800px = ancho del
-  // template .page. Height 1150px = max-height del template +20px de safety.
-  // Posicionamos detrás del UI con z-index:-1 para que el user no lo vea.
-  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:1200px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
+  // CRITICO: width fijo + min-height (no height fijo). El height fijo creaba
+  // pagina 2 en blanco cuando el contenido era mas corto que el container.
+  // Ahora medimos scrollHeight DESPUES del render y lo pasamos a html2canvas
+  // para que el PDF se ajuste al contenido real (sin pagina sobrante).
+  // min-height:1050 garantiza altura suficiente en mobile (donde height:auto
+  // a veces resultaba en canvas con altura 0 = PDF vacio de 3KB).
+  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;min-height:1050px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
   contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
   document.body.appendChild(contenedor);
 
@@ -5408,13 +5410,14 @@ async function _generarPdfBlobDesdeRegistro(registro) {
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   await new Promise(r => setTimeout(r, 800));
 
+  // Medir altura real del contenido y usar esa (+ buffer chico para safety).
+  const alturaReal = Math.max(contenedor.scrollHeight, 1050);
   const opt = {
     margin: [6, 6, 6, 6],
     image: { type: 'jpeg', quality: 0.97 },
-    // width/height EXPLÍCITOS en html2canvas = la clave para que mobile no
-    // genere canvas vacío. windowWidth/windowHeight aseguran el viewport
-    // simulado correcto.
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: 1200, width: 800, height: 1200 },
+    // width/height EXPLICITOS — usar la altura medida del contenido real
+    // para no generar paginas sobrantes en blanco.
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: alturaReal, width: 800, height: alturaReal },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
