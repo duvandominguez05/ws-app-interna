@@ -6687,6 +6687,12 @@ http.createServer(async (req, res) => {
       res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end('<h1>Persona no encontrada</h1><p><a href="/#/movil">Volver al hub</a></p>');
     }
+    // Personas marcadas inactive no pueden acceder a la app
+    // (ej. Oscar — disenador full-time sin acceso por seguridad).
+    if (persona.inactive) {
+      res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<h1>Acceso no autorizado</h1><p>Esta persona no tiene acceso a la app.</p>');
+    }
     const html = `<!DOCTYPE html>
 <html lang="es">
 <head>

@@ -18,8 +18,11 @@ const PERSONAS = [
   // Admin + diseño
   { slug: 'camilo',     nombre: 'Camilo',     roles: ['admin', 'diseno'],          emoji: '👤', color: '#a78bfa', vistaInicial: '/#/mi-dia' },
 
-  // Diseñador full-time (nuevo, solo diseña, no admin)
-  { slug: 'oscar',      nombre: 'Oscar',      roles: ['diseno'],                   emoji: '🎨', color: '#fbbf24', vistaInicial: '/#/mi-dia' },
+  // Diseñador full-time (NO tiene acceso a la app por seguridad — riesgo de robo
+  // de clientes). El sistema lo sigue asignando como disenadorAsignado en pedidos
+  // para tracking interno, pero la pagina /app/oscar devuelve 404. Camilo/Graciela
+  // le pasan trabajo manualmente desde su vista admin.
+  { slug: 'oscar',      nombre: 'Oscar',      roles: ['diseno'],                   emoji: '🎨', color: '#fbbf24', vistaInicial: '/#/mi-dia', inactive: true },
 
   // Admin jefe
   { slug: 'graciela',   nombre: 'Graciela',   roles: ['admin'],                    emoji: '👑', color: '#c4b5fd', vistaInicial: '/#/mi-dia' },
