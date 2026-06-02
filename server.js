@@ -4767,8 +4767,9 @@ http.createServer(async (req, res) => {
 
                           // 4. Grupo "Trabajo en familia" — solo info importante
                           try {
-                            const msgGrupo = `💰 *PAGO COMPLETO*\n` +
+                            const msgGrupo = `💰 *PAGO COMPLETO* — VENTA #${resVinc.pedidoId}\n` +
                               `${nombreCliente} — *${equipoTxt}* (${vendedora})\n` +
+                              `📞 ${telefonoCliente}\n` +
                               `Total: ${abonadoFmt} ✅`;
                             await notificarWhatsappTrabajoFamilia(msgGrupo);
                           } catch (eG) { console.error('[pago wa-grupo]', eG.message); }
@@ -7935,6 +7936,35 @@ console.log('[cron-90min] activado — recordatorios sticker cada 15 min');
 // Solo en horario laboral 8 AM - 7 PM Bogotá. Marca flag para no
 // repetir. Si pasaron +72h, ya no insiste (lo retoma el resumen 8 PM).
 // ═══════════════════════════════════════════════════════════════════
+// MIGRACION ARRANQUE: marca todos los pedidos EXISTENTES como recordatorio enviado
+// para no spamear vendedoras con pedidos viejos (Camilo 2-jun-2026).
+// Solo se ejecuta UNA vez (controlado por flag en data/config.json).
+function migrarMarcarRecordatorioFacturaPedidosExistentes() {
+  try {
+    const cfg = db.leerConfig() || {};
+    if (cfg.migracion_recordatorio_factura_v1) return;
+    const pedidos = db.leerPedidos();
+    let marcados = 0;
+    for (const p of pedidos) {
+      if (!p.recordatorioFacturaEnviado) {
+        p.recordatorioFacturaEnviado = true;
+        p.recordatorioFacturaFecha = 'migracion-2026-06-02';
+        marcados++;
+      }
+    }
+    if (marcados > 0) db.guardarPedidos(pedidos);
+    cfg.migracion_recordatorio_factura_v1 = true;
+    cfg.migracion_recordatorio_factura_v1_ts = new Date().toISOString();
+    cfg.migracion_recordatorio_factura_v1_marcados = marcados;
+    db.guardarConfig(cfg);
+    console.log(`[migracion-factura-v1] ${marcados} pedidos marcados como recordatorio enviado (one-shot)`);
+  } catch (e) {
+    console.error('[migracion-factura-v1] error:', e.message);
+  }
+}
+// Ejecutar al arrancar (después de 3s para no chocar con otros inits)
+setTimeout(migrarMarcarRecordatorioFacturaPedidosExistentes, 3000);
+
 async function cronRecordatorioFacturaTick() {
   try {
     const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
@@ -7950,10 +7980,9 @@ async function cronRecordatorioFacturaTick() {
     for (const p of pedidos) {
       if (p.recordatorioFacturaEnviado) continue;
       if (ESTADOS_CERRADOS.has(p.estado)) continue;
-      // Tomar fecha de creación: ultimoMovimiento es ISO, sino parsear creadoEn (es-CO)
+      // Fecha de creación: primero creadoEn (es-CO), sino ultimoMovimiento como fallback
       let ts = 0;
-      if (p.ultimoMovimiento) ts = new Date(p.ultimoMovimiento).getTime();
-      if (!ts && p.creadoEn) {
+      if (p.creadoEn) {
         // creadoEn = "2/06/2026" formato es-CO
         const parts = String(p.creadoEn).split('/');
         if (parts.length === 3) {
@@ -7961,6 +7990,7 @@ async function cronRecordatorioFacturaTick() {
           ts = dt.getTime();
         }
       }
+      if (!ts && p.ultimoMovimiento) ts = new Date(p.ultimoMovimiento).getTime();
       if (!ts || isNaN(ts)) continue;
       const edad = ahora - ts;
       if (edad < _24H || edad > _72H) continue;
