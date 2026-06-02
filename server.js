@@ -2761,16 +2761,18 @@ http.createServer(async (req, res) => {
 
   // ── GET /api/admin/sticker-audit — cruza cada sticker fromMe + hash correcto con su pedido ──
   // Para diagnosticar el reporte de Paola: dice que mandó stickers el 27-28 pero no se crearon pedidos.
-  // ── GET /api/admin/probar-watcher?limit=50 ──
+  // ── GET /api/admin/probar-watcher?limit=50&dias=7&conImagen=1 ──
   // Ejecuta el watcher del grupo "Ventas Ney, Wendy y Paola" en MODO SOLO ANALISIS.
-  // Devuelve un reporte JSON de que detectaria + a que pedidos amarraria.
+  // Devuelve reporte JSON de que detectaria + a que pedidos amarraria.
   // NO modifica ningun pedido. Sirve para verificar antes de activar el cron real.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-watcher')) {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const limit = parseInt(u.searchParams.get('limit') || '50', 10);
+      const diasAtras = parseInt(u.searchParams.get('dias') || '7', 10);
+      const conImagen = u.searchParams.get('conImagen') !== '0';
       const pedidos = leerPedidos();
-      const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ limit, pedidos });
+      const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ limit, diasAtras, conImagen, pedidos });
       return json(res, 200, reporte);
     } catch (e) {
       return json(res, 500, { error: e.message });

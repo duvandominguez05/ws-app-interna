@@ -31,8 +31,9 @@ function guardarState(s) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2));
 }
 
-// ── Mapeo pushName/participant → vendedora ───────────────────────
+// ── Mapeo pushName → vendedora ────────────────────────────────────
 // Si no se identifica, devuelve null (cae a "sin amarrar")
+// NOTA: para fromMe usar identificarSender({pushName, fromMe}) en su lugar
 function pushNameAVendedora(pushName) {
   if (!pushName) return null;
   const n = String(pushName).toLowerCase();
@@ -42,12 +43,16 @@ function pushNameAVendedora(pushName) {
   if (n.includes('betty')) return 'Betty';
   if (n.includes('graciela')) return 'Graciela';
   if (n.includes('camilo'))   return 'Camilo';
-  // Cuenta empresarial generica → jefe/admin (asume Camilo o se trata como "grupo")
+  // Cuenta empresarial generica → jefe/admin
   if (n.includes('w.y.s') || n.includes('wys') || n.includes('uniformes deportivos')) return '_empresa';
-  // "Você" (portugues) / "You" / "Tú" = mensajes fromMe (los que envia nuestro WA al grupo).
-  // En el grupo Ventas, los enviados desde ws-ventas son de admin/jefe.
-  if (n === 'você' || n === 'voce' || n === 'you' || n === 'tu' || n === 'tú') return '_empresa';
   return null;
+}
+
+// Identificacion segura del sender. Si fromMe=true → siempre _empresa
+// (mensaje enviado desde nuestro WA, sin importar pushName).
+function identificarSender({ pushName, fromMe }) {
+  if (fromMe) return '_empresa';
+  return pushNameAVendedora(pushName);
 }
 
 // ── Listar mensajes del grupo via Evolution ──────────────────────
@@ -84,16 +89,18 @@ function extraerContenido(m) {
 }
 
 // ── Agrupar mensajes por sender + ventana de 10 min ──────────────
-// Cada grupo representa probablemente UN pedido
+// Cada grupo representa probablemente UN pedido.
+// Si fromMe=true, el sender es "_FROMME_" (nosotros enviando desde la instancia).
 function agruparPorSenderYVentana(mensajes) {
   const ordenados = [...mensajes].sort((a, b) => (a.messageTimestamp||0) - (b.messageTimestamp||0));
   const grupos = [];
   let actual = null;
   for (const m of ordenados) {
     const ts = (m.messageTimestamp || 0) * 1000;
-    const sender = m.key?.participant || m.pushName || 'desconocido';
+    const fromMe = m.key?.fromMe === true;
+    const sender = fromMe ? '_FROMME_' : (m.key?.participant || m.pushName || 'desconocido');
     if (!actual || actual.sender !== sender || (ts - actual.ultimoTs) > VENTANA_LISTADO_MS) {
-      actual = { sender, pushName: m.pushName || '', primerTs: ts, ultimoTs: ts, mensajes: [] };
+      actual = { sender, pushName: m.pushName || '', fromMe, primerTs: ts, ultimoTs: ts, mensajes: [] };
       grupos.push(actual);
     }
     actual.ultimoTs = ts;
@@ -211,16 +218,35 @@ function encontrarPedidoParaAmarrar(pedidos, vendedora) {
   return candidatos[0] || null;
 }
 
+// ── Descargar imagen base64 desde Evolution (replicado de server.js) ──
+async function descargarImagenEvolution(messageKey) {
+  try {
+    const r = await fetch(`${EVO_URL}/chat/getBase64FromMediaMessage/${EVO_INSTANCE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
+      body: JSON.stringify({ message: { key: messageKey } }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return { base64: data.base64, mimeType: data.mimetype || 'image/jpeg' };
+  } catch { return null; }
+}
+
 // ── Analizar mensajes (SIN amarrar nada) — para endpoint prueba ──
-// Devuelve diagnostico de que detectaria el watcher, pero no toca BD
-async function analizarMensajesGrupo({ limit = 50, pedidos = [] } = {}) {
+// Filtra a los ultimos N dias, descarga foto principal, pasa a Gemini.
+async function analizarMensajesGrupo({ limit = 50, pedidos = [], diasAtras = 7, conImagen = true } = {}) {
   if (!EVO_KEY) return { error: 'sin EVOLUTION_API_KEY' };
   const msgs = await listarMensajesGrupo(limit);
   if (!msgs.length) return { error: 'sin mensajes', total: 0 };
 
   // Filtrar solo del grupo (defensivo)
   const delGrupo = msgs.filter(m => (m.key?.remoteJid || '') === GRUPO_VENTAS_JID);
-  const grupos = agruparPorSenderYVentana(delGrupo);
+
+  // Filtrar a los ultimos N dias para no procesar historico viejo
+  const cutoffTs = Date.now() - (diasAtras * 24 * 60 * 60 * 1000);
+  const recientes = delGrupo.filter(m => ((m.messageTimestamp || 0) * 1000) >= cutoffTs);
+
+  const grupos = agruparPorSenderYVentana(recientes);
 
   const reporte = [];
   for (const g of grupos) {
@@ -230,28 +256,38 @@ async function analizarMensajesGrupo({ limit = 50, pedidos = [] } = {}) {
       .filter(c => c.tipo === 'texto')
       .map(c => c.texto)
       .join('\n');
-    const captionPrincipal = fotos[0] ? (extraerContenido(fotos[0]).caption || '') : '';
+    const fotoPrincipal = fotos[0] || null;
+    const captionPrincipal = fotoPrincipal ? (extraerContenido(fotoPrincipal).caption || '') : '';
 
     if (!fotos.length && !textos.trim()) continue; // grupo sin contenido util
+
+    // Descargar foto principal si hay (clave para extraer nombre del escudo)
+    let imageBase64 = null, mimeType = null;
+    if (conImagen && fotoPrincipal) {
+      const img = await descargarImagenEvolution(fotoPrincipal.key);
+      if (img) { imageBase64 = img.base64; mimeType = img.mimeType; }
+    }
 
     const parseo = await parsearGrupoConGemini({
       caption: captionPrincipal,
       listadoTexto: textos,
-      // En modo prueba NO bajamos la imagen (ahorra ancho de banda + tiempo).
-      // En modo real (procesarYAmarrar) si la bajaremos para analisis visual.
+      imageBase64,
+      mimeType,
     });
 
-    const vendedora = pushNameAVendedora(g.pushName);
+    // Identificar sender: si fromMe → _empresa, sino pushName mapping
+    const vendedora = identificarSender({ pushName: g.pushName, fromMe: g.fromMe });
     const pedidoCandidato = vendedora && pedidos.length
       ? encontrarPedidoParaAmarrar(pedidos, vendedora)
       : null;
 
     reporte.push({
-      sender: g.pushName,
+      sender: g.pushName + (g.fromMe ? ' [FROM ME]' : ''),
       vendedoraDetectada: vendedora,
       desde: new Date(g.primerTs).toISOString(),
       hasta: new Date(g.ultimoTs).toISOString(),
       numFotos: fotos.length,
+      conFotoAnalizada: !!imageBase64,
       captionPrincipal: captionPrincipal.slice(0, 100),
       textoListado: textos.slice(0, 200),
       parseo,
@@ -261,14 +297,16 @@ async function analizarMensajesGrupo({ limit = 50, pedidos = [] } = {}) {
       accionSiAmarra: pedidoCandidato && parseo?.nombre_equipo
         ? `AMARRARIA pedido #${pedidoCandidato.id} (${pedidoCandidato.vendedora}) con equipo="${parseo.nombre_equipo}"`
         : parseo?.nombre_equipo
-          ? 'SIN PEDIDO para amarrar'
+          ? 'SIN PEDIDO para amarrar (' + (vendedora || 'sender no mapeado') + ')'
           : 'NO se pudo extraer nombre del equipo',
     });
   }
 
   return {
     grupoJid: GRUPO_VENTAS_JID,
+    diasAtrasFiltro: diasAtras,
     totalMensajes: delGrupo.length,
+    mensajesEnVentana: recientes.length,
     gruposDetectados: reporte.length,
     detalle: reporte,
   };
@@ -280,9 +318,11 @@ module.exports = {
   agruparPorSenderYVentana,
   extraerContenido,
   pushNameAVendedora,
+  identificarSender,
   parsearGrupoConGemini,
   encontrarPedidoParaAmarrar,
   analizarMensajesGrupo,
+  descargarImagenEvolution,
   leerState,
   guardarState,
 };
