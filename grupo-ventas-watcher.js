@@ -116,11 +116,12 @@ async function parsearGrupoConGemini({ caption, listadoTexto, imageBase64, mimeT
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { error: 'no GEMINI_API_KEY' };
 
+  const tieneImagen = !!imageBase64;
   const prompt = `Analiza estos mensajes del grupo WhatsApp "Ventas Ney, Wendy y Paola" de una empresa colombiana de uniformes deportivos (W&S).
 
-CONTEXTO: las vendedoras suben foto del diseno aprobado por el cliente + caption corto (a veces solo el nombre del equipo, a veces solo la fecha o solo cantidad). Despues mandan listado de jugadores uno por mensaje.
+CONTEXTO: las vendedoras suben FOTO del diseno aprobado por el cliente (camiseta/uniforme con escudo, logo y texto del equipo) + caption corto. Despues mandan listado de jugadores uno por mensaje.
 
-ENTRADA:
+${tieneImagen ? `INSTRUCCION CRITICA: TIENES UNA IMAGEN DEL DISENO. **OBSERVA CON ATENCION** el escudo, logo, texto, letras impresas en la camiseta. El NOMBRE DEL EQUIPO casi siempre aparece en la camiseta como texto del escudo o logo (ej "ALMANY FC", "INVICTOS DE FE", "AMERICA DE CALI"). LEE ese texto y devuelvelo en nombre_equipo. Si la imagen tiene multiples paneles (frente y espalda), revisa ambos.` : 'NO HAY IMAGEN — solo extrae del texto.'}
 
 CAPTION DE LA FOTO PRINCIPAL:
 "${caption || '(sin caption)'}"
@@ -133,7 +134,7 @@ ${listadoTexto || '(sin texto)'}
 EXTRAE este JSON exacto (sin markdown, solo JSON valido):
 {
   "esPedidoUniforme": boolean,         // false si es chat informal/meme/no relacionado
-  "nombre_equipo": string | null,      // nombre del equipo o team (ej "almany fc"). null si no se puede extraer
+  "nombre_equipo": string | null,      // PRIORIDAD 1: leer del escudo/logo de la imagen. PRIORIDAD 2: del caption (ej "almany fc"). null si imposible.
   "fecha_entrega": string | null,      // formato YYYY-MM-DD si se infiere (asume ano actual ${new Date().getFullYear()})
   "fecha_entrega_texto": string | null, // texto original (ej "6 de junio", "para hoy")
   "num_uniformes": number | null,      // cantidad de prendas (ej 24)
@@ -142,15 +143,17 @@ EXTRAE este JSON exacto (sin markdown, solo JSON valido):
     {"nombre": "...", "talla": "...", "numero": "..."}
   ],
   "confianza": "alta" | "media" | "baja",
+  "fuente_nombre_equipo": "imagen-escudo" | "imagen-texto" | "caption" | "ninguno", // de donde sacaste el nombre
   "notas": string | null               // cualquier info extra util
 }
 
 REGLAS:
-- Si caption tiene "almany fc para el 6 de junio" → nombre_equipo="almany fc", fecha_entrega_texto="6 de junio"
-- Si caption tiene "24 uniformes para el 6 de junio" → num_uniformes=24, sin nombre_equipo (confianza baja)
-- Si caption tiene "para hoy 6 chaquetas" → tipo_prenda="chaquetas", num_uniformes=6, fecha_entrega_texto="hoy"
+- Si imagen muestra escudo "ALMANY FC" → nombre_equipo="Almany FC", fuente_nombre_equipo="imagen-escudo", confianza alta
+- Si caption tiene "almany fc para el 6 de junio" → nombre_equipo="almany fc", fuente_nombre_equipo="caption"
+- Si caption tiene "24 uniformes para el 6 de junio" Y la imagen tiene escudo → usa escudo de la imagen
+- Si caption es texto generico (ej "Nico/ #9/ Talla 8" — eso es un JUGADOR) y la imagen tiene escudo → usa imagen
 - Lista jugadores: cada entrada con "Nombre: X / Talla: Y / Numero: Z" o variaciones
-- Si NO es un pedido (chat, meme, info random) → esPedidoUniforme: false, todo lo demas null
+- Si NO es un pedido (chat, meme, info random) → esPedidoUniforme: false
 
 Respuesta:`;
 
