@@ -7,6 +7,7 @@ const db   = require('./db');
 const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
 const gmailWT = require('./gmail-wt');
 const driveSync = require('./drive-sync');
+const grupoVentasWatcher = require('./grupo-ventas-watcher');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -2760,6 +2761,22 @@ http.createServer(async (req, res) => {
 
   // ── GET /api/admin/sticker-audit — cruza cada sticker fromMe + hash correcto con su pedido ──
   // Para diagnosticar el reporte de Paola: dice que mandó stickers el 27-28 pero no se crearon pedidos.
+  // ── GET /api/admin/probar-watcher?limit=50 ──
+  // Ejecuta el watcher del grupo "Ventas Ney, Wendy y Paola" en MODO SOLO ANALISIS.
+  // Devuelve un reporte JSON de que detectaria + a que pedidos amarraria.
+  // NO modifica ningun pedido. Sirve para verificar antes de activar el cron real.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-watcher')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const limit = parseInt(u.searchParams.get('limit') || '50', 10);
+      const pedidos = leerPedidos();
+      const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ limit, pedidos });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-audit')) {
     try {
       const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
