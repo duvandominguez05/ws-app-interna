@@ -44,21 +44,31 @@ function pushNameAVendedora(pushName) {
   if (n.includes('camilo'))   return 'Camilo';
   // Cuenta empresarial generica → jefe/admin (asume Camilo o se trata como "grupo")
   if (n.includes('w.y.s') || n.includes('wys') || n.includes('uniformes deportivos')) return '_empresa';
+  // "Você" (portugues) / "You" / "Tú" = mensajes fromMe (los que envia nuestro WA al grupo).
+  // En el grupo Ventas, los enviados desde ws-ventas son de admin/jefe.
+  if (n === 'você' || n === 'voce' || n === 'you' || n === 'tu' || n === 'tú') return '_empresa';
   return null;
 }
 
 // ── Listar mensajes del grupo via Evolution ──────────────────────
+// Evolution no garantiza orden. Pedimos lote grande, ordenamos desc por ts
+// y tomamos los N mas recientes.
 async function listarMensajesGrupo(limit = 50) {
+  // Pedir lote grande para asegurar tener los mas recientes
+  const requestLimit = Math.max(200, limit * 4);
   const r = await fetch(`${EVO_URL}/chat/findMessages/${EVO_INSTANCE}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
-    body: JSON.stringify({ where: { key: { remoteJid: GRUPO_VENTAS_JID } }, limit }),
+    body: JSON.stringify({ where: { key: { remoteJid: GRUPO_VENTAS_JID } }, limit: requestLimit }),
   });
   if (!r.ok) {
     throw new Error(`Evolution chat/findMessages: ${r.status} ${await r.text().catch(()=>'')}`);
   }
   const data = await r.json();
-  return data.messages?.records || (Array.isArray(data) ? data : []);
+  const all = data.messages?.records || (Array.isArray(data) ? data : []);
+  // Ordenar desc por timestamp y devolver los mas recientes
+  all.sort((a, b) => (b.messageTimestamp || 0) - (a.messageTimestamp || 0));
+  return all.slice(0, limit);
 }
 
 // ── Extraer texto/caption/tipo de un mensaje WhatsApp ────────────
@@ -164,16 +174,33 @@ Respuesta:`;
   }
 }
 
+// ── Es nombre de equipo "vacio" o "generico" (no nombrado por humano)? ──
+// Pedidos auto-creados por sticker/comprobante tienen equipo="Cliente 31234567"
+// o vacio. Esos SI son candidatos para amarrar nombre real del grupo.
+function equipoEsGenericoOVacio(equipo) {
+  if (!equipo) return true;
+  const e = String(equipo).trim();
+  if (!e) return true;
+  // Patron "Cliente 3104567890" auto-creado por bot
+  if (/^cliente\s+\d{7,}/i.test(e)) return true;
+  if (/^cliente\s+\+\s*\d/i.test(e)) return true;
+  return false;
+}
+
 // ── Encontrar pedido del sender (vendedora) al cual amarrar ──────
 // Estrategia: pedido con estado confirmado/hacer-diseno/bandeja
-// mas reciente que NO tenga aun equipo nombrado por el grupo.
+// mas reciente que NO tenga aun nombre real (solo placeholder).
 function encontrarPedidoParaAmarrar(pedidos, vendedora) {
   const ESTADOS_CANDIDATOS = new Set(['bandeja', 'hacer-diseno', 'confirmado']);
   const candidatos = pedidos.filter(p => {
     if (!ESTADOS_CANDIDATOS.has(p.estado)) return false;
-    if (vendedora === '_empresa') return true; // jefe puede amarrar cualquier
-    if (vendedora && p.vendedora !== vendedora) return false;
-    if (p.equipoAmarradoDeGrupo) return false; // ya tiene amarre
+    if (vendedora === '_empresa') {
+      // Sin vendedora especifica: cualquiera, pero solo si equipo es generico/vacio
+    } else if (vendedora && p.vendedora !== vendedora) {
+      return false;
+    }
+    if (p.equipoAmarradoDeGrupo) return false; // ya tiene amarre previo del watcher
+    if (!equipoEsGenericoOVacio(p.equipo)) return false; // ya tiene nombre real
     return true;
   });
   candidatos.sort((a, b) => {
