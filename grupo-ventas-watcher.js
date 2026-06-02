@@ -18,7 +18,8 @@ const STATE_FILE = path.join(__dirname, 'data', 'grupo_ventas_state.json');
 const VENTANA_LISTADO_MS = 10 * 60 * 1000; // 10 min para agrupar listado
 
 const EVO_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-const EVO_KEY = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '';
+// Prioridad: EVOLUTION_API_KEY (la que lee grupos) > WA_NOTIF_APIKEY (la que envia) > hardcoded fallback
+const EVO_KEY = process.env.EVOLUTION_API_KEY || process.env.WA_NOTIF_APIKEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
 const EVO_INSTANCE = process.env.WA_INSTANCE_VENTAS_GRUPO || 'ws-ventas';
 
 function leerState() {
