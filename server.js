@@ -4716,18 +4716,98 @@ http.createServer(async (req, res) => {
                       });
                       if (resVinc.vinculado) {
                         console.log(`[pago] $${analisis.monto} vinculado a pedido #${resVinc.pedidoId} (abonado=$${resVinc.abonado}${resVinc.total?'/$'+resVinc.total:''})`);
-                        // Si quedo pagado completo Y tiene total → avisar a vendedora
+
+                        // Buscar el pedido para sacar el nombre del equipo
+                        const _pedVinc = db.leerPedidos().find(x => x.id === resVinc.pedidoId);
+                        const equipoTxt = (_pedVinc && (_pedVinc.equipo || _pedVinc.cliente)) || `Pedido #${resVinc.pedidoId}`;
+                        const abonadoFmt = _formatearMontoCOP(resVinc.abonado);
+                        const totalFmt = resVinc.total ? _formatearMontoCOP(resVinc.total) : null;
+                        const saldoFmt = (resVinc.saldoPendiente != null) ? _formatearMontoCOP(resVinc.saldoPendiente) : null;
+                        const montoFmt = _formatearMontoCOP(analisis.monto);
+
                         if (resVinc.pagadoCompleto) {
+                          // ─── CASO C: SALDO TOTAL DETECTADO ───
+                          // 3 WAs (cliente + vendedora + jefe&graciela individuales) + grupo Trabajo en familia
+
+                          // 1. WA al CLIENTE (gracias) — usa instancia ws-ventas
                           try {
-                            const msgPagado = `✅ *Cliente pagó 100%*\n\n` +
-                              `Pedido #${resVinc.pedidoId} — ${nombreCliente}\n` +
-                              `Total abonado: $${Number(resVinc.abonado).toLocaleString('es-CO')}\n\n` +
-                              `Cuando esté listo, ya se puede despachar.`;
-                            await notificarWAVendedora(vendedora, msgPagado);
-                          } catch (eAvi) { console.error('[pago avisar]', eAvi.message); }
+                            const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+                            const evoKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+                            const evoInst = process.env.WA_INSTANCE_CLIENTE || 'ws-ventas';
+                            const msgCli = `¡Gracias por completar tu pago! ✅\n\n` +
+                              `Tu pedido sigue en producción y te avisamos en cuanto esté listo para entrega.\n\n` +
+                              `_W&S Uniformes Deportivos_`;
+                            await fetch(`${evoUrl}/message/sendText/${evoInst}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+                              body: JSON.stringify({ number: telefonoCliente, text: msgCli }),
+                            });
+                          } catch (eC) { console.error('[pago wa-cliente]', eC.message); }
+
+                          // 2. WA a la vendedora (avisa que ya está completo)
+                          try {
+                            const msgVend = `💰 *PAGO COMPLETO* ✅\n\n` +
+                              `${nombreCliente} terminó de pagar.\n` +
+                              `Pedido: *${equipoTxt}*\n` +
+                              `Total cobrado: ${abonadoFmt}\n\n` +
+                              `👉 Confírmale el envío al cliente.`;
+                            await notificarWAVendedora(vendedora, msgVend);
+                          } catch (eV) { console.error('[pago wa-vend]', eV.message); }
+
+                          // 3. WA individual a Camilo + Graciela
+                          try {
+                            const msgJefe = `💰 *PAGO COMPLETO*\n\n` +
+                              `Cliente: ${nombreCliente}\n` +
+                              `Pedido: *${equipoTxt}* (#${resVinc.pedidoId}) — ${vendedora}\n` +
+                              `Total: ${abonadoFmt} ✅\n\n` +
+                              `Listo para despachar cuando esté terminado.`;
+                            await notificarWAPersona('camilo', msgJefe);
+                            await notificarWAPersona('graciela', msgJefe);
+                          } catch (eJ) { console.error('[pago wa-jefe]', eJ.message); }
+
+                          // 4. Grupo "Trabajo en familia" — solo info importante
+                          try {
+                            const msgGrupo = `💰 *PAGO COMPLETO*\n` +
+                              `${nombreCliente} — *${equipoTxt}* (${vendedora})\n` +
+                              `Total: ${abonadoFmt} ✅`;
+                            await notificarWhatsappTrabajoFamilia(msgGrupo);
+                          } catch (eG) { console.error('[pago wa-grupo]', eG.message); }
+
+                        } else {
+                          // ─── CASO B: ABONO PARCIAL ───
+                          // WA balance individual a Camilo + Graciela (NO al grupo, opcion 2 mixta)
+                          try {
+                            const balLines = [
+                              `💵 *Abono detectado*`,
+                              ``,
+                              `${nombreCliente} pagó ${montoFmt}`,
+                              `Pedido: *${equipoTxt}* (#${resVinc.pedidoId}) — ${vendedora}`,
+                              ``,
+                              `📊 Pagado: ${abonadoFmt}` + (totalFmt ? ` / ${totalFmt}` : ''),
+                            ];
+                            if (saldoFmt) balLines.push(`📌 Falta: ${saldoFmt}`);
+                            else if (!totalFmt) balLines.push(`📌 _(sin total — falta poner total en la factura)_`);
+                            const msgBalance = balLines.join('\n');
+                            await notificarWAPersona('camilo', msgBalance);
+                            await notificarWAPersona('graciela', msgBalance);
+                          } catch (eB) { console.error('[pago wa-balance-jefe]', eB.message); }
                         }
                       } else {
                         console.log(`[pago] no vinculado: ${resVinc.motivo}`);
+
+                        // ─── CASO A: pago sin pedido activo (motivo = sin-pedido) ───
+                        // WA a la vendedora avisando: si es venta nueva, pasa el sticker.
+                        if (resVinc.motivo === 'sin-pedido' && analisis.monto) {
+                          try {
+                            const montoSinPedFmt = _formatearMontoCOP(analisis.monto);
+                            const msgSinPed = `⚠️ *Pago sin pedido activo*\n\n` +
+                              `Llegó ${montoSinPedFmt} de ${nombreCliente || telefonoCliente}\n` +
+                              `📱 ${telefonoCliente}\n\n` +
+                              `No hay pedido activo de este cliente.\n` +
+                              `👉 Si es venta NUEVA, mándale el sticker 💰 para registrarla.`;
+                            await notificarWAVendedora(vendedora, msgSinPed);
+                          } catch (eSP) { console.error('[pago wa-sin-pedido]', eSP.message); }
+                        }
                       }
                     } catch (ePago) {
                       console.error('[pago vincular err]', ePago.message);
@@ -7848,6 +7928,84 @@ setInterval(cronRecordatorioStickerTick, 15 * 60 * 1000);
 // Tick inicial 2 min después de arrancar
 setTimeout(cronRecordatorioStickerTick, 2 * 60 * 1000);
 console.log('[cron-90min] activado — recordatorios sticker cada 15 min');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Recordatorio FACTURA — cada 1h chequea pedidos creados >24h
+// sin factura asociada y avisa a la vendedora por WA personal.
+// Solo en horario laboral 8 AM - 7 PM Bogotá. Marca flag para no
+// repetir. Si pasaron +72h, ya no insiste (lo retoma el resumen 8 PM).
+// ═══════════════════════════════════════════════════════════════════
+async function cronRecordatorioFacturaTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog < 8 || horaBog > 19) return;
+
+    const pedidos = db.leerPedidos();
+    const ahora = Date.now();
+    const _24H = 24 * 60 * 60 * 1000;
+    const _72H = 72 * 60 * 60 * 1000;
+    const ESTADOS_CERRADOS = new Set(['enviado-final', 'archivado', 'cancelado']);
+    let recordatorios = 0;
+
+    for (const p of pedidos) {
+      if (p.recordatorioFacturaEnviado) continue;
+      if (ESTADOS_CERRADOS.has(p.estado)) continue;
+      // Tomar fecha de creación: ultimoMovimiento es ISO, sino parsear creadoEn (es-CO)
+      let ts = 0;
+      if (p.ultimoMovimiento) ts = new Date(p.ultimoMovimiento).getTime();
+      if (!ts && p.creadoEn) {
+        // creadoEn = "2/06/2026" formato es-CO
+        const parts = String(p.creadoEn).split('/');
+        if (parts.length === 3) {
+          const dt = new Date(parseInt(parts[2],10), parseInt(parts[1],10)-1, parseInt(parts[0],10));
+          ts = dt.getTime();
+        }
+      }
+      if (!ts || isNaN(ts)) continue;
+      const edad = ahora - ts;
+      if (edad < _24H || edad > _72H) continue;
+
+      // ¿Ya tiene factura?
+      try {
+        const facts = db.leerFacturasPorPedido(p.id) || [];
+        if (facts.length > 0) {
+          // Si ya hay factura, marca flag y sigue
+          p.recordatorioFacturaEnviado = true;
+          continue;
+        }
+      } catch (eF) { console.error('[cron-fact] leerFacturasPorPedido', eF.message); continue; }
+
+      // Mandar recordatorio a la vendedora
+      try {
+        const equipoTxt = p.equipo || p.cliente || `Pedido #${p.id}`;
+        const totalTxt = p.total ? ` (${_formatearMontoCOP(p.total)})` : '';
+        const msg = `🧾 *Recordatorio: falta factura*\n\n` +
+          `Hace +24h registramos el pedido *${equipoTxt}*${totalTxt}.\n` +
+          `Aún no tiene factura asociada.\n\n` +
+          `👉 Genera la factura desde la app para que quede oficial.`;
+        await notificarWAVendedora(p.vendedora, msg);
+        p.recordatorioFacturaEnviado = true;
+        p.recordatorioFacturaFecha = new Date().toISOString();
+        recordatorios++;
+        console.log(`[cron-fact] recordatorio enviado a ${p.vendedora} por pedido #${p.id} (${equipoTxt})`);
+      } catch (eMsg) {
+        console.error('[cron-fact msg]', eMsg.message);
+      }
+    }
+
+    if (recordatorios > 0) {
+      db.guardarPedidos(pedidos);
+      console.log(`[cron-fact] ${recordatorios} recordatorios de factura enviados`);
+    }
+  } catch (e) {
+    console.error('[cron-fact error]', e.message);
+  }
+}
+// Cada 1 hora
+setInterval(cronRecordatorioFacturaTick, 60 * 60 * 1000);
+// Tick inicial 5 min después de arrancar
+setTimeout(cronRecordatorioFacturaTick, 5 * 60 * 1000);
+console.log('[cron-fact] activado — recordatorios factura cada 1h');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Backup nocturno a Drive — cada noche 2 AM Bogotá sube BD a Drive
