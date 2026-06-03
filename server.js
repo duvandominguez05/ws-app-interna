@@ -4699,11 +4699,9 @@ http.createServer(async (req, res) => {
 
               console.log(`[sticker-venta] hash detectado — cliente:${telefonoCliente} nombre:"${nombreCliente}"`);
 
-              const REACCIONES_ACTIVAS = process.env.REACCIONES_ACTIVAS === 'true';
-              if (!REACCIONES_ACTIVAS) {
-                console.log('[sticker-venta] MODO LOG ONLY — REACCIONES_ACTIVAS=false');
-                resultadoApi = { ok: true, modo: 'log-only', accion: 'venta-confirmada', telefono: telefonoCliente, nombreCliente };
-              } else if (telefonoCliente.length > 5) {
+              // El sticker venta SIEMPRE crea pedido (era el flag REACCIONES_ACTIVAS, pero
+              // ese flag era para emojis de reaccion 🟡🎨, no para el sticker venta oficial).
+              if (telefonoCliente.length > 5) {
                 const pedidos = leerPedidos();
                 // Buscar cotización existente del cliente (estado=bandeja, tipoBandeja=cotizar)
                 const cotizacion = pedidos.find(p => {
