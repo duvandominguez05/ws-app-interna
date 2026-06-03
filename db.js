@@ -179,6 +179,15 @@ db.exec(`
   );
 `);
 
+// ── Migraciones in-place (ALTER TABLE no soporta IF NOT EXISTS en SQLite) ──
+function _addColumnSafe(table, columnDef) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`); }
+  catch (e) { if (!/duplicate column/i.test(e.message)) throw e; }
+}
+// 2026-06-03: file_hash en documentos_salientes_wa para cruzar con Drive CATALOGO
+_addColumnSafe('documentos_salientes_wa', 'file_hash TEXT');
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_docwa_hash ON documentos_salientes_wa(file_hash)'); } catch {}
+
 // ── Prepared statements ──────────────────────────────────────────
 const S = {
   getPedidos:       db.prepare('SELECT data FROM pedidos ORDER BY id'),
@@ -820,12 +829,20 @@ const _docwaInsert = db.prepare(`
     (message_id, instance, vendedora, cliente_telefono, cliente_push_name,
      file_name_original, tipo_mime, drive_file_id, drive_link, bytes,
      es_factura, gemini_analizado, gemini_resultado, factura_id, pedido_id,
-     revisado, fecha_captura)
+     revisado, fecha_captura, file_hash)
   VALUES
     (@message_id, @instance, @vendedora, @cliente_telefono, @cliente_push_name,
      @file_name_original, @tipo_mime, @drive_file_id, @drive_link, @bytes,
      @es_factura, @gemini_analizado, @gemini_resultado, @factura_id, @pedido_id,
-     @revisado, @fecha_captura)
+     @revisado, @fecha_captura, @file_hash)
+`);
+const _docwaPorHash = db.prepare(`
+  SELECT * FROM documentos_salientes_wa
+  WHERE file_hash = @hash
+  ORDER BY fecha_captura DESC
+`);
+const _docwaUpdateHash = db.prepare(`
+  UPDATE documentos_salientes_wa SET file_hash = @hash WHERE id = @id
 `);
 const _docwaListSemana = db.prepare(`
   SELECT * FROM documentos_salientes_wa
@@ -868,8 +885,16 @@ function insertDocumentoSalienteWA(data) {
     pedido_id: data.pedido_id || null,
     revisado: data.revisado ? 1 : 0,
     fecha_captura: data.fecha_captura || new Date().toISOString(),
+    file_hash: data.file_hash || null,
   };
   return _docwaInsert.run(row);
+}
+function leerDocumentosSalientesPorHash(hash) {
+  if (!hash) return [];
+  return _docwaPorHash.all({ hash });
+}
+function actualizarHashDocSaliente(id, hash) {
+  return _docwaUpdateHash.run({ id, hash });
 }
 function leerDocumentosSalientesWASemana(desdeIso) {
   return _docwaListSemana.all({ desde: desdeIso });
@@ -931,4 +956,5 @@ module.exports = {
   insertDocumentoSalienteWA, leerDocumentosSalientesWASemana,
   leerDocumentosSalientesWANoRevisados, leerDocumentoSalienteWAporId,
   marcarDocumentoSalienteRevisado, setDocumentoSalienteGemini,
+  leerDocumentosSalientesPorHash, actualizarHashDocSaliente,
 };

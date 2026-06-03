@@ -8,6 +8,7 @@ const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
 const gmailWT = require('./gmail-wt');
 const driveSync = require('./drive-sync');
 const grupoVentasWatcher = require('./grupo-ventas-watcher');
+const catalogoFotosWatcher = require('./catalogo-fotos-watcher');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -740,6 +741,14 @@ async function capturarDocumentoSalienteVendedora({ instance, vendedora, message
       return null;
     }
 
+    // SHA256 del archivo — para cruzar con fotos en Drive CATALOGO y amarrar pedido al cliente
+    let fileHash = null;
+    try {
+      const crypto = require('crypto');
+      const buf = Buffer.from(media.base64, 'base64');
+      fileHash = crypto.createHash('sha256').update(buf).digest('hex');
+    } catch (eH) { console.error('[doc-saliente hash err]', eH.message); }
+
     // Subir a Drive (carpeta FACTURAS, prefijo WA- para distinguir)
     const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }).replace(/\//g, '-');
     const tituloLimpio = (fileNameOriginal || `${vendedora}-${telefonoCliente}`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
@@ -775,6 +784,7 @@ async function capturarDocumentoSalienteVendedora({ instance, vendedora, message
       gemini_analizado: 0,
       revisado: 0,
       fecha_captura: new Date().toISOString(),
+      file_hash: fileHash,
     });
 
     console.log(`[doc-saliente] CAPTURADO ${vendedora}→${telefonoCliente} ${ext.toUpperCase()} ${bytes}b → ${subida?.viewLink || 'sin Drive'}`);
@@ -2761,6 +2771,22 @@ http.createServer(async (req, res) => {
 
   // ── GET /api/admin/sticker-audit — cruza cada sticker fromMe + hash correcto con su pedido ──
   // Para diagnosticar el reporte de Paola: dice que mandó stickers el 27-28 pero no se crearon pedidos.
+  // ── GET /api/admin/probar-catalogo?dias=14 ──
+  // Ejecuta el watcher CATALOGO en MODO SOLO ANALISIS.
+  // Recursivo por todas las subcarpetas + cruce hash con docs salientes.
+  // NO modifica nada. Para verificar antes de cron real.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-catalogo')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasAtras = parseInt(u.searchParams.get('dias') || '14', 10);
+      const pedidos = leerPedidos();
+      const reporte = await catalogoFotosWatcher.analizarCatalogo({ db, pedidos, diasAtras });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
   // ── GET /api/admin/probar-watcher?limit=50&dias=7&conImagen=1 ──
   // Ejecuta el watcher del grupo "Ventas Ney, Wendy y Paola" en MODO SOLO ANALISIS.
   // Devuelve reporte JSON de que detectaria + a que pedidos amarraria.
