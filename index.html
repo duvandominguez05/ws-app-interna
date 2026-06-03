@@ -191,11 +191,11 @@
       </div>
       <div class="header-actions">
         <div class="header-date" id="header-date"></div>
-        <!-- Chip persona actual (clickeable para cambiar) -->
-        <button id="persona-chip" onclick="abrirSelectorPersona()" title="Click para cambiar de persona" style="background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); color: #c4b5fd; font-size: 0.78rem; padding: 6px 12px; margin-right: 10px; border-radius: 99px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-          <span id="persona-chip-icon">👤</span>
-          <span id="persona-chip-text">Identificarme</span>
-        </button>
+        <!-- Chip indicador (NO clickeable: app es monitor pasivo unico para todos) -->
+        <div id="persona-chip" style="background: rgba(124,58,237,0.10); border: 1px solid rgba(124,58,237,0.25); color: #c4b5fd; font-size: 0.78rem; padding: 6px 12px; margin-right: 10px; border-radius: 99px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+          <span>📡</span>
+          <span>Monitor W&S</span>
+        </div>
         <!-- Campana notificaciones -->
         <button class="notif-btn" onclick="toggleNotifPanel()" title="Notificaciones">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

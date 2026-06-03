@@ -5882,19 +5882,16 @@ window.addEventListener('DOMContentLoaded', () => {
   } else if(hash === '#/tv') {
     activarModoTV();
   } else {
-    // Cualquiera (PC o móvil) que esté identificado entra directo a su Mi Día.
-    // Si NO está identificado: en móvil va al hub, en PC abre el selector de persona.
-    const slugIdent = (window.WS_PERSONA && window.WS_PERSONA.slug) || localStorage.getItem('ws_persona');
-    if (slugIdent) {
-      window.location.hash = '#/mi-dia';
-      showSection('mi-dia', null);
-      if (typeof renderMiDia === 'function') renderMiDia();
-    } else if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
-      showSection('mobile-role-hub', null);
-    } else {
-      // PC sin identificar: deja el tablero por default + abre selector automaticamente
-      setTimeout(() => { if (typeof abrirSelectorPersona === 'function') abrirSelectorPersona(); }, 500);
+    // Monitor pasivo: la app principal es solo lectura.
+    // Auto-set persona como 'camilo' si no hay (admin ve todo).
+    // App produccion y costura tienen su propio flujo de identificacion.
+    let slugIdent = (window.WS_PERSONA && window.WS_PERSONA.slug) || localStorage.getItem('ws_persona');
+    if (!slugIdent) {
+      slugIdent = 'camilo';
+      try { localStorage.setItem('ws_persona', 'camilo'); } catch {}
     }
+    window.location.hash = '#/tablero';
+    showSection('tablero', null);
   }
 });
 
