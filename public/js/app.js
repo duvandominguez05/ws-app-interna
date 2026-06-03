@@ -680,14 +680,9 @@ function abrirPanelAdmin() {
         </button>
       </div>
 
-      <div style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.25);border-radius:10px;padding:14px;">
-        <div style="font-weight:700;color:#c4b5fd;margin-bottom:10px;font-size:0.95rem;">🔄 Sincronización Gmail + Drive</div>
-        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:10px;">
-          Los cron corren automáticos (Gmail cada 5 min, Drive cada 10 min). Click para forzar ahora.
-        </div>
-        <button onclick="syncCalandraManual();document.getElementById('modal-panel-admin').remove();" style="width:100%;background:rgba(124,58,237,0.25);border:1px solid rgba(124,58,237,0.5);color:#c4b5fd;border-radius:8px;padding:10px;font-size:0.85rem;font-weight:700;cursor:pointer;">
-          🔄 Sincronizar Gmail + Drive
-        </button>
+      <!-- Botón Sincronizar Gmail+Drive quitado 2026-06-03: los cron corren solos -->
+      <div style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.25);border-radius:10px;padding:14px;font-size:0.78rem;color:#94a3b8;">
+        ✅ Gmail y Drive se sincronizan automáticamente (Gmail 5 min, Drive 10 min).
       </div>
     </div>
   `;
@@ -2094,7 +2089,7 @@ function renderBandejaCotizaciones(arr) {
     <div class="bandeja-card">
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} <span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span></div>
+          <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
           ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div class="bandeja-id">#${p.id}</div>
@@ -2224,8 +2219,8 @@ function renderBandejaPedidos(arr) {
       : 'Sin prendas';
 
     const fechaHtml = p.fechaEntrega
-      ? `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Clic para cambiar fecha" style="cursor:pointer;color:#fde047;">📅 ${fmtFecha(p.fechaEntrega)} <span style="opacity:0.5;font-size:0.65rem;">✎</span></span>`
-      : `<span onclick="editarFecha(${p.id});event.stopPropagation();" title="Agregar fecha de entrega" style="cursor:pointer;color:var(--text-muted);">📅 Agregar fecha</span>`;
+      ? `<span style="color:#fde047;">📅 ${fmtFecha(p.fechaEntrega)}</span>`
+      : `<span style="color:var(--text-muted);">📅 Sin fecha</span>`;
 
     const esNavegable = p.estado !== 'bandeja';
 
@@ -2233,7 +2228,7 @@ function renderBandejaPedidos(arr) {
     <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone" style="display:flex;align-items:center;gap:6px;">${esc(p.equipo || p.telefono)} ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id});event.stopPropagation();" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}</div>
+          <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
           ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -2500,8 +2495,8 @@ function renderKanbanCard(p) {
     : '<span style="opacity:.5">Sin prendas</span>';
 
   const fechaHtml = p.fechaEntrega
-    ? `<div class="kanban-card-date" onclick="editarFecha(${p.id})" title="Clic para cambiar fecha" style="cursor:pointer;">📅 ${fmtFecha(p.fechaEntrega)} ✎</div>`
-    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;cursor:pointer;" onclick="editarFecha(${p.id})" title="Agregar fecha de entrega">📅 Sin fecha — agregar</div>`;
+    ? `<div class="kanban-card-date">📅 ${fmtFecha(p.fechaEntrega)}</div>`
+    : `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px;">📅 Sin fecha</div>`;
 
   const notasHtml = p.notas
     ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;font-style:italic;">"${esc(p.notas)}"</div>`
@@ -2542,9 +2537,8 @@ function renderKanbanCard(p) {
   return `
     <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}">
       <div class="kanban-card-id">#${p.id}</div>
-      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;">
+      <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);">
         ${esc(p.equipo || p.telefono)}
-        ${['bandeja','hacer-diseno','confirmado','enviado-calandra'].includes(p.estado) ? `<span onclick="editarEquipo(${p.id})" title="Editar nombre" style="cursor:pointer;font-size:0.75rem;color:var(--text-muted);opacity:0.7;">✎</span>` : ''}
       </div>
       ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">📱 ${esc(p.telefono)}</div>` : ''}
       <div class="kanban-card-items">${itemsTxt}</div>
@@ -4706,83 +4700,12 @@ function _matchPedidoParaArchivo(base) {
 }
 
 function renderCalandraHuerfanos() {
+  // Removido 2026-06-03: la app es solo lectura, vinculacion 100% automatica.
+  // La data sigue llegando del backend (drive-sync, gmail-wt) pero no se muestra
+  // ni se permite vincular manualmente. Si hay archivos huerfanos, el resumen
+  // 8 PM los menciona como contador agregado.
   const cont = document.getElementById('calandra-huerfanos');
-  if (!cont) return;
-  const d = _calandraCache || {};
-  const huerfanos = d.huerfanos || [];
-  if (!huerfanos.length) {
-    cont.innerHTML = '';
-    return;
-  }
-
-  // Lista de pedidos candidatos para el selector (no entregados)
-  const candidatos = (pedidos || [])
-    .filter(p => p.estado !== 'enviado-final')
-    .sort((a, b) => (b.id || 0) - (a.id || 0))
-    .slice(0, 200);
-
-  const filas = huerfanos.slice(0, 30).map(h => {
-    const arch = h.archivo || {};
-    const safeMsgId = esc(h.msgId);
-    const sugerido = _matchPedidoParaArchivo(arch.base || arch.nombreOriginal || '');
-
-    // Selector con datalist (HTML5 autocompletar nativo)
-    const datalistId = `dl-${safeMsgId}`;
-    const opts = candidatos.map(p => {
-      const lbl = `#${p.id} — ${(p.equipo || 'Sin nombre').slice(0, 60)}${p.vendedora ? ' · ' + p.vendedora : ''}`;
-      return `<option value="${p.id}" label="${esc(lbl)}">${esc(lbl)}</option>`;
-    }).join('');
-
-    // Si hay sugerencia: card destacada con boton de 1-click
-    const sugerenciaHTML = sugerido
-      ? `<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:8px 12px;margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <span style="font-size:0.92rem;">💡</span>
-          <div style="flex:1;min-width:160px;">
-            <div style="font-size:0.7rem;color:#86efac;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Posible coincidencia</div>
-            <div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-top:1px;">#${sugerido.pedido.id} ${esc(sugerido.pedido.equipo || 'Sin nombre')}</div>
-            <div style="font-size:0.7rem;color:var(--text-muted);">${esc(sugerido.pedido.vendedora || '—')} · ${esc(sugerido.pedido.telefono || 'sin tel')}</div>
-          </div>
-          <button onclick="vincularHuerfanoDirecto('${safeMsgId}', ${sugerido.pedido.id})" style="background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(34,197,94,0.3);">✓ Vincular</button>
-        </div>`
-      : `<div style="background:rgba(148,163,184,0.06);border:1px solid rgba(148,163,184,0.15);border-radius:8px;padding:6px 10px;margin:6px 0;font-size:0.72rem;color:var(--text-muted);">
-          🔎 No se encontro un pedido que coincida con el nombre. Elegi de la lista o crea uno nuevo.
-        </div>`;
-
-    return `
-      <div style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.22);border-radius:10px;padding:12px;margin-bottom:8px;">
-        <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-          <span style="font-size:1rem;">📎</span>
-          <div style="flex:1;min-width:200px;">
-            <div style="font-weight:700;color:var(--text);font-size:0.88rem;letter-spacing:-0.01em;">${esc(arch.nombreOriginal || '—')}</div>
-            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">base: <em>${esc(arch.base || '')}</em>${arch.m2 ? ' · ' + arch.m2 + 'm²' : ''} · ${esc((h.fecha || '').slice(0, 10))}</div>
-          </div>
-          ${h.linkWT ? `<a href="${esc(h.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:6px;padding:5px 10px;font-size:0.72rem;text-decoration:none;font-weight:600;">Ver WT</a>` : ''}
-        </div>
-        ${sugerenciaHTML}
-        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">
-          <input list="${datalistId}" id="huerf-pid-${safeMsgId}" placeholder="🔎 Buscar pedido por nombre, telefono o #ID..."
-            style="flex:1;min-width:220px;background:var(--card-bg);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text);font-size:0.82rem;padding:7px 11px;outline:none;">
-          <datalist id="${datalistId}">${opts}</datalist>
-          <button onclick="vincularHuerfano('${safeMsgId}')" style="background:rgba(124,58,237,0.2);border:1px solid rgba(124,58,237,0.45);color:#c4b5fd;border-radius:6px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;">Vincular</button>
-          <button onclick="crearPedidoDesdeHuerfano('${safeMsgId}', '${esc(arch.base || arch.nombreOriginal || '').replace(/'/g, '\\\'')}')" title="Crear un pedido nuevo a partir de este archivo" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:6px;padding:7px 12px;font-size:0.78rem;font-weight:600;cursor:pointer;">+ Crear pedido</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  cont.innerHTML = `
-    <div style="background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.18);border-radius:12px;padding:14px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-size:1.1rem;">⚠️</span>
-        <span style="font-size:0.9rem;font-weight:700;color:#fbbf24;">Archivos de calandra sin pedido vinculado (${huerfanos.length})</span>
-      </div>
-      <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:12px;line-height:1.45;">
-        Cuando el sistema reconoce el cliente, te muestra una sugerencia con boton verde — solo das click. Si no, busca el pedido en el campo de abajo (escribiendo el nombre o teléfono) o crea uno nuevo.
-      </div>
-      ${filas}
-      ${huerfanos.length > 30 ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">+ ${huerfanos.length - 30} más…</div>` : ''}
-    </div>
-  `;
+  if (cont) cont.innerHTML = '';
 }
 
 // Vincular directamente desde sugerencia (1-click)
@@ -6541,11 +6464,10 @@ function abrirDetallePedido(id) {
   const siguiente = siguienteEtapa(p.estado);
   const tel = p.telefono ? esc(p.telefono) : '—';
   const ven = p.vendedora ? esc(p.vendedora) : 'Sin asignar';
-  const DISENADORES = ['Camilo', 'Oscar', 'Wendy', 'Ney', 'Paola', 'Betty'];
+  // Diseñador: solo lectura. Auto-asignacion por sistema (vendedora→ella, Betty→Oscar)
   const disHTML = p.disenadorAsignado
-    ? '🎨 ' + esc(p.disenadorAsignado) + ' <button onclick="cambiarDisenadorDetalle(' + p.id + ')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:0.7rem;margin-left:4px;">✎</button>'
-    : '<select id="dis-asignar-' + p.id + '" style="width:100%;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.4);color:#c4b5fd;padding:6px 8px;border-radius:6px;font-size:0.8rem;margin-top:2px;"><option value="">🎨 Asignar diseñador…</option>' + DISENADORES.map(d => '<option value="' + d + '">' + d + '</option>').join('') + '</select>'
-      + '<button onclick="asignarDisenadorDesdeDetalle(' + p.id + ')" style="margin-top:6px;width:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:white;border:none;padding:7px;border-radius:6px;font-size:0.78rem;font-weight:600;cursor:pointer;">Confirmar diseñador</button>';
+    ? '🎨 ' + esc(p.disenadorAsignado)
+    : '<span style="color:var(--text-muted);">🎨 Sin asignar (automatico)</span>';
   const fechaEntrega = p.fechaEntrega ? esc(p.fechaEntrega) : 'Sin fecha';
   const notas = p.notas ? esc(p.notas) : '';
   const items = Array.isArray(p.items) && p.items.length

@@ -158,6 +158,39 @@ async function notificarTelegramAdmin(texto) {
   } catch (e) { console.error('[telegram-admin error]', e.message); }
 }
 
+// ── Dedupe de notificaciones WA ──────────────────────────────────
+// Evita repetir el mismo WA si ya se mando hoy.
+// State file en data/wa_notif_dedupe.json
+const _waNotifDedupeFile = path.join(__dirname, 'data', 'wa_notif_dedupe.json');
+function _leerDedupeWA() {
+  try { return JSON.parse(fs.readFileSync(_waNotifDedupeFile, 'utf8')); }
+  catch { return {}; }
+}
+function _guardarDedupeWA(d) {
+  try { fs.mkdirSync(path.dirname(_waNotifDedupeFile), { recursive: true }); } catch {}
+  fs.writeFileSync(_waNotifDedupeFile, JSON.stringify(d, null, 2));
+}
+// key: tipo:pedidoId | tipo:custom — dia: YYYY-MM-DD (Bogota)
+// Devuelve true si NO se ha enviado hoy (puede enviar), false si ya se envio.
+function waPuedeEnviar(key) {
+  if (!key) return true;
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // YYYY-MM-DD
+  const d = _leerDedupeWA();
+  if (d[key] === hoy) return false;
+  // Limpieza basica: quitar entries de dias pasados (max 200 entries)
+  const entries = Object.entries(d);
+  if (entries.length > 300) {
+    const filt = entries.filter(([k, v]) => v === hoy);
+    const nuevo = Object.fromEntries(filt);
+    nuevo[key] = hoy;
+    _guardarDedupeWA(nuevo);
+  } else {
+    d[key] = hoy;
+    _guardarDedupeWA(d);
+  }
+  return true;
+}
+
 // Manda mensaje al grupo de WhatsApp "Trabajo en familia" vía Evolution.
 // Usa ws-duvan por default (la de Betty/ws-ventas esta en revision).
 async function notificarWhatsappTrabajoFamilia(texto) {
@@ -665,6 +698,69 @@ function vincularComprobanteAPedido({ pedidoId, telefono, monto, banco, fecha, c
     total: pedido.total,
     saldoPendiente: pedido.saldoPendiente,
     pagadoCompleto: pedido.pagadoCompleto,
+  };
+}
+
+// Detecta si el comprobante recien llegado podria ser un PAGO DUPLICADO
+// (cliente mando el mismo pantallazo dos veces o se equivoco).
+// Mira pagos del pedido en las ultimas 24h con monto similar (+/- 10%)
+// y mismo banco. Si encuentra, devuelve { sospechoso: true, otro }.
+function esPagoDuplicadoSospechoso(pedido, monto, banco) {
+  if (!pedido || !Array.isArray(pedido.pagos) || !monto) return { sospechoso: false };
+  const ahora = Date.now();
+  const _24H = 24 * 60 * 60 * 1000;
+  const margen = monto * 0.1;
+  const mismoBanco = (b1, b2) => {
+    if (!b1 || !b2) return true;
+    return String(b1).toLowerCase().includes(String(b2).toLowerCase().slice(0, 4))
+        || String(b2).toLowerCase().includes(String(b1).toLowerCase().slice(0, 4));
+  };
+  for (const pago of pedido.pagos) {
+    const ts = new Date(pago.fecha || 0).getTime();
+    if (!ts || isNaN(ts)) continue;
+    if ((ahora - ts) > _24H) continue;
+    if (Math.abs((pago.monto || 0) - monto) > margen) continue;
+    if (!mismoBanco(pago.banco, banco)) continue;
+    return { sospechoso: true, otro: pago };
+  }
+  return { sospechoso: false };
+}
+
+// Devuelve resumen del cliente para contexto en WA notificaciones.
+// Cuenta pedidos del ult ano, totales, ultima compra.
+function obtenerContextoCliente(telefono, pedidoActualId) {
+  if (!telefono) return null;
+  const norm = (t) => {
+    const d = String(t || '').replace(/\D/g, '');
+    return d.startsWith('57') ? d.slice(2) : d;
+  };
+  const telN = norm(telefono);
+  const todos = leerPedidos();
+  const _1ANO = 365 * 24 * 60 * 60 * 1000;
+  const ahora = Date.now();
+  const delCliente = todos.filter(p => {
+    if (!p.telefono) return false;
+    if (norm(p.telefono) !== telN) return false;
+    if (p.id === pedidoActualId) return false;
+    const ts = new Date(p.ultimoMovimiento || 0).getTime();
+    return ts && (ahora - ts) <= _1ANO;
+  });
+  if (delCliente.length === 0) return { repetido: false };
+  const cerrados = delCliente.filter(p => p.estado === 'enviado-final' || p.estado === 'archivado');
+  const activos = delCliente.filter(p => p.estado !== 'enviado-final' && p.estado !== 'archivado' && p.estado !== 'cancelado');
+  const totalAbonado = delCliente.reduce((s, p) => s + (Number(p.abonado) || 0), 0);
+  delCliente.sort((a, b) => {
+    const ta = new Date(a.ultimoMovimiento || 0).getTime();
+    const tb = new Date(b.ultimoMovimiento || 0).getTime();
+    return tb - ta;
+  });
+  return {
+    repetido: true,
+    total: delCliente.length,
+    cerrados: cerrados.length,
+    activos: activos.length,
+    totalAbonadoAno: totalAbonado,
+    ultimoPedido: delCliente[0] ? { id: delCliente[0].id, equipo: delCliente[0].equipo, estado: delCliente[0].estado } : null,
   };
 }
 
@@ -4770,6 +4866,28 @@ http.createServer(async (req, res) => {
                         const saldoFmt = (resVinc.saldoPendiente != null) ? _formatearMontoCOP(resVinc.saldoPendiente) : null;
                         const montoFmt = _formatearMontoCOP(analisis.monto);
 
+                        // ANTI-DUPLICADO: chequear pago repetido sospechoso (24h, mismo monto +/- 10%, mismo banco)
+                        const _dup = esPagoDuplicadoSospechoso(_pedVinc, analisis.monto, analisis.banco);
+                        if (_dup.sospechoso && waPuedeEnviar(`pago-dup:${resVinc.pedidoId}`)) {
+                          try {
+                            const otroFmt = _formatearMontoCOP(_dup.otro.monto);
+                            const otroFecha = new Date(_dup.otro.fecha).toLocaleString('es-CO', { timeZone: 'America/Bogota' });
+                            const msgDup = `⚠️ *Posible pago duplicado*\n\n` +
+                              `${nombreCliente} pagó ${montoFmt} ahora.\n` +
+                              `Ya había otro pago de ${otroFmt} (${_dup.otro.banco}) hace pocas horas (${otroFecha}).\n` +
+                              `Pedido: *${equipoTxt}* (#${resVinc.pedidoId}) — ${vendedora}\n\n` +
+                              `Revísalo antes de confirmar.`;
+                            await notificarWAPersona('camilo', msgDup);
+                            await notificarWAPersona('graciela', msgDup);
+                          } catch (eDup) { console.error('[pago dup wa]', eDup.message); }
+                        }
+
+                        // CONTEXTO CLIENTE: si es repetido, agregar historico al WA
+                        const _ctxCli = obtenerContextoCliente(telefonoCliente, resVinc.pedidoId);
+                        const _contextoLineas = (_ctxCli && _ctxCli.repetido)
+                          ? `\n📌 Cliente repetido: ${_ctxCli.total} pedido(s) previos (${_formatearMontoCOP(_ctxCli.totalAbonadoAno)} acumulado año)`
+                          : '';
+
                         if (resVinc.pagadoCompleto) {
                           // ─── CASO C: SALDO TOTAL DETECTADO ───
                           // 3 WAs (cliente + vendedora + jefe&graciela individuales) + grupo Trabajo en familia
@@ -4789,20 +4907,22 @@ http.createServer(async (req, res) => {
                             });
                           } catch (eC) { console.error('[pago wa-cliente]', eC.message); }
 
-                          // 2. WA a la vendedora (avisa que ya está completo)
-                          try {
-                            const msgVend = `💰 *PAGO COMPLETO* ✅\n\n` +
-                              `${nombreCliente} terminó de pagar.\n` +
-                              `Pedido: *${equipoTxt}*\n` +
-                              `Total cobrado: ${abonadoFmt}\n\n` +
-                              `👉 Confírmale el envío al cliente.`;
-                            await notificarWAVendedora(vendedora, msgVend);
-                          } catch (eV) { console.error('[pago wa-vend]', eV.message); }
+                          // 2. WA a la vendedora — DEDUPE por pedidoId
+                          if (waPuedeEnviar(`pago-completo-vend:${resVinc.pedidoId}`)) {
+                            try {
+                              const msgVend = `💰 *PAGO COMPLETO* ✅\n\n` +
+                                `${nombreCliente} terminó de pagar.\n` +
+                                `Pedido: *${equipoTxt}*\n` +
+                                `Total cobrado: ${abonadoFmt}${_contextoLineas}\n\n` +
+                                `👉 Confírmale el envío al cliente.`;
+                              await notificarWAVendedora(vendedora, msgVend);
+                            } catch (eV) { console.error('[pago wa-vend]', eV.message); }
+                          }
 
-                          // 3. WA individual a Camilo + Graciela
-                          try {
+                          // 3. WA individual a Camilo + Graciela — DEDUPE por pedidoId
+                          if (waPuedeEnviar(`pago-completo-jefe:${resVinc.pedidoId}`)) try {
                             const msgJefe = `💰 *PAGO COMPLETO*\n\n` +
-                              `Cliente: ${nombreCliente}\n` +
+                              `Cliente: ${nombreCliente}${_contextoLineas}\n` +
                               `Pedido: *${equipoTxt}* (#${resVinc.pedidoId}) — ${vendedora}\n` +
                               `Total: ${abonadoFmt} ✅\n\n` +
                               `Listo para despachar cuando esté terminado.`;
@@ -4810,8 +4930,8 @@ http.createServer(async (req, res) => {
                             await notificarWAPersona('graciela', msgJefe);
                           } catch (eJ) { console.error('[pago wa-jefe]', eJ.message); }
 
-                          // 4. Grupo "Trabajo en familia" — solo info importante
-                          try {
+                          // 4. Grupo "Trabajo en familia" — DEDUPE por pedidoId
+                          if (waPuedeEnviar(`pago-completo-grupo:${resVinc.pedidoId}`)) try {
                             const msgGrupo = `💰 *PAGO COMPLETO* — VENTA #${resVinc.pedidoId}\n` +
                               `${nombreCliente} — *${equipoTxt}* (${vendedora})\n` +
                               `📞 ${telefonoCliente}\n` +
@@ -4822,7 +4942,9 @@ http.createServer(async (req, res) => {
                         } else {
                           // ─── CASO B: ABONO PARCIAL ───
                           // WA balance individual a Camilo + Graciela (NO al grupo, opcion 2 mixta)
-                          try {
+                          // DEDUPE por pedidoId+monto para evitar mismo balance repetido en el dia
+                          const _dedupeKeyB = `abono:${resVinc.pedidoId}:${Math.round((analisis.monto || 0) / 1000)}`;
+                          if (waPuedeEnviar(_dedupeKeyB)) try {
                             const balLines = [
                               `💵 *Abono detectado*`,
                               ``,
@@ -4833,6 +4955,7 @@ http.createServer(async (req, res) => {
                             ];
                             if (saldoFmt) balLines.push(`📌 Falta: ${saldoFmt}`);
                             else if (!totalFmt) balLines.push(`📌 _(sin total — falta poner total en la factura)_`);
+                            if (_contextoLineas) balLines.push(_contextoLineas.trim());
                             const msgBalance = balLines.join('\n');
                             await notificarWAPersona('camilo', msgBalance);
                             await notificarWAPersona('graciela', msgBalance);
@@ -8081,6 +8204,165 @@ setInterval(cronRecordatorioFacturaTick, 60 * 60 * 1000);
 // Tick inicial 5 min después de arrancar
 setTimeout(cronRecordatorioFacturaTick, 5 * 60 * 1000);
 console.log('[cron-fact] activado — recordatorios factura cada 1h');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Resumen ATASCOS diario 10 AM Bogota
+// Envia 1 mensaje agregado a Camilo + Graciela con todos los pedidos
+// atascados (sin disenio +5d, sin aprobar +5d, calandra +24h, etc).
+// Evita 10 alertas separadas — todo junto.
+// Cutoff de fecha: solo pedidos creados desde el deploy en adelante
+// (para no spamear con historial viejo).
+// ═══════════════════════════════════════════════════════════════════
+const CRON_ATASCOS_CUTOFF_TS = new Date('2026-06-03T18:00:00.000Z').getTime();
+async function cronResumenAtascosTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog !== 10) return; // solo a las 10 AM
+    // Dedupe diario
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    if (!waPuedeEnviar(`atascos-diario:${hoy}`)) return;
+
+    const pedidos = db.leerPedidos();
+    const ahora = Date.now();
+    const _24H = 24 * 60 * 60 * 1000;
+    const _5D = 5 * _24H;
+    const _7D = 7 * _24H;
+
+    const atSinDisenio = [];      // confirmado +5 dias sin .cdr
+    const atSinAprobar = [];      // hacer-diseno +5 dias
+    const atCalandraSinDesc = []; // enviado-calandra +24h
+    const atSinEntregar = [];     // listo +7d
+
+    for (const p of pedidos) {
+      // Cutoff: solo pedidos recientes
+      let tsCreacion = 0;
+      if (p.creadoEn) {
+        const parts = String(p.creadoEn).split('/');
+        if (parts.length === 3) tsCreacion = new Date(parseInt(parts[2],10), parseInt(parts[1],10)-1, parseInt(parts[0],10)).getTime();
+      }
+      if (!tsCreacion && p.ultimoMovimiento) tsCreacion = new Date(p.ultimoMovimiento).getTime();
+      if (tsCreacion && tsCreacion < CRON_ATASCOS_CUTOFF_TS) continue;
+
+      const tsUlt = new Date(p.ultimoMovimiento || 0).getTime();
+      const edad = ahora - tsUlt;
+      const equipoTxt = p.equipo || p.cliente || `#${p.id}`;
+      const ven = p.vendedora || '?';
+
+      if (p.estado === 'hacer-diseno' && edad > _5D) atSinAprobar.push({ id: p.id, equipoTxt, ven });
+      if (p.estado === 'enviado-calandra' && edad > _24H && !p.wtDescargado) atCalandraSinDesc.push({ id: p.id, equipoTxt, ven });
+      if (p.estado === 'listo' && edad > _7D) atSinEntregar.push({ id: p.id, equipoTxt, ven });
+    }
+
+    const total = atSinDisenio.length + atSinAprobar.length + atCalandraSinDesc.length + atSinEntregar.length;
+    if (total === 0) {
+      console.log('[cron-atascos] sin atascos hoy');
+      return;
+    }
+
+    const lineas = [`🚨 *ATASCOS HOY* — ${total} pedido(s) requieren atención\n`];
+    if (atSinAprobar.length) {
+      lineas.push(`🎨 *Sin aprobación cliente +5 días* (${atSinAprobar.length})`);
+      for (const a of atSinAprobar.slice(0, 8)) lineas.push(`  • ${a.equipoTxt} (#${a.id}) — ${a.ven}`);
+      if (atSinAprobar.length > 8) lineas.push(`  + ${atSinAprobar.length - 8} más…`);
+      lineas.push('');
+    }
+    if (atCalandraSinDesc.length) {
+      lineas.push(`📨 *Calandra +24h sin descargar* (${atCalandraSinDesc.length})`);
+      for (const a of atCalandraSinDesc.slice(0, 8)) lineas.push(`  • ${a.equipoTxt} (#${a.id}) — ${a.ven}`);
+      if (atCalandraSinDesc.length > 8) lineas.push(`  + ${atCalandraSinDesc.length - 8} más…`);
+      lineas.push('');
+    }
+    if (atSinEntregar.length) {
+      lineas.push(`📦 *Listo +7 días sin entregar* (${atSinEntregar.length})`);
+      for (const a of atSinEntregar.slice(0, 8)) lineas.push(`  • ${a.equipoTxt} (#${a.id}) — ${a.ven}`);
+      if (atSinEntregar.length > 8) lineas.push(`  + ${atSinEntregar.length - 8} más…`);
+      lineas.push('');
+    }
+    const msg = lineas.join('\n');
+    await notificarWAPersona('camilo', msg);
+    await notificarWAPersona('graciela', msg);
+    console.log(`[cron-atascos] enviado resumen con ${total} atascos`);
+  } catch (e) {
+    console.error('[cron-atascos error]', e.message);
+  }
+}
+setInterval(cronResumenAtascosTick, 60 * 60 * 1000); // chequea cada hora, dispara a las 10
+setTimeout(cronResumenAtascosTick, 10 * 60 * 1000);
+console.log('[cron-atascos] activado — resumen 10 AM Bogota');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Auto-archivar pedidos abandonados
+// Pedidos en bandeja/hacer-diseno +10 dias sin actividad real
+// (sin pagos, sin total, sin equipo nombrado por humano) → archiva.
+// Tombstone agregado para que no resuciten.
+// Solo aplica a pedidos creados despues del cutoff (para no archivar viejos
+// que pueden estar en revision).
+// ═══════════════════════════════════════════════════════════════════
+const CRON_AUTOARCHIVE_CUTOFF_TS = new Date('2026-06-03T18:00:00.000Z').getTime();
+async function cronAutoArchivarTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog !== 11) return; // solo a las 11 AM (1h despues de atascos)
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    if (!waPuedeEnviar(`auto-archive:${hoy}`)) return;
+
+    const pedidos = db.leerPedidos();
+    const ahora = Date.now();
+    const _10D = 10 * 24 * 60 * 60 * 1000;
+    const archivar = [];
+
+    for (const p of pedidos) {
+      if (p.estado !== 'bandeja' && p.estado !== 'hacer-diseno') continue;
+      // Tiene actividad real? Si tiene pagos, total, o equipo nombrado por humano, NO archivar
+      if (p.abonado && p.abonado > 0) continue;
+      if (p.total && p.total > 0) continue;
+      const tieneNombreReal = p.equipo && !/^cliente\s+[\+\d]/i.test(p.equipo);
+      if (tieneNombreReal) continue;
+
+      let tsUlt = new Date(p.ultimoMovimiento || 0).getTime();
+      let tsCreacion = 0;
+      if (p.creadoEn) {
+        const parts = String(p.creadoEn).split('/');
+        if (parts.length === 3) tsCreacion = new Date(parseInt(parts[2],10), parseInt(parts[1],10)-1, parseInt(parts[0],10)).getTime();
+      }
+      if (tsCreacion && tsCreacion < CRON_AUTOARCHIVE_CUTOFF_TS) continue;
+      if (!tsUlt && tsCreacion) tsUlt = tsCreacion;
+      if (!tsUlt) continue;
+      if ((ahora - tsUlt) < _10D) continue;
+
+      archivar.push(p);
+    }
+
+    if (archivar.length === 0) {
+      console.log('[cron-archive] nada que archivar');
+      return;
+    }
+
+    const ids = archivar.map(p => p.id);
+    // Quitar de pedidos.json
+    const nuevos = pedidos.filter(p => !ids.includes(p.id));
+    db.guardarPedidos(nuevos);
+    // Tombstones
+    for (const id of ids) {
+      try { agregarTombstone(id); } catch {}
+    }
+    // Notif al jefe
+    const lineas = [`📦 *Auto-archivé ${archivar.length} pedido(s) abandonados*\n`,
+      `Sin pagos, sin total, sin nombre real, +10 días sin actividad:`,
+      ...archivar.slice(0, 10).map(p => `  • #${p.id} ${p.equipo || p.telefono || '?'} (${p.vendedora || '?'})`)];
+    if (archivar.length > 10) lineas.push(`  + ${archivar.length - 10} más…`);
+    lineas.push(`\nSi era venta real, contáctame para recuperar.`);
+    const msg = lineas.join('\n');
+    try { await notificarWAPersona('camilo', msg); } catch {}
+    try { await notificarWAPersona('graciela', msg); } catch {}
+    console.log(`[cron-archive] archivados ${archivar.length} pedidos`);
+  } catch (e) {
+    console.error('[cron-archive error]', e.message);
+  }
+}
+setInterval(cronAutoArchivarTick, 60 * 60 * 1000);
+setTimeout(cronAutoArchivarTick, 15 * 60 * 1000);
+console.log('[cron-archive] activado — auto-archivar abandonados 11 AM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Backup nocturno a Drive — cada noche 2 AM Bogotá sube BD a Drive

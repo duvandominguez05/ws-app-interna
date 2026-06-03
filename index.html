@@ -547,15 +547,10 @@
         <!-- Inyectado por renderCalandraDashboard -->
       </div>
 
-      <!-- Botones acción -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" style="background:#8b5cf6;" onclick="syncCalandraManual()" title="Lee Gmail y Drive ahora">🔄 Sincronizar ahora</button>
-        <button class="btn btn-glass btn-sm" onclick="renderCalandraDashboard(true)">↺ Refrescar vista</button>
-        <a href="#wetransfer-legacy" style="display:none;"></a>
-      </div>
+      <!-- Botones Sincronizar/Refrescar quitados 2026-06-03: app es solo monitor, no se interactua -->
 
-      <!-- Huérfanos: archivos detectados sin pedido vinculado -->
-      <div id="calandra-huerfanos" style="margin-bottom:24px;"></div>
+      <!-- Huerfanos: data sigue llegando pero UI deshabilitada (solo monitor) -->
+      <div id="calandra-huerfanos" style="display:none;"></div>
 
       <!-- Lista de envíos recientes -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
