@@ -2299,7 +2299,7 @@ function wtBadgeHtml(p) {
   const items = archivos.slice(0, 4).map(a => {
     const icon = tipoBadges[a.tipo] || '📄';
     const descargado = a.fechaDescarga ? '<span title="Calandra ya descargó" style="color:#34d399;font-weight:700;">✓</span>' : '<span title="Esperando descarga" style="color:#fbbf24;">⏳</span>';
-    const m2Txt = a.m2 ? `${a.m2}m²` : '';
+    const m2Txt = a.m2 ? `${_metrosLineales(a.m2)} m` : '';
     const prio = a.prioridad === 'urgente' ? ' <span style="color:#fca5a5;font-weight:700;">URGENTE</span>' : '';
     const tela = a.tela ? ` · ${esc(a.tela)}` : '';
     return `<div style="font-size:0.66rem;color:#cbd5e1;margin:1px 0;">${icon} ${esc(a.nombreOriginal)} ${descargado} <span style="color:var(--text-muted);">${m2Txt}${tela}${prio}</span></div>`;
@@ -2312,7 +2312,7 @@ function wtBadgeHtml(p) {
     <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.18);border-radius:6px;padding:6px 8px;margin-bottom:6px;">
       <div style="font-size:0.66rem;color:#93c5fd;font-weight:700;margin-bottom:3px;display:flex;justify-content:space-between;">
         <span>📤 WeTransfer</span>
-        <span style="color:var(--text-muted);">${archivos.length} archivo${archivos.length>1?'s':''} · ${m2Total}m²</span>
+        <span style="color:var(--text-muted);">${archivos.length} archivo${archivos.length>1?'s':''} · ${_metrosLineales(m2Total)} m</span>
       </div>
       ${items}
       ${masTxt}
@@ -4634,6 +4634,13 @@ async function _cargarCalandraServer(force) {
   return _calandraCache;
 }
 
+// Convierte CM (como vienen en el filename) a METROS LINEALES (con 2 decimales).
+// NO son m² — el sistema solo lee el alto del PDF, no calcula area.
+function _metrosLineales(cm) {
+  const n = (cm || 0) / 100;
+  return n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function _calandraKpiCard(val, label, color, sub) {
   return `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;">
     <div style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">${label}</div>
@@ -4655,10 +4662,10 @@ function renderCalandraKPIs() {
   const d = _calandraCache || {};
   const s = d.stats || {};
   cont.innerHTML =
-    _calandraKpiCard(`${(s.hoy && s.hoy.m2 || 0).toLocaleString('es-CO')} m²`, 'Hoy', '#34d399', `${(s.hoy && (s.hoy.envios ?? s.hoy.pedidos)) || 0} envíos`) +
-    _calandraKpiCard(`${(s.semana && s.semana.m2 || 0).toLocaleString('es-CO')} m²`, 'Esta semana', '#60a5fa', `${(s.semana && (s.semana.envios ?? s.semana.pedidos)) || 0} envíos`) +
-    _calandraKpiCard(`${(s.mes && s.mes.m2 || 0).toLocaleString('es-CO')} m²`, 'Este mes', '#a78bfa', `${(s.mes && (s.mes.envios ?? s.mes.pedidos)) || 0} envíos`) +
-    _calandraKpiCard(`${(s.anio && s.anio.m2 || 0).toLocaleString('es-CO')} m²`, 'Este año', '#fb923c', `${(s.anio && (s.anio.envios ?? s.anio.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${_metrosLineales(s.hoy && s.hoy.m2)} m`, 'Hoy', '#34d399', `${(s.hoy && (s.hoy.envios ?? s.hoy.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${_metrosLineales(s.semana && s.semana.m2)} m`, 'Esta semana', '#60a5fa', `${(s.semana && (s.semana.envios ?? s.semana.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${_metrosLineales(s.mes && s.mes.m2)} m`, 'Este mes', '#a78bfa', `${(s.mes && (s.mes.envios ?? s.mes.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${_metrosLineales(s.anio && s.anio.m2)} m`, 'Este año', '#fb923c', `${(s.anio && (s.anio.envios ?? s.anio.pedidos)) || 0} envíos`) +
     _calandraKpiCard((d.totalEnvios || 0).toLocaleString('es-CO'), 'Envíos totales', '#f472b6', 'históricos');
 }
 
@@ -4791,7 +4798,38 @@ function renderCalandraEnvios() {
     cont.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center;">No hay envíos a calandra todavía.</div>';
     return;
   }
-  cont.innerHTML = lista.slice(0, 80).map(e => {
+  // Agrupar por dia de envio (o descarga si no hay envio)
+  const limit = lista.slice(0, 120);
+  const porDia = {};
+  for (const e of limit) {
+    const fechaRef = e.fechaEnvio || e.fechaDescarga || '';
+    const dia = fechaRef.slice(0, 10) || 'sin-fecha';
+    if (!porDia[dia]) porDia[dia] = [];
+    porDia[dia].push(e);
+  }
+  const dias = Object.keys(porDia).sort().reverse();
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const ayerD = new Date(); ayerD.setDate(ayerD.getDate() - 1);
+  const ayerStr = ayerD.toISOString().slice(0, 10);
+  function _diaLabel(d) {
+    if (d === 'sin-fecha') return 'Sin fecha';
+    if (d === hoyStr) return 'HOY · ' + d;
+    if (d === ayerStr) return 'AYER · ' + d;
+    try {
+      const dt = new Date(d + 'T12:00:00');
+      const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+      return dias[dt.getDay()] + ' · ' + d;
+    } catch { return d; }
+  }
+  // Render por bloques de día
+  const bloques = dias.map(dia => {
+    const items = porDia[dia];
+    const m2Dia = items.reduce((s, e) => s + (e.m2 || 0), 0);
+    const cabecera = `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:14px 0 6px 0;background:rgba(124,58,237,0.08);border-left:3px solid #a78bfa;border-radius:6px;">
+        <span style="font-weight:700;color:#c4b5fd;font-size:0.82rem;letter-spacing:0.5px;text-transform:uppercase;">${_diaLabel(dia)}</span>
+        <span style="margin-left:auto;color:var(--text-muted);font-size:0.75rem;">${items.length} envío${items.length>1?'s':''} · <strong style="color:#fbbf24;">${_metrosLineales(m2Dia)} m</strong></span>
+      </div>`;
+    const filas = items.map(e => {
     const descargado = !!e.fechaDescarga;
     const fEnvio = (e.fechaEnvio || '').slice(0, 16).replace('T', ' ');
     const fDesc = descargado ? (e.fechaDescarga || '').slice(0, 16).replace('T', ' ') : '';
@@ -4816,7 +4854,7 @@ function renderCalandraEnvios() {
           <div style="font-weight:600;color:var(--text);font-size:0.85rem;">${esc(e.equipo || '—')}</div>
           <div style="font-size:0.7rem;color:var(--text-muted);">${esc(e.archivo || '')}</div>
         </div>
-        <span style="font-weight:700;color:#fbbf24;font-size:0.85rem;min-width:75px;text-align:right;">${(e.m2 || 0).toLocaleString('es-CO')}m²</span>
+        <span style="font-weight:700;color:#fbbf24;font-size:0.85rem;min-width:75px;text-align:right;">${_metrosLineales(e.m2)} m</span>
         ${tipoBadge}
         ${prio}
         ${badgeEstado}
@@ -4827,7 +4865,10 @@ function renderCalandraEnvios() {
         ${e.linkWT ? `<a href="${esc(e.linkWT)}" target="_blank" style="background:rgba(96,165,250,0.18);border:1px solid rgba(96,165,250,0.4);color:#93c5fd;border-radius:5px;padding:3px 8px;font-size:0.7rem;text-decoration:none;">Ver WT</a>` : ''}
       </div>
     `;
-  }).join('');
+    }).join('');
+    return cabecera + filas;
+  });
+  cont.innerHTML = bloques.join('');
 }
 
 async function syncCalandraManual() {
