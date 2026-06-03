@@ -1957,6 +1957,72 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/reset-hora-cero?key=ws-textil-2026 ──
+  // HORA 0: borra TODOS los pedidos, agrega tombstones (anti-resucitar),
+  // limpia comprobantes detectados, limpia documentos salientes WA,
+  // limpia recordatorios. NO toca calandra, NO toca facturas, NO toca
+  // telefonos descartados (mantiene proveedores permanentes).
+  // NO agrega los telefonos de pedidos borrados a descartados (a diferencia
+  // del DELETE individual), para que el dia 0 arranque sin bloqueos.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/reset-hora-cero')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const key = u.searchParams.get('key');
+      if (key !== (process.env.RESET_KEY || 'ws-textil-2026')) {
+        return json(res, 401, { error: 'key invalida' });
+      }
+      const pedidosAntes = leerPedidos();
+      const idsBorrados = pedidosAntes.map(p => p.id);
+      // Agregar tombstones por ID (no por telefono)
+      for (const id of idsBorrados) {
+        try { agregarTombstone(id); } catch {}
+      }
+      // Borrar pedidos
+      db.guardarPedidos([]);
+      // Limpiar comprobantes detectados (BD) via SQL raw
+      let compsLimpiados = 0;
+      try {
+        if (typeof db.raw !== 'undefined' && db.raw.prepare) {
+          const r = db.raw.prepare('DELETE FROM comprobantes').run();
+          compsLimpiados = r.changes || 0;
+        }
+      } catch (eC) { console.error('[reset-cero] comps:', eC.message); }
+      // Limpiar docs salientes WA (tabla)
+      let docsLimpiados = 0;
+      try {
+        if (typeof db.raw !== 'undefined' && db.raw.prepare) {
+          const r = db.raw.prepare('DELETE FROM documentos_salientes_wa').run();
+          docsLimpiados = r.changes || 0;
+        }
+      } catch (eD) { console.error('[reset-cero] docs:', eD.message); }
+      // Limpiar recordatorios y state files
+      const archivos = [
+        'data/wa_notif_dedupe.json',
+        'data/grupo_ventas_state.json',
+        'data/catalogo_watcher_state.json',
+        'data/ventas_snapshot_actual.json',
+      ];
+      for (const f of archivos) {
+        try {
+          const p = path.join(__dirname, f);
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        } catch {}
+      }
+      console.log(`[reset-cero] HORA 0: ${idsBorrados.length} pedidos + ${compsLimpiados} comprobantes + ${docsLimpiados} docs salientes`);
+      return json(res, 200, {
+        ok: true,
+        pedidos_borrados: idsBorrados.length,
+        ids: idsBorrados,
+        comprobantes_borrados: compsLimpiados,
+        docs_salientes_borrados: docsLimpiados,
+        tombstones_agregados: idsBorrados.length,
+        nota: 'Calandra y facturas NO se tocaron. Telefonos descartados (proveedores) NO se tocaron.',
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/pedidos/limpiar-basura — borra pedidos sin teléfono Y sin vendedora ──
   // Útil para limpiar el spam del lector de tablero foto cuando Gemini equivoca.
   if (req.method === 'POST' && req.url === '/api/pedidos/limpiar-basura') {
