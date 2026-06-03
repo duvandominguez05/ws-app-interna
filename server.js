@@ -1957,6 +1957,44 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/setup-webhooks?key=ws-textil-2026 ──
+  // Configura webhook URL en TODAS las instancias Evolution conocidas.
+  // Soluciona problema 3-jun-2026: solo ws-ventas tenia webhook → solo Betty
+  // recibia eventos. Las demas vendedoras no procesaban nada.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/setup-webhooks')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const key = u.searchParams.get('key');
+      if (key !== (process.env.RESET_KEY || 'ws-textil-2026')) {
+        return json(res, 401, { error: 'key invalida' });
+      }
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const serverUrl = process.env.PUBLIC_URL || 'https://ws-app-interna-production.up.railway.app';
+      const webhookUrl = `${serverUrl}/api/evolution-webhook?token=ws_secret_2026`;
+      const instancias = ['ws-paola', 'ws-ney', 'ws-duvan', 'ws wendy', 'ws-ventas'];
+      const eventos = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'CHATS_UPDATE'];
+      const resultados = [];
+      for (const inst of instancias) {
+        try {
+          const instEnc = encodeURIComponent(inst);
+          const r = await fetch(`${evoUrl}/webhook/set/${instEnc}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+            body: JSON.stringify({ webhook: { url: webhookUrl, enabled: true, events: eventos, webhook_by_events: false } }),
+          });
+          const data = await r.json().catch(() => ({}));
+          resultados.push({ instancia: inst, status: r.status, ok: r.ok, respuesta: data });
+        } catch (e) {
+          resultados.push({ instancia: inst, error: e.message });
+        }
+      }
+      return json(res, 200, { ok: true, webhookUrl, resultados });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/reset-hora-cero?key=ws-textil-2026 ──
   // HORA 0: borra TODOS los pedidos, agrega tombstones (anti-resucitar),
   // limpia comprobantes detectados, limpia documentos salientes WA,
