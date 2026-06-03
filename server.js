@@ -6899,18 +6899,19 @@ http.createServer(async (req, res) => {
       const inicioAnioStr = hoyStr.slice(0, 4) + '-01-01';
 
       let m2Hoy = 0, m2Semana = 0, m2Mes = 0, m2Anio = 0;
-      let pedidosHoy = new Set(), pedidosSemana = new Set(), pedidosMes = new Set(), pedidosAnio = new Set();
+      let envHoy = 0, envSemana = 0, envMes = 0, envAnio = 0;
       const enviadosRecientes = [];
+      // 1) Envios vinculados a pedidos
       for (const p of pedidos) {
         if (!p.wetransfer || !p.wetransfer.archivos) continue;
         for (const a of p.wetransfer.archivos) {
           if (!a.fechaEnvio) continue;
           const fStr = a.fechaEnvio.slice(0, 10);
           const m2 = a.m2 || 0;
-          if (fStr >= inicioAnioStr) { m2Anio += m2; pedidosAnio.add(p.id); }
-          if (fStr >= inicioMesStr) { m2Mes += m2; pedidosMes.add(p.id); }
-          if (fStr >= inicioSemanaStr) { m2Semana += m2; pedidosSemana.add(p.id); }
-          if (fStr === hoyStr) { m2Hoy += m2; pedidosHoy.add(p.id); }
+          if (fStr >= inicioAnioStr) { m2Anio += m2; envAnio++; }
+          if (fStr >= inicioMesStr)   { m2Mes += m2;  envMes++; }
+          if (fStr >= inicioSemanaStr){ m2Semana += m2; envSemana++; }
+          if (fStr === hoyStr)        { m2Hoy += m2; envHoy++; }
           enviadosRecientes.push({
             pedidoId: p.id,
             equipo: p.equipo,
@@ -6928,18 +6929,53 @@ http.createServer(async (req, res) => {
           });
         }
       }
-      // Ordenar recientes por fecha desc
-      enviadosRecientes.sort((a, b) => (b.fechaEnvio || '').localeCompare(a.fechaEnvio || ''));
+      // Huerfanos: los archivos detectados por gmail-wt sin pedido vinculado.
+      // Igual los mostramos como envios y sumamos sus m2 (cliente solo quiere ver
+      // todo lo que llega de calandra, sin el ID del pedido).
+      const huerfanosRaw = gmailWT.leerHuerfanos ? gmailWT.leerHuerfanos() : [];
+      for (const h of huerfanosRaw) {
+        const arch = h.archivo || {};
+        const fStr = (h.fecha || '').slice(0, 10);
+        if (!fStr) continue;
+        const m2 = arch.m2 || 0;
+        if (h.accion === 'enviado') {
+          if (fStr >= inicioAnioStr) { m2Anio += m2; envAnio++; }
+          if (fStr >= inicioMesStr)   { m2Mes += m2;  envMes++; }
+          if (fStr >= inicioSemanaStr){ m2Semana += m2; envSemana++; }
+          if (fStr === hoyStr)        { m2Hoy += m2; envHoy++; }
+        }
+        enviadosRecientes.push({
+          pedidoId: null,
+          equipo: arch.base || arch.nombreOriginal || '(sin nombre)',
+          vendedora: null,
+          estado: 'sin-vincular',
+          archivo: arch.nombreOriginal,
+          m2: arch.m2,
+          tela: arch.tela,
+          tipo: arch.tipo,
+          prioridad: arch.prioridad,
+          fechaEnvio: h.accion === 'enviado' ? h.fecha : null,
+          fechaDescarga: h.accion === 'descargado' ? h.fecha : null,
+          linkWT: h.linkWT,
+          destinatario: h.destinatario,
+        });
+      }
+      // Ordenar recientes por fecha desc (usar fechaEnvio o fechaDescarga)
+      enviadosRecientes.sort((a, b) => {
+        const fa = a.fechaEnvio || a.fechaDescarga || '';
+        const fb = b.fechaEnvio || b.fechaDescarga || '';
+        return fb.localeCompare(fa);
+      });
 
-      // Huérfanos
-      const huerfanos = gmailWT.leerHuerfanos ? gmailWT.leerHuerfanos() : [];
+      // Mantener huerfanos para compat (UI los oculta)
+      const huerfanos = huerfanosRaw;
 
       return json(res, 200, {
         stats: {
-          hoy:    { m2: m2Hoy,    pedidos: pedidosHoy.size },
-          semana: { m2: m2Semana, pedidos: pedidosSemana.size },
-          mes:    { m2: m2Mes,    pedidos: pedidosMes.size },
-          anio:   { m2: m2Anio,   pedidos: pedidosAnio.size },
+          hoy:    { m2: m2Hoy,    pedidos: envHoy,    envios: envHoy },
+          semana: { m2: m2Semana, pedidos: envSemana, envios: envSemana },
+          mes:    { m2: m2Mes,    pedidos: envMes,    envios: envMes },
+          anio:   { m2: m2Anio,   pedidos: envAnio,   envios: envAnio },
         },
         enviadosRecientes: enviadosRecientes.slice(0, 100),
         huerfanos,

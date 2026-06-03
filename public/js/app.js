@@ -4655,10 +4655,10 @@ function renderCalandraKPIs() {
   const d = _calandraCache || {};
   const s = d.stats || {};
   cont.innerHTML =
-    _calandraKpiCard(`${(s.hoy && s.hoy.m2 || 0).toLocaleString('es-CO')} m²`, 'Hoy', '#34d399', `${(s.hoy && s.hoy.pedidos) || 0} pedidos`) +
-    _calandraKpiCard(`${(s.semana && s.semana.m2 || 0).toLocaleString('es-CO')} m²`, 'Esta semana', '#60a5fa', `${(s.semana && s.semana.pedidos) || 0} pedidos`) +
-    _calandraKpiCard(`${(s.mes && s.mes.m2 || 0).toLocaleString('es-CO')} m²`, 'Este mes', '#a78bfa', `${(s.mes && s.mes.pedidos) || 0} pedidos`) +
-    _calandraKpiCard(`${(s.anio && s.anio.m2 || 0).toLocaleString('es-CO')} m²`, 'Este año', '#fb923c', `${(s.anio && s.anio.pedidos) || 0} pedidos`) +
+    _calandraKpiCard(`${(s.hoy && s.hoy.m2 || 0).toLocaleString('es-CO')} m²`, 'Hoy', '#34d399', `${(s.hoy && (s.hoy.envios ?? s.hoy.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${(s.semana && s.semana.m2 || 0).toLocaleString('es-CO')} m²`, 'Esta semana', '#60a5fa', `${(s.semana && (s.semana.envios ?? s.semana.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${(s.mes && s.mes.m2 || 0).toLocaleString('es-CO')} m²`, 'Este mes', '#a78bfa', `${(s.mes && (s.mes.envios ?? s.mes.pedidos)) || 0} envíos`) +
+    _calandraKpiCard(`${(s.anio && s.anio.m2 || 0).toLocaleString('es-CO')} m²`, 'Este año', '#fb923c', `${(s.anio && (s.anio.envios ?? s.anio.pedidos)) || 0} envíos`) +
     _calandraKpiCard((d.totalEnvios || 0).toLocaleString('es-CO'), 'Envíos totales', '#f472b6', 'históricos');
 }
 
@@ -4805,9 +4805,13 @@ function renderCalandraEnvios() {
       muestra: '<span style="background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);color:#d8b4fe;border-radius:5px;padding:2px 7px;font-size:0.65rem;font-weight:600;">🧪 MUESTRA</span>',
     }[e.tipo] || '';
     const prio = e.prioridad === 'urgente' ? '<span style="background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;border-radius:5px;padding:2px 6px;font-size:0.65rem;font-weight:800;">🚨 URGENTE</span>' : '';
+    // Si NO hay pedido vinculado, no mostramos el "#ID"
+    const idHTML = e.pedidoId
+      ? `<a onclick="irAlPedido(${e.pedidoId})" style="font-family:'Outfit',sans-serif;font-weight:800;color:#a78bfa;font-size:0.85rem;min-width:55px;cursor:pointer;text-decoration:none;">#${e.pedidoId}</a>`
+      : `<span style="min-width:55px;color:var(--text-muted);font-size:0.75rem;">📎</span>`;
     return `
       <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;background:rgba(255,255,255,0.02);">
-        <a onclick="irAlPedido(${e.pedidoId})" style="font-family:'Outfit',sans-serif;font-weight:800;color:#a78bfa;font-size:0.85rem;min-width:55px;cursor:pointer;text-decoration:none;">#${e.pedidoId}</a>
+        ${idHTML}
         <div style="flex:1;min-width:200px;">
           <div style="font-weight:600;color:var(--text);font-size:0.85rem;">${esc(e.equipo || '—')}</div>
           <div style="font-size:0.7rem;color:var(--text-muted);">${esc(e.archivo || '')}</div>
