@@ -4968,21 +4968,10 @@ http.createServer(async (req, res) => {
                         const saldoFmt = (resVinc.saldoPendiente != null) ? _formatearMontoCOP(resVinc.saldoPendiente) : null;
                         const montoFmt = _formatearMontoCOP(analisis.monto);
 
-                        // ANTI-DUPLICADO: chequear pago repetido sospechoso (24h, mismo monto +/- 10%, mismo banco)
-                        const _dup = esPagoDuplicadoSospechoso(_pedVinc, analisis.monto, analisis.banco);
-                        if (_dup.sospechoso && waPuedeEnviar(`pago-dup:${resVinc.pedidoId}`)) {
-                          try {
-                            const otroFmt = _formatearMontoCOP(_dup.otro.monto);
-                            const otroFecha = new Date(_dup.otro.fecha).toLocaleString('es-CO', { timeZone: 'America/Bogota' });
-                            const msgDup = `⚠️ *Posible pago duplicado*\n\n` +
-                              `${nombreCliente} pagó ${montoFmt} ahora.\n` +
-                              `Ya había otro pago de ${otroFmt} (${_dup.otro.banco}) hace pocas horas (${otroFecha}).\n` +
-                              `Pedido: *${equipoTxt}* (#${resVinc.pedidoId}) — ${vendedora}\n\n` +
-                              `Revísalo antes de confirmar.`;
-                            await notificarWAPersona('camilo', msgDup);
-                            await notificarWAPersona('graciela', msgDup);
-                          } catch (eDup) { console.error('[pago dup wa]', eDup.message); }
-                        }
+                        // Anti-duplicado por monto similar quitado 3-jun-2026:
+                        // Camilo aclaro que cada comprobante es un pago valido (no duplicado).
+                        // Lo importante es ASIGNAR al pedido correcto cuando hay 2+ pedidos activos
+                        // del mismo cliente. Esa logica se agregara cuando llegue ese caso real.
 
                         // CONTEXTO CLIENTE: si es repetido, agregar historico al WA
                         const _ctxCli = obtenerContextoCliente(telefonoCliente, resVinc.pedidoId);
