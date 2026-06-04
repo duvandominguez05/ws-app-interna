@@ -3005,6 +3005,29 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/fix-disenadores-faltantes ──
+  // Recorre pedidos sin disenadorAsignado y aplica asignarDisenadorAutomatico
+  // (Wendy/Ney/Paola -> ellas mismas, otras -> Oscar).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/fix-disenadores-faltantes')) {
+    try {
+      const peds = leerPedidos();
+      let actualizados = 0;
+      const detalle = [];
+      for (const p of peds) {
+        if (p.disenadorAsignado) continue;
+        const disenador = asignarDisenadorAutomatico(p.vendedora);
+        p.disenadorAsignado = disenador;
+        p.ultimoMovimiento = new Date().toISOString();
+        db.upsertPedido(p);
+        actualizados++;
+        detalle.push({ id: p.id, vendedora: p.vendedora, disenadorAsignado: disenador });
+      }
+      return json(res, 200, { ok: true, actualizados, detalle });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/admin/aplicar-watcher-ventas?dias=2 ──
   // Ejecuta procesarYAmarrar REAL: identifica pedidos por hash y amarra
   // nombre/fecha/lista jugadores. Detecta arreglos del contacto Lidermeyer.
@@ -4811,7 +4834,8 @@ http.createServer(async (req, res) => {
                   notificarTelegram(msgTG).catch(()=>{});
 
                   const lineaDisWA = VENDEDORAS_DISENADORAS.has(vendedora)
-                    ? `\n🎨 Diseñadora: ${vendedora}` : '';
+                    ? `\n🎨 Diseñadora: ${vendedora}`
+                    : `\n🎨 Diseñador: ${asignarDisenadorAutomatico(vendedora)}`;
                   const msgWA =
                     `💰 VENTA CONFIRMADA  #${resultadoApi.id}\n\n` +
                     `✅ ${tipoMsg === 'Cotización CONFIRMADA' ? 'El cliente ya pagó' : 'Cliente pagó directo'}\n\n` +
@@ -4819,8 +4843,22 @@ http.createServer(async (req, res) => {
                     `📞 ${telBonito}\n` +
                     `🛍️ Vendedora: ${vendedora}${lineaDisWA}\n` +
                     `📅 ${fechaCorta}\n\n` +
-                    `🎨 Pedido en Hacer diseño — diseñador a trabajar`;
+                    `🎨 Pedido en Hacer diseño — diseñador a trabajar\n` +
+                    `📝 PENDIENTE: factura #${resultadoApi.id} (${vendedora})`;
                   notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
+
+                  // WA INDIVIDUAL a la vendedora — recordatorio de factura
+                  try {
+                    const msgVendedora =
+                      `🎉 Venta #${resultadoApi.id} confirmada\n` +
+                      `👤 Cliente: ${nombreCliente}\n` +
+                      `📞 ${telBonito}\n\n` +
+                      `📝 PRÓXIMO PASO:\n` +
+                      `Emite la factura del pedido #${resultadoApi.id} desde la app.\n` +
+                      `La factura debe ir al chat de ${telBonito}.\n\n` +
+                      `📅 A las 8 PM te aviso si quedan facturas pendientes.`;
+                    await notificarWAVendedora(vendedora, msgVendedora);
+                  } catch (eFact) { console.error('[wa-vendedora venta-confirmada]', eFact.message); }
 
                   // Cambiar etiqueta Chatwoot: cotizacion → venta-confirmada
                   if (contactoChatwoot) {
@@ -5111,7 +5149,12 @@ http.createServer(async (req, res) => {
                         `✅ ${r.conSticker} con sticker\n` +
                         `⚠️ ${r.sinSticker} SIN sticker (este incluido)\n` +
                         `💰 Detectado: ${totalDiaTxt}\n\n` +
-                        `👉 *Pasa el sticker 💰 al chat del cliente* para oficializar esta venta y subir tu contador.`;
+                        `👉 Para oficializar esta venta:\n` +
+                        `1️⃣ Manda el sticker 💰 al chat de *${telefonoCliente}*\n` +
+                        `   ⚠️ Solo a ESE chat — si lo mandas a otro número\n` +
+                        `   o a un grupo, el pedido NO queda conectado.\n` +
+                        `2️⃣ Emite la factura del pedido desde la app.\n\n` +
+                        `📅 A las 8 PM te aviso si quedaron pendientes.`;
                       await notificarWAVendedora(vendedora, msg);
                     } catch (eWa) {
                       console.error('[comprobante wa vendedora]', eWa.message);
@@ -7386,92 +7429,164 @@ function _huelaPMBogota() {
   return horaBogota;
 }
 
+// ── Helper: ¿el pedido tiene factura emitida hoy? ──
+function pedidoTieneFactura(pedidoId) {
+  try {
+    const facts = db.leerFacturasPorPedido(pedidoId) || [];
+    return facts.length > 0;
+  } catch { return false; }
+}
+
+// ── Helper: ¿el comprobante tiene sticker en el chat del cliente? ──
+// (busca pedido del mismo telefono en estado != bandeja en ventana de 18h)
+function _comprobanteTieneSticker(telefono, pedidosCur, limiteTs) {
+  const tel = String(telefono).replace(/\D/g, '');
+  return pedidosCur.some(p => {
+    const pTel = String(p.telefono || '').replace(/\D/g, '');
+    if (pTel !== tel) return false;
+    if (p.estado === 'bandeja') return false;
+    const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+    return t >= limiteTs;
+  });
+}
+
 async function enviarResumenComprobantes() {
   try {
     const lista = db.leerComprobantes();
-    if (!lista.length) return;
-
-    // Filtrar últimas 18h (cubre el día de trabajo de las vendedoras)
+    const pedidosCur = leerPedidos();
+    // Ventana del día de trabajo (18h)
     const limite = Date.now() - 18 * 60 * 60 * 1000;
     const recientes = lista.filter(r => new Date(r.ts).getTime() >= limite);
-    if (!recientes.length) {
-      console.log('[resumen-8pm] sin comprobantes en las últimas 18h');
-      return;
-    }
 
-    // Cargar pedidos para detectar cuáles ya se marcaron con sticker
-    const pedidosCur = leerPedidos();
-    function yaMarcadoConSticker(telefono) {
-      const tel = String(telefono).replace(/\D/g, '');
-      // Hay pedido reciente del cliente ya en estado avanzado (no bandeja)?
-      return pedidosCur.some(p => {
-        const pTel = String(p.telefono || '').replace(/\D/g, '');
-        if (pTel !== tel) return false;
-        if (p.estado === 'bandeja') return false; // todavía cotización
-        const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-        return t >= limite; // pedido movido en las últimas 18h = ya se marcó
-      });
-    }
-
-    // Filtrar los que aún no se marcaron
-    const sinMarcar = recientes.filter(r => !yaMarcadoConSticker(r.telefono));
-    if (!sinMarcar.length) {
-      console.log(`[resumen-8pm] ${recientes.length} detectados, todos ya marcados — silencio`);
-      return;
-    }
-
-    // Agrupar por vendedora
-    const porVendedora = {};
+    // ── Comprobantes SIN sticker (agrupados por vendedora) ──
+    const sinMarcar = recientes.filter(r => !_comprobanteTieneSticker(r.telefono, pedidosCur, limite));
+    const compSinStickerPorVend = {};
     sinMarcar.forEach(r => {
       const v = r.vendedora || 'Betty';
-      if (!porVendedora[v]) porVendedora[v] = [];
-      porVendedora[v].push(r);
+      if (!compSinStickerPorVend[v]) compSinStickerPorVend[v] = [];
+      compSinStickerPorVend[v].push(r);
     });
 
-    // Mandar WA a cada vendedora con sus pendientes + cuadre del día completo
-    for (const [vendedora, items] of Object.entries(porVendedora)) {
-      const lineas = items.map((r, i) => {
-        const hora = new Date(r.ts).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
-        const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
-        return `${i+1}. *${r.cliente}* (${hora}) — ${r.banco} ${monto}`;
-      }).join('\n');
-      const dia = resumenDiaVendedora(vendedora);
-      const texto = `📊 *${vendedora.toUpperCase()} — Cierre del día*\n\n` +
-        `🎯 *Ventas confirmadas con sticker:* ${dia.conSticker}\n` +
-        `💰 *Total detectado hoy:* ${_formatearMontoCOP(dia.totalMonto)}\n\n` +
-        `⚠️ *${items.length} pago${items.length>1?'s':''} SIN sticker:*\n${lineas}\n\n` +
-        `👉 Si fueron ventas reales, mandá el sticker para que entren a la app.\n` +
-        `Si alguna no era venta, ignorá ese.`;
-      try { await notificarWAVendedora(vendedora, texto); } catch (e) { console.error('[resumen-8pm wa]', e.message); }
-      console.log(`[resumen-8pm] enviado a ${vendedora}: ${items.length} sin sticker / ${dia.conSticker} con sticker`);
+    // ── Pedidos creados hoy (agrupados por vendedora) ──
+    // Cualquier pedido con ultimoMovimiento dentro de las 18h
+    const pedidosHoy = pedidosCur.filter(p => {
+      const t = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+      return t >= limite;
+    });
+    const pedidosPorVend = {};
+    pedidosHoy.forEach(p => {
+      const v = p.vendedora || 'Betty';
+      if (!pedidosPorVend[v]) pedidosPorVend[v] = [];
+      pedidosPorVend[v].push(p);
+    });
+
+    // ── Vendedoras que necesitan resumen (tienen pedidos hoy O comprobantes sin sticker) ──
+    const vendedorasActivas = new Set([
+      ...Object.keys(compSinStickerPorVend),
+      ...Object.keys(pedidosPorVend),
+    ]);
+
+    if (!vendedorasActivas.size) {
+      console.log('[resumen-8pm] sin actividad en las últimas 18h — silencio');
+      return;
     }
 
-    // Resumen consolidado al jefe (Camilo) + Graciela por WA + Duvan por Telegram.
-    // Adicional al WA a cada vendedora (arriba), los admins reciben el consolidado.
-    const totalPorV = Object.entries(porVendedora).map(([v, l]) => `• *${v}*: ${l.length}`).join('\n');
-    // Detalle por vendedora con totales del dia y monto vendido
-    const detalleAdmin = Object.entries(porVendedora).map(([v, l]) => {
+    // ── Mandar WA detallado a cada vendedora ──
+    for (const vendedora of vendedorasActivas) {
+      const peds = pedidosPorVend[vendedora] || [];
+      const compsSin = compSinStickerPorVend[vendedora] || [];
+      const dia = resumenDiaVendedora(vendedora);
+
+      let texto = `📊 *${vendedora.toUpperCase()} — Resumen del día*\n`;
+      texto += `─────────────────────────────\n\n`;
+
+      // SECCIÓN 1: Pedidos del día con estado factura
+      if (peds.length) {
+        texto += `📦 *TUS PEDIDOS DEL DÍA:* ${peds.length}\n\n`;
+        peds.forEach(p => {
+          const tieneFact = pedidoTieneFactura(p.id);
+          const factIcono = tieneFact ? '✅' : '❌ PENDIENTE';
+          const equipo = p.equipo || '(sin nombre)';
+          const tel = p.telefono || '?';
+          texto += `  ${tieneFact ? '✅' : '⚠️'} #${p.id} ${equipo}\n`;
+          texto += `     📞 ${tel}\n`;
+          texto += `     sticker ✅   factura ${factIcono}\n\n`;
+        });
+      }
+
+      // SECCIÓN 2: Comprobantes sin sticker
+      if (compsSin.length) {
+        texto += `⚠️ *COMPROBANTES SIN STICKER:* ${compsSin.length}\n\n`;
+        compsSin.forEach(r => {
+          const hora = new Date(r.ts).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
+          const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
+          const banco = r.banco || 'banco';
+          const tel = r.telefono || '?';
+          texto += `  💸 ${monto} a las ${hora} por ${banco}\n`;
+          texto += `     de ${tel}\n`;
+          texto += `     → Pasa el sticker a ESE chat\n\n`;
+        });
+      }
+
+      // SECCIÓN 3: Lista de pendientes consolidada
+      const facturasPend = peds.filter(p => !pedidoTieneFactura(p.id));
+      const stickersPend = compsSin;
+      if (facturasPend.length || stickersPend.length) {
+        texto += `─────────────────────────────\n`;
+        texto += `📋 *TUS PENDIENTES PARA MAÑANA:*\n\n`;
+        let n = 1;
+        for (const p of facturasPend) {
+          texto += `${n++}. Emite factura del #${p.id} (${p.equipo || p.telefono})\n`;
+        }
+        for (const r of stickersPend) {
+          const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
+          texto += `${n++}. Sticker a ${r.telefono} (pago ${monto})\n`;
+        }
+      } else {
+        texto += `─────────────────────────────\n`;
+        texto += `🎉 ¡Día completo! Todo con sticker + factura.\n`;
+      }
+
+      texto += `\n💰 Total vendido hoy: ${_formatearMontoCOP(dia.totalMonto)}`;
+
+      try { await notificarWAVendedora(vendedora, texto); } catch (e) { console.error('[resumen-8pm wa]', e.message); }
+      console.log(`[resumen-8pm] enviado a ${vendedora}: ${peds.length} pedidos / ${compsSin.length} sin sticker`);
+    }
+
+    // ── Resumen consolidado al jefe (Camilo + Graciela + TG) ──
+    const detalleAdmin = Array.from(vendedorasActivas).map(v => {
+      const peds = pedidosPorVend[v] || [];
+      const compsSin = compSinStickerPorVend[v] || [];
       const dia = resumenDiaVendedora(v);
-      return `*${v.toUpperCase()}*\n  • Confirmadas con sticker: ${dia.conSticker}\n  • Total vendido hoy: ${_formatearMontoCOP(dia.totalMonto)}\n  • Sin sticker: ${l.length}`;
+      const facturasPend = peds.filter(p => !pedidoTieneFactura(p.id));
+      const conFact = peds.length - facturasPend.length;
+      return `💰 *${v.toUpperCase()}*\n` +
+        `   • ${peds.length} ventas con sticker\n` +
+        `   • ${compsSin.length} comprobantes SIN sticker\n` +
+        `   • ${facturasPend.length} facturas pendientes${facturasPend.length ? ' (#' + facturasPend.map(p => p.id).join(', #') + ')' : ''}\n` +
+        `   • ${conFact}/${peds.length} con factura\n` +
+        `   • Total detectado: ${_formatearMontoCOP(dia.totalMonto)}`;
     }).join('\n\n');
-    const totalDetectados = recientes.length;
-    const totalSinMarcar = sinMarcar.length;
-    const totalMontoHoy = Object.entries(porVendedora).reduce((s, [v]) => s + resumenDiaVendedora(v).totalMonto, 0);
 
-    const adminText = `📊 *CIERRE DEL DIA — 8 PM*\n\n` +
-      `💰 Total vendido hoy: *${_formatearMontoCOP(totalMontoHoy)}*\n` +
-      `📥 Comprobantes detectados: *${totalDetectados}*\n` +
-      `⚠️ Sin sticker (vendedoras olvidaron marcar): *${totalSinMarcar}*\n\n` +
+    const totalPedidos = Object.values(pedidosPorVend).reduce((s, l) => s + l.length, 0);
+    const totalSinSticker = sinMarcar.length;
+    const totalConFactura = pedidosHoy.filter(p => pedidoTieneFactura(p.id)).length;
+    const totalSinFactura = totalPedidos - totalConFactura;
+    const totalMontoHoy = Array.from(vendedorasActivas).reduce((s, v) => s + resumenDiaVendedora(v).totalMonto, 0);
+
+    const adminText = `📊 *RESUMEN DEL DÍA — 8 PM*\n` +
+      `─────────────────────────────\n\n` +
       `${detalleAdmin}\n\n` +
-      `_Las vendedoras ya recibieron su recordatorio para subir el sticker._`;
+      `─────────────────────────────\n` +
+      `📈 *TOTAL DÍA:* ${totalPedidos} pedidos\n` +
+      `   ✅ ${totalPedidos} con sticker | ⚠️ ${totalSinSticker} sin sticker\n` +
+      `   ✅ ${totalConFactura} con factura | ⚠️ ${totalSinFactura} sin factura\n` +
+      `💰 Total detectado: *${_formatearMontoCOP(totalMontoHoy)}*\n\n` +
+      `${totalSinFactura || totalSinSticker ? '⚠️ Verifica que terminen antes de mañana 10 AM' : '🎉 Día completo, todo en orden.'}`;
 
-    // WA al jefe (Camilo)
     try { await responderJefe(adminText); } catch (e) { console.error('[resumen-8pm jefe]', e.message); }
-    // WA a Graciela (si esta configurada)
     try { await notificarWAPersona('graciela', adminText); } catch (e) { console.error('[resumen-8pm graciela]', e.message); }
-    // TG a Duvan (mantener canal de respaldo)
-    const tgText = `📊 *Resumen 8 PM — Comprobantes detectados*\n\nHoy se detectaron *${totalDetectados}* comprobantes en los WA de las vendedoras.\n*${totalSinMarcar}* están sin marcar:\n\n${totalPorV}\n\nLas vendedoras ya recibieron su recordatorio.`;
-    try { await notificarTelegram(tgText); } catch {}
+    try { await notificarTelegram(adminText); } catch {}
   } catch (e) {
     console.error('[resumen-8pm error]', e.message);
   }
