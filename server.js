@@ -2989,8 +2989,8 @@ http.createServer(async (req, res) => {
 
   // ── GET /api/admin/probar-watcher?limit=50&dias=7&conImagen=1 ──
   // Ejecuta el watcher del grupo "Ventas Ney, Wendy y Paola" en MODO SOLO ANALISIS.
-  // Devuelve reporte JSON de que detectaria + a que pedidos amarraria.
-  // NO modifica ningun pedido. Sirve para verificar antes de activar el cron real.
+  // Incluye hash matching: cruza foto del grupo con docs_salientes_wa.
+  // Devuelve reporte JSON. NO modifica ningun pedido.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-watcher')) {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -2998,10 +2998,32 @@ http.createServer(async (req, res) => {
       const diasAtras = parseInt(u.searchParams.get('dias') || '7', 10);
       const conImagen = u.searchParams.get('conImagen') !== '0';
       const pedidos = leerPedidos();
-      const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ limit, diasAtras, conImagen, pedidos });
+      const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ db, limit, diasAtras, conImagen, pedidos });
       return json(res, 200, reporte);
     } catch (e) {
       return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/admin/aplicar-watcher-ventas?dias=2 ──
+  // Ejecuta procesarYAmarrar REAL: identifica pedidos por hash y amarra
+  // nombre/fecha/lista jugadores. Detecta arreglos del contacto Lidermeyer.
+  // Actualiza state.ultimoTs (cutoff temporal).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/aplicar-watcher-ventas')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasAtras = parseInt(u.searchParams.get('dias') || '2', 10);
+      const conImagen = u.searchParams.get('conImagen') !== '0';
+      const reporte = await grupoVentasWatcher.procesarYAmarrar({
+        db,
+        diasAtras,
+        conImagen,
+        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+        registrarArreglo: null, // TODO: conectar cuando se defina formato de arreglos
+      });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
     }
   }
 
