@@ -4933,16 +4933,19 @@ http.createServer(async (req, res) => {
                     `📝 PENDIENTE: factura #${resultadoApi.id} (${vendedora})`;
                   notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
 
-                  // WA INDIVIDUAL a la vendedora — recordatorio de factura
+                  // WA INDIVIDUAL a la vendedora — recordatorio de factura + nombre equipo
                   try {
                     const msgVendedora =
                       `🎉 Venta #${resultadoApi.id} confirmada\n` +
                       `👤 Cliente: ${nombreCliente}\n` +
                       `📞 ${telBonito}\n\n` +
-                      `📝 PRÓXIMO PASO:\n` +
-                      `Emite la factura del pedido #${resultadoApi.id} desde la app.\n` +
-                      `La factura debe ir al chat de ${telBonito}.\n\n` +
-                      `📅 A las 8 PM te aviso si quedan facturas pendientes.`;
+                      `📝 PRÓXIMOS PASOS:\n` +
+                      `1️⃣ Pregúntale al cliente por TEXTO:\n` +
+                      `   "¿Cómo se llama tu equipo?"\n` +
+                      `   (yo leo el chat y extraigo el nombre solo)\n\n` +
+                      `2️⃣ Emite la factura del pedido #${resultadoApi.id} desde la app.\n` +
+                      `   La factura debe ir al chat de ${telBonito}.\n\n` +
+                      `📅 A las 8 PM te aviso si quedan facturas o nombres pendientes.`;
                     await notificarWAVendedora(vendedora, msgVendedora);
                   } catch (eFact) { console.error('[wa-vendedora venta-confirmada]', eFact.message); }
 
@@ -8298,6 +8301,35 @@ async function cronCatalogoTick() {
 setInterval(cronCatalogoTick, 10 * 60 * 1000); // cada 10 min
 setTimeout(cronCatalogoTick, 120 * 1000); // primer tick 120s tras arrancar
 console.log('[cron-catalogo] activado — lee Drive CATALOGO cada 10 min (cutoff al arranque)');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON LECTOR DE CHATS — cada 15 min
+// Por cada pedido sin nombre real (equipoVieneDeBot=true), lee los
+// chats vendedora ↔ cliente, transcribe audios con Gemini y extrae
+// el nombre del equipo. Aplica si confianza alta.
+// ═══════════════════════════════════════════════════════════════════
+let _cronChatsEjecutando = false;
+async function cronChatsTick() {
+  if (_cronChatsEjecutando) return;
+  _cronChatsEjecutando = true;
+  try {
+    const r = await chatReader.procesarYAmarrarChats({
+      db,
+      limitePedidos: 30,
+      notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+    });
+    if (r && (r.amarrados || r.errores)) {
+      console.log(`[cron-chats] procesados=${r.procesados || 0} amarrados=${r.amarrados || 0} sinNombre=${r.sinNombre || 0} errores=${r.errores || 0}`);
+    }
+  } catch (e) {
+    console.error('[cron-chats err]', e.message);
+  } finally {
+    _cronChatsEjecutando = false;
+  }
+}
+setInterval(cronChatsTick, 15 * 60 * 1000); // cada 15 min
+setTimeout(cronChatsTick, 180 * 1000); // primer tick 180s tras arrancar
+console.log('[cron-chats] activado — lee chats vendedora-cliente cada 15 min (Gemini + audios)');
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió

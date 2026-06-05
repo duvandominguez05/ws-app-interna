@@ -53,7 +53,7 @@ async function listarMensajesChat(instance, telefonoCliente, limit = 40) {
   return all;
 }
 
-// ── Extraer texto util de un mensaje ───────────────────────────────
+// ── Extraer texto util de un mensaje (sync, sin audio) ────────────
 function extraerTextoMensaje(m) {
   const msg = m.message || {};
   if (msg.conversation) return msg.conversation;
@@ -63,19 +63,83 @@ function extraerTextoMensaje(m) {
   return '';
 }
 
-// ── Construir transcript legible del chat (cliente vs vendedora) ────
-function construirTranscript(mensajes, maxMensajes = 30) {
-  // Ordenar ASC y tomar ultimos N
+// ── Descargar AUDIO base64 desde Evolution ─────────────────────────
+async function descargarAudioEvolution(instance, messageKey) {
+  try {
+    const r = await fetch(`${EVO_URL}/chat/getBase64FromMediaMessage/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
+      body: JSON.stringify({ message: { key: messageKey } }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return { base64: data.base64, mimeType: data.mimetype || 'audio/ogg' };
+  } catch { return null; }
+}
+
+// ── Transcribir audio con Gemini ───────────────────────────────────
+async function transcribirAudioConGemini(base64, mimeType) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { error: 'no GEMINI_API_KEY' };
+  const modelo = process.env.GEMINI_MODEL_AUDIO || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+  const prompt = `Transcribe este audio al espanol (colombiano). Devuelve SOLO el texto transcrito, sin comentarios, sin traducciones, sin agregar nada. Si el audio tiene multiples hablantes, separalos con "—". Si esta vacio o no entiendes, responde literalmente "(audio no transcribible)".`;
+  const body = {
+    contents: [{ parts: [
+      { text: prompt },
+      { inline_data: { mime_type: mimeType, data: base64 } }
+    ] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+  };
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) return { error: `Gemini audio HTTP ${r.status}` };
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return { transcripcion: texto.trim() };
+  } catch (e) {
+    return { error: 'exception: ' + e.message };
+  }
+}
+
+// ── Construir transcript legible (con audios transcritos via Gemini) ──
+// Mensajes audio se transcriben on-demand. Cache evita re-transcribir.
+async function construirTranscript(mensajes, opciones = {}) {
+  const { instance, maxMensajes = 30, cache = {}, maxAudiosPorChat = 8 } = opciones;
   const ordenados = [...mensajes].sort((a, b) => (a.messageTimestamp||0) - (b.messageTimestamp||0));
   const ultimos = ordenados.slice(-maxMensajes);
   const lineas = [];
+  let audiosTranscritos = 0;
   for (const m of ultimos) {
-    const texto = extraerTextoMensaje(m);
-    if (!texto || !texto.trim()) continue;
+    const msg = m.message || {};
     const quien = m.key?.fromMe ? 'Vendedora' : 'Cliente';
-    lineas.push(`${quien}: ${texto.trim().slice(0, 300)}`);
+    const msgId = m.key?.id;
+
+    // 1. Texto directo
+    let texto = extraerTextoMensaje(m);
+
+    // 2. Audio (transcribir si no esta en cache y tenemos instance)
+    if (!texto && msg.audioMessage && instance) {
+      if (cache[msgId]) {
+        texto = `[audio]: ${cache[msgId]}`;
+      } else if (audiosTranscritos < maxAudiosPorChat) {
+        const audio = await descargarAudioEvolution(instance, m.key);
+        if (audio?.base64) {
+          const tr = await transcribirAudioConGemini(audio.base64, audio.mimeType);
+          if (tr.transcripcion && tr.transcripcion !== '(audio no transcribible)') {
+            cache[msgId] = tr.transcripcion;
+            texto = `[audio]: ${tr.transcripcion}`;
+            audiosTranscritos++;
+          }
+        }
+      }
+    }
+
+    if (texto && texto.trim()) {
+      lineas.push(`${quien}: ${texto.trim().slice(0, 400)}`);
+    }
   }
-  return lineas.join('\n');
+  return { transcript: lineas.join('\n'), audiosTranscritos };
 }
 
 // ── Llamar Gemini para extraer nombre del equipo ───────────────────
@@ -151,7 +215,7 @@ REGLAS:
 }
 
 // ── ANALIZAR (modo prueba — NO modifica pedidos) ───────────────────
-async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = null, limitMensajes = 40 } = {}) {
+async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = null, limitMensajes = 40, maxAudiosPorChat = 8 } = {}) {
   if (!db || !db.leerPedidos) return { error: 'db requerido' };
 
   const pedidos = db.leerPedidos();
@@ -165,6 +229,10 @@ async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = 
   });
   if (soloId) elegibles = elegibles.filter(p => p.id === parseInt(soloId, 10));
   elegibles = elegibles.slice(0, limitePedidos);
+
+  // Cache de transcripciones persistente en state
+  const state = leerState();
+  state.transcripcionesCache = state.transcripcionesCache || {};
 
   const reporte = [];
   for (const p of elegibles) {
@@ -180,9 +248,14 @@ async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = 
       reporte.push({ id: p.id, vendedora: p.vendedora, telefono: p.telefono, error: e.message });
       continue;
     }
-    const transcript = construirTranscript(mensajes);
+    const r = await construirTranscript(mensajes, {
+      instance,
+      cache: state.transcripcionesCache,
+      maxAudiosPorChat,
+    });
+    const transcript = r.transcript;
     if (!transcript) {
-      reporte.push({ id: p.id, vendedora: p.vendedora, telefono: p.telefono, numMensajes: mensajes.length, error: 'sin texto util' });
+      reporte.push({ id: p.id, vendedora: p.vendedora, telefono: p.telefono, numMensajes: mensajes.length, audiosTranscritos: r.audiosTranscritos, error: 'sin texto util ni audios' });
       continue;
     }
     const gemini = await extraerNombreConGemini({
@@ -196,10 +269,15 @@ async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = 
       telefono: p.telefono,
       equipoActual: p.equipo,
       numMensajes: mensajes.length,
-      transcriptPreview: transcript.slice(0, 400),
+      audiosTranscritos: r.audiosTranscritos,
+      transcriptPreview: transcript.slice(0, 500),
       gemini,
     });
   }
+
+  // Guardar cache de transcripciones (evita re-transcribir el mismo audio)
+  guardarState(state);
+
   return { totalElegibles: elegibles.length, detalle: reporte };
 }
 
