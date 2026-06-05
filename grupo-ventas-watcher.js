@@ -221,19 +221,17 @@ function encontrarPedidoParaAmarrar(pedidos, vendedora) {
   const ESTADOS_CANDIDATOS = new Set(['bandeja', 'hacer-diseno', 'confirmado']);
   const candidatos = pedidos.filter(p => {
     if (!ESTADOS_CANDIDATOS.has(p.estado)) return false;
-    if (vendedora === '_empresa') {
-      // Sin vendedora especifica: cualquiera
-    } else if (vendedora && p.vendedora !== vendedora) {
-      return false;
-    }
+    // Para '_empresa' (mensaje generico fromMe sin vendedora identificable):
+    // NO amarrar automaticamente — alto riesgo de pisar el pedido equivocado.
+    // Solo amarrar si la vendedora es identificable.
+    if (vendedora === '_empresa') return false;
+    if (vendedora && p.vendedora !== vendedora) return false;
     return pedidoEsAmarrable(p);
   });
-  candidatos.sort((a, b) => {
-    const ta = new Date(a.ultimoMovimiento || 0).getTime();
-    const tb = new Date(b.ultimoMovimiento || 0).getTime();
-    return tb - ta;
-  });
-  return candidatos[0] || null;
+  // Politica conservadora: solo amarrar si hay UN solo candidato
+  // (si hay 2+, esperar hash match o mas data — evita pisar pedidos)
+  if (candidatos.length === 1) return candidatos[0];
+  return null;
 }
 
 // ── Descargar imagen base64 desde Evolution (replicado de server.js) ──
