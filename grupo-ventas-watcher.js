@@ -453,16 +453,16 @@ async function analizarMensajesGrupo({ db = null, limit = 50, pedidos = [], dias
 // Recorre grupos de mensajes recientes, usa hash matching + Gemini, y
 // MODIFICA pedidos UNO A UNO con db.upsertPedido (no pisa pedidos nuevos).
 // Mantiene state.ultimoTs para cutoff temporal.
-async function procesarYAmarrar({ db, notificarWAVendedora = null, notificarJefes = null, registrarArreglo = null, diasAtras = 2, conImagen = true } = {}) {
+async function procesarYAmarrar({ db, notificarWAVendedora = null, notificarJefes = null, registrarArreglo = null, diasAtras = 2, conImagen = true, forzarSinState = false } = {}) {
   if (!EVO_KEY) return { error: 'sin EVOLUTION_API_KEY' };
   if (!db || !db.leerPedidos || !db.upsertPedido) {
     return { error: 'faltan db.leerPedidos/db.upsertPedido' };
   }
 
   const state = leerState();
-  const cutoffStateTs = state.ultimoTs || 0;
+  // forzarSinState=true: ignora state.ultimoTs (solo cutoff por dias)
+  const cutoffStateTs = forzarSinState ? 0 : (state.ultimoTs || 0);
   const cutoffDiasTs = Date.now() - (diasAtras * 24 * 60 * 60 * 1000);
-  // El cutoff efectivo es el MAYOR entre los dos (no reprocesar historico ni lo ya visto)
   const cutoffTs = Math.max(cutoffStateTs, cutoffDiasTs);
 
   const msgs = await listarMensajesGrupo(100);

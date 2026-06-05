@@ -3172,18 +3172,11 @@ http.createServer(async (req, res) => {
       const diasAtras = parseInt(u.searchParams.get('dias') || '2', 10);
       const conImagen = u.searchParams.get('conImagen') !== '0';
       const reset = u.searchParams.get('reset') === '1';
-      // Reset opcional: pone state.ultimoTs a 0 para forzar procesar desde
-      // el cutoff de dias. (cutoff efectivo = Math.max(0, hace `dias`) = hace `dias`)
-      if (reset) {
-        const s = grupoVentasWatcher.leerState();
-        s.ultimoTs = 0;
-        grupoVentasWatcher.guardarState(s);
-        console.log('[admin] reset state grupo Ventas: ultimoTs=0');
-      }
       const reporte = await grupoVentasWatcher.procesarYAmarrar({
         db,
         diasAtras,
         conImagen,
+        forzarSinState: reset, // si reset=1, ignora state.ultimoTs
         notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
         notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
         registrarArreglo: null,
