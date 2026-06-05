@@ -3064,6 +3064,21 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/aplicar-watcher-catalogo ──
+  // Ejecuta procesarYAmarrar real del CATALOGO: hashea fotos nuevas en Drive
+  // y amarra el nombre del archivo al pedido del cliente identificado por hash.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/aplicar-watcher-catalogo')) {
+    try {
+      const reporte = await catalogoFotosWatcher.procesarYAmarrar({
+        db,
+        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
   // ── POST /api/admin/aplicar-watcher-ventas?dias=2 ──
   // Ejecuta procesarYAmarrar REAL: identifica pedidos por hash y amarra
   // nombre/fecha/lista jugadores. Detecta arreglos del contacto Lidermeyer.
@@ -8219,6 +8234,35 @@ try {
 setInterval(cronGrupoVentasTick, 2 * 60 * 1000); // cada 2 min
 setTimeout(cronGrupoVentasTick, 60 * 1000); // primer tick 60s tras arrancar
 console.log('[cron-ventas] activado — lee grupo Ventas N/W/P cada 2 min');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON CATALOGO — cada 10 minutos
+// Lee Drive folder CATALOGO recursivo, hashea fotos nuevas y cruza con
+// docs_salientes_wa para identificar al cliente. El nombre del archivo
+// = nombre del pedido. Solo actua sobre fotos modificadas DESPUES de
+// la activacion del cron (cutoff temporal).
+// ═══════════════════════════════════════════════════════════════════
+let _cronCatalogoEjecutando = false;
+async function cronCatalogoTick() {
+  if (_cronCatalogoEjecutando) return;
+  _cronCatalogoEjecutando = true;
+  try {
+    const r = await catalogoFotosWatcher.procesarYAmarrar({
+      db,
+      notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+    });
+    if (r && (r.amarrados || (r.procesados && r.procesados > 0))) {
+      console.log(`[cron-catalogo] procesados=${r.procesados || 0} amarrados=${r.amarrados || 0} sinHashMatch=${r.sinHashMatch || 0}`);
+    }
+  } catch (e) {
+    console.error('[cron-catalogo err]', e.message);
+  } finally {
+    _cronCatalogoEjecutando = false;
+  }
+}
+setInterval(cronCatalogoTick, 10 * 60 * 1000); // cada 10 min
+setTimeout(cronCatalogoTick, 120 * 1000); // primer tick 120s tras arrancar
+console.log('[cron-catalogo] activado — lee Drive CATALOGO cada 10 min (cutoff al arranque)');
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió

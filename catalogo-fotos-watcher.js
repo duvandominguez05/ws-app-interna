@@ -232,6 +232,144 @@ async function analizarCatalogo({ db, pedidos = [], diasAtras = 14, soloHashMatc
   };
 }
 
+// ── PROCESAR Y AMARRAR (SI modifica pedidos) — para cron real ──────
+// Recorre fotos del CATALOGO, calcula hash, busca match en docs salientes
+// y MODIFICA el pedido del cliente con el nombre del archivo.
+//
+// Cutoff temporal: usa state.activadoEnTs para NO procesar archivos
+// modificados antes de la activacion del cron (historico).
+async function procesarYAmarrar({ db, notificarWAVendedora = null, conImagen = true } = {}) {
+  if (!db || !db.leerPedidos || !db.upsertPedido) {
+    return { error: 'faltan db.leerPedidos/db.upsertPedido' };
+  }
+  if (!gmailWT.estaConectado()) {
+    return { error: 'Drive no conectado (gmail-wt)' };
+  }
+
+  const state = _leerState();
+  // Activado al primer arranque: no procesar nada anterior
+  if (!state.activadoEnTs) {
+    state.activadoEnTs = Date.now();
+    _guardarState(state);
+    return { procesados: 0, amarrados: 0, mensaje: 'cron activado, no procesa historico', cutoff: state.activadoEnTs };
+  }
+
+  // Listar todas las imagenes recursivamente
+  let todas;
+  try {
+    todas = await listarTodasImagenesRecursivo(FOLDER_CATALOGO);
+  } catch (e) {
+    return { error: 'listar Drive: ' + e.message };
+  }
+  if (!todas.length) return { procesados: 0, amarrados: 0, sinMatch: 0 };
+
+  // Filtrar: solo archivos MODIFICADOS despues de la activacion + no procesados ya
+  const cutoffTs = state.activadoEnTs;
+  const candidatos = todas.filter(f => {
+    const mt = new Date(f.modifiedTime || 0).getTime();
+    if (mt < cutoffTs) return false;
+    if (state.procesados && state.procesados[f.id]) return false;
+    return true;
+  });
+
+  if (!candidatos.length) {
+    return { procesados: 0, amarrados: 0, sinMatch: 0, cutoff: cutoffTs };
+  }
+
+  const pedidos = db.leerPedidos();
+  const resultados = { procesados: 0, amarrados: 0, sinMatch: 0, sinHashMatch: 0, detalle: [] };
+
+  for (const f of candidatos) {
+    resultados.procesados++;
+    // Descargar y hashear
+    let hash;
+    try {
+      const dh = await descargarYHashear(f.id);
+      hash = dh.hash;
+    } catch (e) {
+      resultados.detalle.push({ file: f.name, error: 'descarga: ' + e.message });
+      continue;
+    }
+
+    // Marcar como procesado (aunque no haya match)
+    state.procesados = state.procesados || {};
+    state.procesados[f.id] = { hash, ts: Date.now(), name: f.name };
+
+    // Buscar match en docs salientes
+    const matches = db.leerDocumentosSalientesPorHash(hash) || [];
+    if (!matches.length) {
+      resultados.sinHashMatch++;
+      resultados.detalle.push({ file: f.name, accion: 'SIN-HASH-MATCH' });
+      continue;
+    }
+
+    // Tomar match mas reciente
+    const m = matches[0];
+    const telefonoCliente = m.cliente_telefono;
+
+    // Buscar pedido activo del cliente
+    const pedidoCandidato = encontrarPedidoActivoCliente(pedidos, telefonoCliente);
+    if (!pedidoCandidato) {
+      resultados.sinMatch++;
+      resultados.detalle.push({ file: f.name, accion: 'SIN-PEDIDO-ACTIVO', cliente: telefonoCliente });
+      continue;
+    }
+
+    // Releer pedido fresco
+    const fresco = db.leerPedidos().find(p => p.id === pedidoCandidato.id);
+    if (!fresco) continue;
+    const p = fresco;
+
+    // Solo reemplazar si: equipoVieneDeBot o generico/vacio Y no amarrado previo del grupo
+    const equipoActual = String(p.equipo || '').trim();
+    const equipoNuevo = nombreEquipoDeFilename(f.name);
+    if (!equipoNuevo) continue;
+    const esReemplazable = (p.equipoVieneDeBot === true) || !equipoActual ||
+                           /^cliente\s+\+?\d/i.test(equipoActual);
+    if (!esReemplazable && !p.equipoAmarradoDeGrupo) {
+      // Tiene nombre real ya — no pisar
+      resultados.detalle.push({ file: f.name, accion: 'SIN-MATCH', razon: 'pedido ya tiene nombre real', pedidoId: p.id });
+      continue;
+    }
+
+    // Aplicar amarre
+    p.equipo = equipoNuevo;
+    p.equipoAmarradoDeGrupo = true;
+    p.amarradoDeGrupoFuente = 'catalogo-hash';
+    p.amarradoDeGrupoIso = new Date().toISOString();
+    p.catalogoFotoId = f.id;
+    p.catalogoFotoLink = `https://drive.google.com/file/d/${f.id}/view`;
+    if (p.estado === 'bandeja' || p.estado === 'hacer-diseno') {
+      p.estado = 'confirmado';
+    }
+    p.ultimoMovimiento = new Date().toISOString();
+
+    try {
+      db.upsertPedido(p);
+    } catch (e) {
+      resultados.detalle.push({ file: f.name, accion: 'ERROR', error: e.message });
+      continue;
+    }
+    resultados.amarrados++;
+    resultados.detalle.push({
+      file: f.name, accion: 'AMARRADO', pedidoId: p.id,
+      equipo: equipoNuevo, vendedora: p.vendedora, cliente: telefonoCliente,
+    });
+
+    // Notificar a la vendedora
+    if (typeof notificarWAVendedora === 'function' && p.vendedora) {
+      try {
+        await notificarWAVendedora(p.vendedora,
+          `📸 tu pedido #${p.id} quedo nombrado como *${equipoNuevo}* (foto en CATALOGO)`
+        );
+      } catch (e) { console.error('[catalogo notif err]', e.message); }
+    }
+  }
+
+  _guardarState(state);
+  return { ...resultados, cutoff: cutoffTs };
+}
+
 module.exports = {
   FOLDER_CATALOGO,
   listarTodasImagenesRecursivo,
@@ -239,4 +377,5 @@ module.exports = {
   nombreEquipoDeFilename,
   encontrarPedidoActivoCliente,
   analizarCatalogo,
+  procesarYAmarrar,
 };
