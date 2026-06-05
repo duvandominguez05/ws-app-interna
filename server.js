@@ -68,13 +68,20 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
   // Ventas N/W/P, del archivo .cdr, etc). Marcamos equipoVieneDeBot=true
   // para que el watcher pueda reemplazarlo cuando aparezca el nombre real.
   const equipoLimpio = equipo ? String(equipo).trim() : '';
+  const vendedoraCap = vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase();
+  // Auto-asignar diseñador al crear pedido directo, sin esperar el segundo paso.
+  // (la vendedora-disenadora se asigna a si misma; el resto a Oscar)
+  const disenadorAuto = tipoNorm === 'pedido'
+    ? (VENDEDORAS_DISENADORAS && VENDEDORAS_DISENADORAS.has(vendedoraCap) ? vendedoraCap : DISENADOR_FULL_TIME_DEFAULT)
+    : null;
   const nuevo = {
     id:          nextId,
     equipo:      equipoLimpio,
     pushNameCliente: equipoLimpio, // guardar para referencia
     equipoVieneDeBot: true,        // bandera para que el watcher sobreescriba
     telefono:    String(telefono).trim(),
-    vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
+    vendedora:   vendedoraCap,
+    disenadorAsignado: disenadorAuto,
     tipoBandeja: tipoNorm,
     estado:      tipoNorm === 'pedido' ? 'hacer-diseno' : 'bandeja',
     creadoEn:    new Date().toLocaleDateString('es-CO'),
@@ -1189,6 +1196,45 @@ async function procesarRespuestaJefe(texto) {
     return { ok: true };
   }
 
+  // ── Corregir nombre del equipo: "equipo 10 HE RED RIBBON SQUAD FC"
+  //    o aliases: "nombre 10 ...", "eq 10 ..."
+  // Reescribe pedido[id].equipo, deja equipoVieneDeBot=false para que el
+  // watcher no lo vuelva a sobreescribir, y dispara re-evaluacion de WT/PDF
+  // (por si los archivos llegaron con ese nombre y no se habian amarrado).
+  const mEq = (texto || '').trim().match(/^(?:equipo|nombre|eq)\s+(\d+)\s+(.+)$/i);
+  if (mEq) {
+    const idEq = parseInt(mEq[1], 10);
+    const nuevoNombre = mEq[2].trim();
+    if (!nuevoNombre) {
+      await responderJefe(`⚠️ Escribi: *equipo ${idEq} NOMBRE DEL EQUIPO*`);
+      return { ok: true };
+    }
+    const peds = leerPedidos();
+    const pp = peds.find(x => x.id === idEq);
+    if (!pp) {
+      await responderJefe(`⚠️ No existe pedido #${idEq}.`);
+      return { ok: true };
+    }
+    const equipoAntes = pp.equipo || '(vacio)';
+    pp.equipo = nuevoNombre;
+    pp.equipoVieneDeBot = false; // no volver a sobreescribir
+    pp.ultimoMovimiento = new Date().toISOString();
+    pp.notas = (pp.notas || '') + ` [nombre corregido por jefe: "${equipoAntes}" -> "${nuevoNombre}"]`;
+    guardarPedidos(peds, leerNextId());
+    console.log(`[jefe-cmd] pedido #${idEq} renombrado: "${equipoAntes}" -> "${nuevoNombre}"`);
+    await responderJefe(`✏️ *Pedido #${idEq}* renombrado:\n_${equipoAntes}_ → *${nuevoNombre}*\n\nVoy a revisar si tiene archivos esperando con este nombre…`);
+    // Re-evaluar amarres (WT/PDF/CATALOGO) por nombre.
+    try {
+      if (typeof revisarAmarresPorNombre === 'function') {
+        const res = await revisarAmarresPorNombre(idEq);
+        if (res?.cambios) {
+          await responderJefe(`✅ #${idEq} avanzo con archivos amarrados: ${res.cambios}`);
+        }
+      }
+    } catch (eRe) { console.error('[jefe-cmd reamarre]', eRe.message); }
+    return { ok: true };
+  }
+
   // Patron: "<n> si|no [vendedora] [monto]"
   const m = norm.match(/^(\d+)\s+(si|no|sí)(\s+([a-záéíóúñ]+))?(\s+(\d[\d.]*[k]?))?/i);
   if (!m) return { ok: false };
@@ -1649,6 +1695,59 @@ function buscarPedidoPorArchivo(pedidos, archivo, equipoHint) {
     return p.cliente && nombresCoinciden(p.cliente, ref);
   });
   return pd || null;
+}
+
+// Re-evalua amarres WT/PDF para un pedido cuyo nombre fue corregido por el
+// jefe. Recorre los registros de calandra (PDFs Drive) y wetransfer (correos
+// WT) buscando match por el nuevo equipo; marca los flags y avanza a
+// enviado-calandra si las dos senales estan listas.
+async function revisarAmarresPorNombre(idPedido) {
+  const peds = leerPedidos();
+  const pp = peds.find(x => x.id === idPedido);
+  if (!pp || !pp.equipo) return { ok: false, cambios: null };
+  const cambios = [];
+  // PDFs Drive
+  try {
+    const calandra = (typeof db.leerCalandra === 'function') ? db.leerCalandra() : [];
+    for (const r of calandra) {
+      if (nombresCoinciden(pp.equipo, r.equipo || r.archivo || '')) {
+        if (!pp.pdfDriveListo) {
+          pp.pdfDriveListo = true;
+          pp.fechaPdfDrive = new Date().toISOString();
+          cambios.push('PDF en Drive');
+        }
+        break;
+      }
+    }
+  } catch (e) { console.error('[reamarre calandra]', e.message); }
+  // WeTransfer
+  try {
+    const wts = (typeof db.leerWetransfer === 'function') ? db.leerWetransfer() : [];
+    for (const r of wts) {
+      if (nombresCoinciden(pp.equipo, r.equipo || r.archivo || '')) {
+        if (!pp.wtListo) {
+          pp.wtListo = true;
+          pp.fechaWt = new Date().toISOString();
+          cambios.push('WeTransfer');
+        }
+        break;
+      }
+    }
+  } catch (e) { console.error('[reamarre wt]', e.message); }
+  // Avanzar a enviado-calandra si ambas senales estan
+  let avanzo = false;
+  if (typeof evaluarPasoCalandra === 'function') {
+    avanzo = evaluarPasoCalandra(pp);
+  }
+  if (cambios.length || avanzo) {
+    pp.ultimoMovimiento = new Date().toISOString();
+    guardarPedidos(peds, leerNextId());
+  }
+  return {
+    ok: true,
+    cambios: cambios.length ? cambios.join(', ') + (avanzo ? ' (paso a calandra)' : '') : null,
+    avanzo,
+  };
 }
 
 // Mapeo de instancia Evolution → vendedora.
@@ -3166,23 +3265,40 @@ http.createServer(async (req, res) => {
   // Ejecuta procesarYAmarrar REAL: identifica pedidos por hash y amarra
   // nombre/fecha/lista jugadores. Detecta arreglos del contacto Lidermeyer.
   // Actualiza state.ultimoTs (cutoff temporal).
+  // Bloqueo: si el cron esta corriendo, espera a que termine para no pisar
+  // el state.ultimoTs y producir Procesados:0.
   if (req.method === 'POST' && req.url.startsWith('/api/admin/aplicar-watcher-ventas')) {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const diasAtras = parseInt(u.searchParams.get('dias') || '2', 10);
       const conImagen = u.searchParams.get('conImagen') !== '0';
       const reset = u.searchParams.get('reset') === '1';
-      const reporte = await grupoVentasWatcher.procesarYAmarrar({
-        db,
-        diasAtras,
-        conImagen,
-        forzarSinState: reset, // si reset=1, ignora state.ultimoTs
-        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
-        notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
-        registrarArreglo: null,
-      });
+      // Espera hasta 60s a que termine el cron en curso (si lo hay)
+      const inicioEspera = Date.now();
+      while (_cronVentasEjecutando && (Date.now() - inicioEspera) < 60000) {
+        await new Promise(r => setTimeout(r, 250));
+      }
+      if (_cronVentasEjecutando) {
+        return json(res, 409, { error: 'cron-ventas en ejecucion, reintenta en 1 min' });
+      }
+      _cronVentasEjecutando = true;
+      let reporte;
+      try {
+        reporte = await grupoVentasWatcher.procesarYAmarrar({
+          db,
+          diasAtras,
+          conImagen,
+          forzarSinState: reset, // si reset=1, ignora state.ultimoTs
+          notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+          notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
+          registrarArreglo: null,
+        });
+      } finally {
+        _cronVentasEjecutando = false;
+      }
       return json(res, 200, reporte);
     } catch (e) {
+      _cronVentasEjecutando = false;
       return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
     }
   }
@@ -5394,7 +5510,7 @@ http.createServer(async (req, res) => {
                 || '';
               // Solo procesar si parece comando del panel
               const t = texto.trim().toLowerCase();
-              const esComando = /^(ver|lista|list|\d+\s+(si|no|sí)\b)/i.test(t);
+              const esComando = /^(ver|lista|list|\d+\s+(si|no|sí)\b|(equipo|nombre|eq)\s+\d+\s+\S)/i.test(t);
               if (esComando) {
                 (async () => {
                   try { await procesarRespuestaJefe(texto); }
