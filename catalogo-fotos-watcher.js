@@ -238,7 +238,7 @@ async function analizarCatalogo({ db, pedidos = [], diasAtras = 14, soloHashMatc
 //
 // Cutoff temporal: usa state.activadoEnTs para NO procesar archivos
 // modificados antes de la activacion del cron (historico).
-async function procesarYAmarrar({ db, notificarWAVendedora = null, conImagen = true } = {}) {
+async function procesarYAmarrar({ db, notificarWAVendedora = null, notificarJefes = null, conImagen = true } = {}) {
   if (!db || !db.leerPedidos || !db.upsertPedido) {
     return { error: 'faltan db.leerPedidos/db.upsertPedido' };
   }
@@ -373,6 +373,19 @@ async function procesarYAmarrar({ db, notificarWAVendedora = null, conImagen = t
           `❓ Si está mal, responde: *no ${p.id} [nombre correcto]*`;
         await notificarWAVendedora(p.vendedora, msg);
       } catch (e) { console.error('[catalogo notif err]', e.message); }
+    }
+
+    // WA al jefe + Graciela
+    if (typeof notificarJefes === 'function') {
+      try {
+        const msg =
+          `🎨 *Pedido confirmado* #${p.id}\n\n` +
+          `🏷️ Equipo: *${equipoNuevo}*\n` +
+          `📞 ${telefonoCliente}\n` +
+          `🛍️ ${p.vendedora}\n\n` +
+          `Foto identificada en Drive CATALOGO (hash)`;
+        await notificarJefes(msg, { dedupeKey: `amarre-catalogo-jefe:${p.id}` });
+      } catch (e) { console.error('[catalogo notif jefe]', e.message); }
     }
   }
 

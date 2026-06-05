@@ -151,13 +151,24 @@ EXTRAE este JSON exacto (sin markdown, solo JSON valido):
   "notas": string | null               // cualquier info extra util
 }
 
-REGLAS:
-- Si imagen muestra escudo "ALMANY FC" → nombre_equipo="Almany FC", fuente_nombre_equipo="imagen-escudo", confianza alta
-- Si caption tiene "almany fc para el 6 de junio" → nombre_equipo="almany fc", fuente_nombre_equipo="caption"
-- Si caption tiene "24 uniformes para el 6 de junio" Y la imagen tiene escudo → usa escudo de la imagen
-- Si caption es texto generico (ej "Nico/ #9/ Talla 8" — eso es un JUGADOR) y la imagen tiene escudo → usa imagen
-- Lista jugadores: cada entrada con "Nombre: X / Talla: Y / Numero: Z" o variaciones
-- Si NO es un pedido (chat, meme, info random) → esPedidoUniforme: false
+REGLAS (orden de prioridad):
+1. **CAPTION EXPLICITO MANDA**: si el caption/listadoTexto tiene una linea clara con el nombre del equipo
+   (ej "HE RED RIBBON SQUAD FUTBOL CLUB", "ALMANY FC", "INVICTOS DE FE") → ese es el nombre.
+   fuente_nombre_equipo="caption", confianza alta.
+2. **IGNORAR escudo/logo W&S de la foto** — la marca "W&S DEPORTIVOS" o "WYS" NO es el nombre del equipo,
+   es la marca de la empresa. Tampoco "SD CLUB" si solo aparece en una foto chica/logo.
+3. Si NO hay nombre en caption pero la imagen tiene escudo claro del equipo → usar imagen-escudo
+4. Si caption tiene "almany fc para el 6 de junio" → nombre_equipo="almany fc", fuente="caption"
+5. Si caption es solo cantidad/fecha sin nombre (ej "24 uniformes para el 6 de junio") Y la imagen tiene escudo → usar escudo de la imagen
+6. Si caption es solo lista de jugadores (ej "Nico/ #9/ Talla 8") y la imagen tiene escudo → usar imagen
+7. Lista jugadores: cada entrada con "Nombre: X / Talla: Y / Numero: Z" o variaciones (puede ser larga, 20+ jugadores)
+8. Si NO es un pedido (chat, meme, info random) → esPedidoUniforme: false
+
+EJEMPLO IMPORTANTE:
+Si caption dice "Entrega el 11 de junio\nHE RED RIBBON SQUAD FUTBOL CLUB\n\nNOMBRE NUMERO TALLA\nJESUS 01 XL\n..."
+→ nombre_equipo="HE RED RIBBON SQUAD FUTBOL CLUB"
+→ fecha_entrega_texto="11 de junio"
+→ NO usar el escudo W&S de la foto
 
 Respuesta:`;
 
@@ -442,7 +453,7 @@ async function analizarMensajesGrupo({ db = null, limit = 50, pedidos = [], dias
 // Recorre grupos de mensajes recientes, usa hash matching + Gemini, y
 // MODIFICA pedidos UNO A UNO con db.upsertPedido (no pisa pedidos nuevos).
 // Mantiene state.ultimoTs para cutoff temporal.
-async function procesarYAmarrar({ db, notificarWAVendedora = null, registrarArreglo = null, diasAtras = 2, conImagen = true } = {}) {
+async function procesarYAmarrar({ db, notificarWAVendedora = null, notificarJefes = null, registrarArreglo = null, diasAtras = 2, conImagen = true } = {}) {
   if (!EVO_KEY) return { error: 'sin EVOLUTION_API_KEY' };
   if (!db || !db.leerPedidos || !db.upsertPedido) {
     return { error: 'faltan db.leerPedidos/db.upsertPedido' };
@@ -479,17 +490,29 @@ async function procesarYAmarrar({ db, notificarWAVendedora = null, registrarArre
     // ── Caso 1: arreglo (Lidermeyer) ──
     if (esArreglo) {
       resultados.arreglos++;
+      const nombreEq = parseo?.nombre_equipo || null;
+      const descripcion = r.captionPrincipal || r.textoListado || '';
       try {
         if (typeof registrarArreglo === 'function') {
           await registrarArreglo({
-            nombreEquipo: parseo?.nombre_equipo || null,
-            descripcion: r.captionPrincipal || r.textoListado || '',
+            nombreEquipo: nombreEq,
+            descripcion,
             fuente: 'grupo-ventas',
             fechaIso: new Date(g.ultimoTs).toISOString(),
           });
         }
       } catch (e) { console.error('[grupo-ventas registrarArreglo err]', e.message); }
-      resultados.detalle.push({ accion: 'ARREGLO', nombre: parseo?.nombre_equipo, desde: g.pushName });
+      // WA al jefe + Graciela con el arreglo
+      try {
+        if (typeof notificarJefes === 'function') {
+          const eqTxt = nombreEq ? `*${nombreEq}*` : '(sin nombre)';
+          const desc = descripcion ? `\n📝 ${descripcion.slice(0, 300)}` : '';
+          const msg = `🛠️ *ARREGLO solicitado*\n\nEquipo: ${eqTxt}\nFuente: Lider Meyer (grupo Ventas)${desc}`;
+          const dedupeKey = `arreglo:${nombreEq || 'sn'}:${Math.floor(g.ultimoTs / (24*60*60*1000))}`;
+          await notificarJefes(msg, { dedupeKey });
+        }
+      } catch (e) { console.error('[grupo-ventas notif arreglo jefe]', e.message); }
+      resultados.detalle.push({ accion: 'ARREGLO', nombre: nombreEq, desde: g.pushName });
       continue;
     }
 
@@ -553,6 +576,25 @@ async function procesarYAmarrar({ db, notificarWAVendedora = null, registrarArre
           await notificarWAVendedora(p.vendedora, msg, { tipo: 'amarre-grupo', pedidoId: p.id });
         }
       } catch (e) { console.error('[grupo-ventas notif vendedora err]', e.message); }
+
+      // WA al jefe + Graciela con el amarre + lista de jugadores si la hay
+      try {
+        if (typeof notificarJefes === 'function') {
+          const fechaTxt = parseo.fecha_entrega ? `\n📅 Entrega: ${parseo.fecha_entrega}` : '';
+          const cantTxt = parseo.num_uniformes ? `\n📦 ${parseo.num_uniformes} ${parseo.tipo_prenda || 'uniformes'}` : '';
+          const jugadores = Array.isArray(parseo.lista_jugadores) ? parseo.lista_jugadores : [];
+          const jugTxt = jugadores.length
+            ? `\n👥 ${jugadores.length} jugadores`
+            : '';
+          const msg =
+            `🎨 *Pedido confirmado* #${p.id}\n\n` +
+            `🏷️ Equipo: *${nombreNuevo}*\n` +
+            `📞 ${p.telefono}\n` +
+            `🛍️ ${p.vendedora}${fechaTxt}${cantTxt}${jugTxt}\n\n` +
+            `Diseño aprobado por cliente (detectado en grupo Ventas)`;
+          await notificarJefes(msg, { dedupeKey: `amarre-ventas-jefe:${p.id}` });
+        }
+      } catch (e) { console.error('[grupo-ventas notif amarre jefe]', e.message); }
 
     } else {
       resultados.sinMatch++;

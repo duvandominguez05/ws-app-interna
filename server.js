@@ -220,6 +220,20 @@ async function notificarWhatsappTrabajoFamilia(texto) {
   } catch (e) { console.error('[wa-grupo error]', e.message); }
 }
 
+// ── Notificar al JEFE (Camilo) + Graciela individual (no al grupo) ──
+// Helper unificado para avisos importantes. Acepta dedupeKey opcional
+// para evitar repetir el mismo aviso (key:pedidoId:dia).
+async function notificarJefes(texto, opciones = {}) {
+  const { dedupeKey = null, soloJefe = false } = opciones;
+  if (dedupeKey && typeof waPuedeEnviar === 'function' && !waPuedeEnviar(dedupeKey)) {
+    return; // ya se envio hoy
+  }
+  try { await notificarWAPersona('camilo', texto); } catch (e) { console.error('[notif-jefes camilo]', e.message); }
+  if (!soloJefe) {
+    try { await notificarWAPersona('graciela', texto); } catch (e) { console.error('[notif-jefes graciela]', e.message); }
+  }
+}
+
 // Manda mensaje al WA personal de una vendedora vía la instancia de ventas.
 // vendedora: 'Betty' | 'Ney' | 'Wendy' | 'Paola' (case-insensitive)
 async function notificarWAVendedora(vendedora, texto) {
@@ -4983,6 +4997,21 @@ http.createServer(async (req, res) => {
                     await notificarWAVendedora(vendedora, msgVendedora);
                   } catch (eFact) { console.error('[wa-vendedora venta-confirmada]', eFact.message); }
 
+                  // WA INDIVIDUAL al jefe + Graciela — venta nueva (con dedupe)
+                  try {
+                    const disenadorTxt = VENDEDORAS_DISENADORAS.has(vendedora)
+                      ? vendedora : asignarDisenadorAutomatico(vendedora);
+                    const msgJefe =
+                      `🎯 *Venta NUEVA #${resultadoApi.id}*\n\n` +
+                      `👤 ${nombreCliente}\n` +
+                      `📞 ${telBonito}\n` +
+                      `🛍️ Vendedora: ${vendedora}\n` +
+                      `🎨 Diseñador: ${disenadorTxt}\n` +
+                      `📅 ${fechaCorta}\n\n` +
+                      `⏳ Esperando: nombre del equipo + factura`;
+                    await notificarJefes(msgJefe, { dedupeKey: `venta-nueva-jefe:${resultadoApi.id}` });
+                  } catch (eJ) { console.error('[venta-nueva notif jefes]', eJ.message); }
+
                   // Cambiar etiqueta Chatwoot: cotizacion → venta-confirmada
                   if (contactoChatwoot) {
                     etiquetarChatwootContacto(contactoChatwoot, 'venta-confirmada').catch(()=>{});
@@ -8283,6 +8312,7 @@ async function cronGrupoVentasTick() {
       diasAtras: 1,
       conImagen: true,
       notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
       registrarArreglo: null, // TODO: conectar formato arreglos
     });
     if (r && (r.amarrados || r.arreglos)) {
@@ -8322,6 +8352,7 @@ async function cronCatalogoTick() {
     const r = await catalogoFotosWatcher.procesarYAmarrar({
       db,
       notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
     });
     if (r && (r.amarrados || (r.procesados && r.procesados > 0))) {
       console.log(`[cron-catalogo] procesados=${r.procesados || 0} amarrados=${r.amarrados || 0} sinHashMatch=${r.sinHashMatch || 0}`);
@@ -8381,6 +8412,7 @@ async function cronGrupoTrabajoTick() {
       db,
       diasAtras: 1,
       notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
     });
     if (r && (r.avanzados || r.errores)) {
       console.log(`[cron-trabajo] procesados=${r.procesados || 0} avanzados=${r.avanzados || 0} sinMatch=${r.sinMatch || 0} ignorados=${r.ignorados || 0}`);

@@ -268,7 +268,7 @@ async function analizarMensajesTrabajo({ db, limit = 50, diasAtras = 3 } = {}) {
 }
 
 // ── Procesar y APLICAR avances (modifica pedidos) ───────────────────
-async function procesarYAvanzar({ db, notificarWAVendedora = null, notificarJefe = null, notificarTrabajoFamilia = null, diasAtras = 1 } = {}) {
+async function procesarYAvanzar({ db, notificarWAVendedora = null, notificarJefes = null, notificarTrabajoFamilia = null, diasAtras = 1 } = {}) {
   if (!EVO_KEY) return { error: 'sin EVOLUTION_API_KEY' };
   if (!db || !db.leerPedidos || !db.upsertPedido) return { error: 'db requerido' };
 
@@ -338,6 +338,26 @@ async function procesarYAvanzar({ db, notificarWAVendedora = null, notificarJefe
           `📌 Detectado en grupo Trabajo en familia: "${gemini.fuente_texto}"`
         );
       } catch (e) { console.error('[trabajo notif vend]', e.message); }
+    }
+
+    // WA al jefe + Graciela con el avance
+    if (typeof notificarJefes === 'function') {
+      try {
+        const iconos = {
+          'corte': '✂️',
+          'costura': '🧵',
+          'listo': '✅',
+          'enviado-final': '🎉',
+          'llego-impresion': '📦',
+        };
+        const icono = iconos[estadoNuevo] || '📌';
+        const msg =
+          `${icono} *Avance #${p.id}* — ${p.equipo}\n` +
+          `${estadoAntes} → *${estadoNuevo}*\n` +
+          `🛍️ ${p.vendedora}\n` +
+          `📌 Origen: "${gemini.fuente_texto}"`;
+        await notificarJefes(msg, { dedupeKey: `avance-jefe:${p.id}:${estadoNuevo}` });
+      } catch (e) { console.error('[trabajo notif jefe]', e.message); }
     }
   }
 
