@@ -61,9 +61,16 @@ function crearVentaInterna(tipo, vendedora, telefono, waMsgId, equipo) {
 
   const nextId  = leerNextId();
 
+  // El bot guarda el pushName/nombre del contacto en `equipo` mientras
+  // espera que llegue el nombre REAL del equipo (de la foto del grupo
+  // Ventas N/W/P, del archivo .cdr, etc). Marcamos equipoVieneDeBot=true
+  // para que el watcher pueda reemplazarlo cuando aparezca el nombre real.
+  const equipoLimpio = equipo ? String(equipo).trim() : '';
   const nuevo = {
     id:          nextId,
-    equipo:      equipo ? String(equipo).trim() : '',
+    equipo:      equipoLimpio,
+    pushNameCliente: equipoLimpio, // guardar para referencia
+    equipoVieneDeBot: true,        // bandera para que el watcher sobreescriba
     telefono:    String(telefono).trim(),
     vendedora:   vendedora.charAt(0).toUpperCase() + vendedora.slice(1).toLowerCase(),
     tipoBandeja: tipoNorm,
@@ -3000,6 +3007,35 @@ http.createServer(async (req, res) => {
       const pedidos = leerPedidos();
       const reporte = await grupoVentasWatcher.analizarMensajesGrupo({ db, limit, diasAtras, conImagen, pedidos });
       return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/admin/marcar-equipos-vienen-de-bot ──
+  // Para pedidos historicos: marca equipoVieneDeBot=true cuando el equipo
+  // no ha sido amarrado por el watcher ni viene de fuente confiable.
+  // Permite al watcher reemplazar pushName por nombre real del equipo.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/marcar-equipos-vienen-de-bot')) {
+    try {
+      const peds = leerPedidos();
+      let actualizados = 0;
+      const detalle = [];
+      for (const p of peds) {
+        // Saltar si ya tiene bandera o ya fue amarrado por el watcher
+        if (p.equipoVieneDeBot === true) continue;
+        if (p.equipoAmarradoDeGrupo === true) continue;
+        // Saltar pedidos sin equipo (nada que marcar)
+        if (!p.equipo || !String(p.equipo).trim()) continue;
+        // Marcar
+        p.equipoVieneDeBot = true;
+        p.pushNameCliente = p.pushNameCliente || p.equipo;
+        p.ultimoMovimiento = new Date().toISOString();
+        db.upsertPedido(p);
+        actualizados++;
+        detalle.push({ id: p.id, vendedora: p.vendedora, equipo: p.equipo });
+      }
+      return json(res, 200, { ok: true, actualizados, detalle });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }

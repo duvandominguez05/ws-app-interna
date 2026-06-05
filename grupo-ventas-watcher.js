@@ -201,6 +201,19 @@ function equipoEsGenericoOVacio(equipo) {
   return false;
 }
 
+// ── ¿El pedido es candidato para amarre del watcher? ──
+// Reemplazable si:
+//   - equipo es vacio/generico, O
+//   - equipoVieneDeBot=true (el bot puso pushName del cliente, no nombre real)
+// NO reemplazable si:
+//   - ya tiene equipoAmarradoDeGrupo=true (otro amarre previo)
+function pedidoEsAmarrable(p) {
+  if (p.equipoAmarradoDeGrupo) return false;
+  if (equipoEsGenericoOVacio(p.equipo)) return true;
+  if (p.equipoVieneDeBot) return true; // pushName del cliente, no nombre real
+  return false;
+}
+
 // ── Encontrar pedido del sender (vendedora) al cual amarrar ──────
 // Estrategia: pedido con estado confirmado/hacer-diseno/bandeja
 // mas reciente que NO tenga aun nombre real (solo placeholder).
@@ -209,13 +222,11 @@ function encontrarPedidoParaAmarrar(pedidos, vendedora) {
   const candidatos = pedidos.filter(p => {
     if (!ESTADOS_CANDIDATOS.has(p.estado)) return false;
     if (vendedora === '_empresa') {
-      // Sin vendedora especifica: cualquiera, pero solo si equipo es generico/vacio
+      // Sin vendedora especifica: cualquiera
     } else if (vendedora && p.vendedora !== vendedora) {
       return false;
     }
-    if (p.equipoAmarradoDeGrupo) return false; // ya tiene amarre previo del watcher
-    if (!equipoEsGenericoOVacio(p.equipo)) return false; // ya tiene nombre real
-    return true;
+    return pedidoEsAmarrable(p);
   });
   candidatos.sort((a, b) => {
     const ta = new Date(a.ultimoMovimiento || 0).getTime();
@@ -287,12 +298,16 @@ function encontrarPedidoActivoCliente(pedidos, telefonoCliente) {
   return candidatos[0] || null;
 }
 
-// ── Detectar si el sender es contacto de arreglos (Lidermeyer) ─────
+// ── Detectar si el sender es contacto de arreglos (Lider Meyer / Lidemeyer) ──
 function senderEsArreglos(participantJid, pushName) {
   const tel = String(participantJid || '').replace('@s.whatsapp.net', '').replace(/\D/g, '');
   if (tel && tel === TELEFONO_ARREGLOS) return true;
   const n = String(pushName || '').toLowerCase();
-  if (n.includes('lidermeyer') || n.includes('lider meyer')) return true;
+  // Variantes ortograficas comunes
+  if (n.includes('lidermeyer')) return true;
+  if (n.includes('lidemeyer')) return true; // observado en logs sin la R
+  if (n.includes('lider meyer')) return true;
+  if (n.includes('lidermeyer')) return true;
   return false;
 }
 
@@ -560,6 +575,8 @@ module.exports = {
   parsearGrupoConGemini,
   encontrarPedidoParaAmarrar,
   encontrarPedidoActivoCliente,
+  equipoEsGenericoOVacio,
+  pedidoEsAmarrable,
   hashearBase64,
   identificarClientePorHash,
   analizarMensajesGrupo,
