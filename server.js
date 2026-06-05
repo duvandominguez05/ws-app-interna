@@ -3303,6 +3303,108 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/reparar-pedidos-huerfanos ──
+  // Recorre TODOS los pedidos activos (no archivados, no finalizados):
+  //   1. Asigna disenador a los que no lo tengan
+  //   2. Re-amarra PDFs de calandra y correos WT por nombre del equipo,
+  //      pushNameCliente, o alias guardado
+  //   3. Avanza a enviado-calandra si ambas senales (PDF+WT) estan
+  // Devuelve reporte detallado.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/reparar-pedidos-huerfanos')) {
+    try {
+      const peds = leerPedidos();
+      const calandra = (typeof db.leerCalandra === 'function') ? db.leerCalandra() : [];
+      const wts = (typeof db.leerWetransfer === 'function') ? db.leerWetransfer() : [];
+      const ESTADOS_FINALES = new Set(['enviado-final','archivado','cancelado']);
+      const ESTADOS_POST_DISENO = new Set(['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final']);
+
+      const reporte = {
+        totalPedidos: peds.length,
+        disenadoresAsignados: 0,
+        pdfAmarrados: 0,
+        wtAmarrados: 0,
+        avanzaronACalandra: 0,
+        detalle: [],
+      };
+
+      // Indices auxiliares para match
+      const refsCalandra = calandra.map(r => ({
+        ref: (r.equipo || r.archivo || '').trim(),
+        archivo: r.archivo || '',
+      })).filter(x => x.ref);
+      const refsWt = wts.map(r => ({
+        ref: (r.equipo || r.archivo || '').trim(),
+        archivo: r.archivo || '',
+      })).filter(x => x.ref);
+
+      for (const p of peds) {
+        if (ESTADOS_FINALES.has(p.estado)) continue;
+        const cambios = [];
+
+        // 1) Disenador
+        if (!p.disenadorAsignado && p.tipoBandeja === 'pedido') {
+          const vendCap = (p.vendedora || '').charAt(0).toUpperCase() + (p.vendedora || '').slice(1).toLowerCase();
+          const dis = VENDEDORAS_DISENADORAS.has(vendCap) ? vendCap : DISENADOR_FULL_TIME_DEFAULT;
+          p.disenadorAsignado = dis;
+          cambios.push(`disenador=${dis}`);
+          reporte.disenadoresAsignados++;
+        }
+
+        // 2/3) Amarres archivos — solo si aun no esta en post-diseno
+        if (!ESTADOS_POST_DISENO.has(p.estado)) {
+          const candidatosNombre = [p.equipo, p.pushNameCliente]
+            .filter(Boolean)
+            .map(s => String(s).trim());
+
+          // PDF Drive
+          if (!p.pdfDriveListo) {
+            for (const c of candidatosNombre) {
+              const hit = refsCalandra.find(rc => nombresCoinciden(c, rc.ref));
+              if (hit) {
+                p.pdfDriveListo = true;
+                p.fechaPdfDrive = new Date().toISOString();
+                cambios.push(`pdfDrive(${hit.archivo})`);
+                reporte.pdfAmarrados++;
+                break;
+              }
+            }
+          }
+          // WeTransfer
+          if (!p.wtListo) {
+            for (const c of candidatosNombre) {
+              const hit = refsWt.find(rc => nombresCoinciden(c, rc.ref));
+              if (hit) {
+                p.wtListo = true;
+                p.fechaWt = new Date().toISOString();
+                cambios.push(`wt(${hit.archivo})`);
+                reporte.wtAmarrados++;
+                break;
+              }
+            }
+          }
+          // Avanzar si ambos listos
+          if (evaluarPasoCalandra(p)) {
+            cambios.push('paso-a-calandra');
+            reporte.avanzaronACalandra++;
+          }
+        }
+
+        if (cambios.length) {
+          p.ultimoMovimiento = new Date().toISOString();
+          reporte.detalle.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora, cambios });
+        }
+      }
+
+      if (reporte.detalle.length) {
+        guardarPedidos(peds, leerNextId());
+      }
+
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
   if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-audit')) {
     try {
       const STICKERS_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
