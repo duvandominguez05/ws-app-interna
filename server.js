@@ -3171,12 +3171,20 @@ http.createServer(async (req, res) => {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const diasAtras = parseInt(u.searchParams.get('dias') || '2', 10);
       const conImagen = u.searchParams.get('conImagen') !== '0';
+      const reset = u.searchParams.get('reset') === '1';
+      // Reset opcional: vuelve state.ultimoTs a hace `dias` para procesar historico
+      if (reset) {
+        const s = grupoVentasWatcher.leerState();
+        s.ultimoTs = Date.now() - (diasAtras * 24 * 60 * 60 * 1000);
+        grupoVentasWatcher.guardarState(s);
+      }
       const reporte = await grupoVentasWatcher.procesarYAmarrar({
         db,
         diasAtras,
         conImagen,
         notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
-        registrarArreglo: null, // TODO: conectar cuando se defina formato de arreglos
+        notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
+        registrarArreglo: null,
       });
       return json(res, 200, reporte);
     } catch (e) {
