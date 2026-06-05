@@ -356,12 +356,22 @@ async function procesarYAmarrar({ db, notificarWAVendedora = null, conImagen = t
       equipo: equipoNuevo, vendedora: p.vendedora, cliente: telefonoCliente,
     });
 
-    // Notificar a la vendedora
+    // Notificar a la vendedora con instrucciones de flujo
     if (typeof notificarWAVendedora === 'function' && p.vendedora) {
       try {
-        await notificarWAVendedora(p.vendedora,
-          `📸 tu pedido #${p.id} quedo nombrado como *${equipoNuevo}* (foto en CATALOGO)`
-        );
+        const msg =
+          `✅ *NOMBRE IDENTIFICADO*\n\n` +
+          `📋 Pedido #${p.id}\n` +
+          `📞 Cliente: ${telefonoCliente}\n` +
+          `🏷️ Equipo: *${equipoNuevo}*\n` +
+          `📌 Fuente: foto en Drive CATALOGO (hash match)\n\n` +
+          `👉 *A partir de ahora cuando trabajes este pedido:*\n` +
+          `• Guarda el .cdr en Drive corel con nombre *${equipoNuevo}*\n` +
+          `• PDF rip con nombre *${equipoNuevo}*\n` +
+          `• WeTransfer a calandra mencionando *${equipoNuevo}*\n` +
+          `→ Yo conecto todo el flujo solo.\n\n` +
+          `❓ Si está mal, responde: *no ${p.id} [nombre correcto]*`;
+        await notificarWAVendedora(p.vendedora, msg);
       } catch (e) { console.error('[catalogo notif err]', e.message); }
     }
   }

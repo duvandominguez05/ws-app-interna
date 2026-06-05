@@ -346,14 +346,22 @@ async function procesarYAmarrarChats({ db, notificarWAVendedora = null, notifica
       fuente: g.fuente_texto, confianza: g.confianza,
     });
 
-    // WA a la vendedora confirmando
+    // WA a la vendedora confirmando + instrucciones para el flujo
     if (typeof notificarWAVendedora === 'function') {
       try {
-        await notificarWAVendedora(p.vendedora,
-          `📋 marque tu pedido #${p.id} como *${nombreNuevo}*\n` +
-          `(extraido del chat con ${p.telefono})\n` +
-          `Si esta mal, respondeme: *no ${p.id} [nombre correcto]*`
-        );
+        const msg =
+          `✅ *NOMBRE IDENTIFICADO*\n\n` +
+          `📋 Pedido #${p.id}\n` +
+          `📞 Cliente: ${p.telefono}\n` +
+          `🏷️ Equipo: *${nombreNuevo}*\n` +
+          `📌 Fuente: chat con el cliente (Gemini lo leyó)\n\n` +
+          `👉 *A partir de ahora cuando trabajes este pedido:*\n` +
+          `• Guarda el .cdr en Drive corel con nombre *${nombreNuevo}*\n` +
+          `• PDF rip con nombre *${nombreNuevo}*\n` +
+          `• WeTransfer a calandra mencionando *${nombreNuevo}*\n` +
+          `→ Yo conecto todo el flujo solo.\n\n` +
+          `❓ Si está mal, responde: *no ${p.id} [nombre correcto]*`;
+        await notificarWAVendedora(p.vendedora, msg);
       } catch (e) { console.error('[chat-reader notif vend]', e.message); }
     }
   }

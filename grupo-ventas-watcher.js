@@ -533,14 +533,24 @@ async function procesarYAmarrar({ db, notificarWAVendedora = null, registrarArre
         metodo: r.metodoIdentificacion, vendedora: p.vendedora,
       });
 
-      // Notificar a la vendedora
+      // Notificar a la vendedora con instrucciones de flujo
       try {
         if (typeof notificarWAVendedora === 'function') {
-          const fechaTxt = parseo.fecha_entrega ? ` para el ${parseo.fecha_entrega}` : '';
-          await notificarWAVendedora(p.vendedora,
-            `📋 tu pedido #${p.id} quedo nombrado como *${nombreNuevo}*${fechaTxt}`,
-            { tipo: 'amarre-grupo', pedidoId: p.id }
-          );
+          const fechaTxt = parseo.fecha_entrega ? `\n📅 Entrega: ${parseo.fecha_entrega}` : '';
+          const fuenteTxt = r.metodoIdentificacion === 'hash-foto' ? 'foto en grupo Ventas (hash match)' : 'foto en grupo Ventas (sender)';
+          const msg =
+            `✅ *NOMBRE IDENTIFICADO*\n\n` +
+            `📋 Pedido #${p.id}\n` +
+            `📞 Cliente: ${p.telefono}\n` +
+            `🏷️ Equipo: *${nombreNuevo}*${fechaTxt}\n` +
+            `📌 Fuente: ${fuenteTxt}\n\n` +
+            `👉 *A partir de ahora cuando trabajes este pedido:*\n` +
+            `• Guarda el .cdr en Drive corel con nombre *${nombreNuevo}*\n` +
+            `• PDF rip con nombre *${nombreNuevo}*\n` +
+            `• WeTransfer a calandra mencionando *${nombreNuevo}*\n` +
+            `→ Yo conecto todo el flujo solo.\n\n` +
+            `❓ Si está mal, responde: *no ${p.id} [nombre correcto]*`;
+          await notificarWAVendedora(p.vendedora, msg, { tipo: 'amarre-grupo', pedidoId: p.id });
         }
       } catch (e) { console.error('[grupo-ventas notif vendedora err]', e.message); }
 
