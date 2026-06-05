@@ -8178,6 +8178,49 @@ setTimeout(cronAlertasCalandraTick, 90 * 1000); // primer tick 90s tras arrancar
 console.log('[cron-alertas-cal] activado — chequea calandra +24h cada hora 8AM-7PM');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON GRUPO VENTAS N/W/P — cada 2 minutos
+// Lee mensajes nuevos del grupo, identifica pedidos por hash matching
+// (foto enviada al cliente == foto del grupo), amarra nombre/fecha/lista
+// con Gemini. Detecta arreglos de Lidermeyer/Lidemeyer.
+// Cutoff temporal: solo procesa mensajes posteriores al ultimo procesado
+// (state.ultimoTs). Empieza con cutoff = arranque del servidor para NO
+// procesar historico.
+// ═══════════════════════════════════════════════════════════════════
+let _cronVentasEjecutando = false;
+async function cronGrupoVentasTick() {
+  if (_cronVentasEjecutando) return; // evitar overlap
+  _cronVentasEjecutando = true;
+  try {
+    const r = await grupoVentasWatcher.procesarYAmarrar({
+      db,
+      diasAtras: 1,
+      conImagen: true,
+      notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      registrarArreglo: null, // TODO: conectar formato arreglos
+    });
+    if (r && (r.amarrados || r.arreglos)) {
+      console.log(`[cron-ventas] amarrados=${r.amarrados || 0} arreglos=${r.arreglos || 0} sinMatch=${r.sinMatch || 0}`);
+    }
+  } catch (e) {
+    console.error('[cron-ventas err]', e.message);
+  } finally {
+    _cronVentasEjecutando = false;
+  }
+}
+// Inicializar state.ultimoTs al arranque para NO procesar historico
+try {
+  const s = grupoVentasWatcher.leerState();
+  if (!s.ultimoTs) {
+    s.ultimoTs = Date.now();
+    grupoVentasWatcher.guardarState(s);
+    console.log('[cron-ventas] state.ultimoTs inicializado a ahora — no procesa historico');
+  }
+} catch (e) { console.error('[cron-ventas state init]', e.message); }
+setInterval(cronGrupoVentasTick, 2 * 60 * 1000); // cada 2 min
+setTimeout(cronGrupoVentasTick, 60 * 1000); // primer tick 60s tras arrancar
+console.log('[cron-ventas] activado — lee grupo Ventas N/W/P cada 2 min');
+
+// ═══════════════════════════════════════════════════════════════════
 // ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió
 // Cron horario 8AM-7PM Bogotá. Avisa a Lidermeyer + admin.
 // ═══════════════════════════════════════════════════════════════════
