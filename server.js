@@ -10,6 +10,7 @@ const driveSync = require('./drive-sync');
 const grupoVentasWatcher = require('./grupo-ventas-watcher');
 const catalogoFotosWatcher = require('./catalogo-fotos-watcher');
 const chatReader = require('./chat-reader');
+const grupoTrabajoFamiliaWatcher = require('./grupo-trabajo-familia-watcher');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -3062,6 +3063,39 @@ http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, actualizados, detalle });
     } catch (e) {
       return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/admin/probar-watcher-trabajo?dias=3 ──
+  // Lee mensajes del grupo Trabajo en familia, parsea con Gemini, reporta.
+  // NO modifica pedidos.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-watcher-trabajo')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasAtras = parseInt(u.searchParams.get('dias') || '3', 10);
+      const limit = parseInt(u.searchParams.get('limit') || '60', 10);
+      const reporte = await grupoTrabajoFamiliaWatcher.analizarMensajesTrabajo({ db, limit, diasAtras });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/admin/aplicar-watcher-trabajo?dias=1 ──
+  // Ejecuta procesarYAvanzar real: detecta avances (cortado, listo, entregado)
+  // y avanza el estado del pedido correspondiente.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/aplicar-watcher-trabajo')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasAtras = parseInt(u.searchParams.get('dias') || '1', 10);
+      const reporte = await grupoTrabajoFamiliaWatcher.procesarYAvanzar({
+        db,
+        diasAtras,
+        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
     }
   }
 
@@ -8330,6 +8364,45 @@ async function cronChatsTick() {
 setInterval(cronChatsTick, 15 * 60 * 1000); // cada 15 min
 setTimeout(cronChatsTick, 180 * 1000); // primer tick 180s tras arrancar
 console.log('[cron-chats] activado — lee chats vendedora-cliente cada 15 min (Gemini + audios)');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON GRUPO TRABAJO EN FAMILIA — cada 5 minutos
+// Lee mensajes del grupo, parsea con Gemini, detecta avances tipo
+// "almany fc cortado", "real awaliba listo", etc, y avanza el estado
+// del pedido. Ignora mensajes del propio bot.
+// Cutoff temporal: state.ultimoTs al arranque del servidor.
+// ═══════════════════════════════════════════════════════════════════
+let _cronTrabajoEjecutando = false;
+async function cronGrupoTrabajoTick() {
+  if (_cronTrabajoEjecutando) return;
+  _cronTrabajoEjecutando = true;
+  try {
+    const r = await grupoTrabajoFamiliaWatcher.procesarYAvanzar({
+      db,
+      diasAtras: 1,
+      notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+    });
+    if (r && (r.avanzados || r.errores)) {
+      console.log(`[cron-trabajo] procesados=${r.procesados || 0} avanzados=${r.avanzados || 0} sinMatch=${r.sinMatch || 0} ignorados=${r.ignorados || 0}`);
+    }
+  } catch (e) {
+    console.error('[cron-trabajo err]', e.message);
+  } finally {
+    _cronTrabajoEjecutando = false;
+  }
+}
+// Inicializar state.ultimoTs al arranque para NO procesar historico
+try {
+  const s = grupoTrabajoFamiliaWatcher.leerState();
+  if (!s.ultimoTs) {
+    s.ultimoTs = Date.now();
+    grupoTrabajoFamiliaWatcher.guardarState(s);
+    console.log('[cron-trabajo] state.ultimoTs inicializado a ahora — no procesa historico');
+  }
+} catch (e) { console.error('[cron-trabajo state init]', e.message); }
+setInterval(cronGrupoTrabajoTick, 5 * 60 * 1000); // cada 5 min
+setTimeout(cronGrupoTrabajoTick, 240 * 1000); // primer tick 240s tras arrancar
+console.log('[cron-trabajo] activado — lee grupo Trabajo en familia cada 5 min');
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió
