@@ -9,6 +9,7 @@ const gmailWT = require('./gmail-wt');
 const driveSync = require('./drive-sync');
 const grupoVentasWatcher = require('./grupo-ventas-watcher');
 const catalogoFotosWatcher = require('./catalogo-fotos-watcher');
+const chatReader = require('./chat-reader');
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -3061,6 +3062,40 @@ http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, actualizados, detalle });
     } catch (e) {
       return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/admin/probar-chats?soloId=11 ──
+  // Lee chats de pedidos sin nombre real, pasa a Gemini, reporta lo que extrae.
+  // NO modifica pedidos.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/probar-chats')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const soloId = u.searchParams.get('soloId') || null;
+      const limitePedidos = parseInt(u.searchParams.get('limit') || '20', 10);
+      const reporte = await chatReader.analizarChatsPedidosSinNombre({ db, soloId, limitePedidos });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/admin/aplicar-chats?soloId=11 ──
+  // Lee chats + extrae nombres + APLICA al pedido (modifica).
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/aplicar-chats')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const soloId = u.searchParams.get('soloId') || null;
+      const limitePedidos = parseInt(u.searchParams.get('limit') || '20', 10);
+      const reporte = await chatReader.procesarYAmarrarChats({
+        db,
+        soloId,
+        limitePedidos,
+        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+      });
+      return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
     }
   }
 
