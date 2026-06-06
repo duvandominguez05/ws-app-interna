@@ -3597,6 +3597,33 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── POST /api/admin/disparar-cron?cron=cazar-dis|arreglos|calandra|aprobacion|zombi ──
+  // Permite forzar la ejecucion de cualquier cron del flujo automatizado
+  // sin esperar el intervalo. Util para verificar que estan funcionando.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/disparar-cron')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const cron = u.searchParams.get('cron');
+      const mapa = {
+        'cazar-dis': typeof cronCazarDisenadoresTick === 'function' ? cronCazarDisenadoresTick : null,
+        'arreglos': typeof cronAuditarArreglosTick === 'function' ? cronAuditarArreglosTick : null,
+        'calandra': typeof cronAlertaCalandraTick === 'function' ? cronAlertaCalandraTick : null,
+        'aprobacion': typeof cronDetectarAprobacionTick === 'function' ? cronDetectarAprobacionTick : null,
+        'zombi': typeof cronInstanciasZombiTick === 'function' ? cronInstanciasZombiTick : null,
+      };
+      if (!cron || !mapa[cron]) {
+        return json(res, 400, { error: 'cron invalido', disponibles: Object.keys(mapa) });
+      }
+      const fn = mapa[cron];
+      if (!fn) return json(res, 500, { error: `cron ${cron} no esta disponible` });
+      const inicio = Date.now();
+      await fn();
+      return json(res, 200, { ok: true, cron, duracionMs: Date.now() - inicio });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
   // ── POST /api/admin/reset-recordatorios-factura ──
   // La migracion v1 de 2026-06-02 marco TODOS los pedidos viejos con
   // recordatorioFacturaEnviado=true. Esto sileancio para siempre los
