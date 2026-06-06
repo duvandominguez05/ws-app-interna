@@ -9464,6 +9464,292 @@ setTimeout(cronInstanciasZombiTick, 3 * 60 * 1000);
 console.log('[cron-zombi] activado — verifica instancias Evolution cada 30 min');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON #1 — CAZADOR DE DISENADORES ATRASADOS (cada 6h)
+// Empuja a Oscar/Wendy/Ney/Paola que se les "pasa" hacer un diseno.
+// Escalado 24h/48h/72h con WA distintos.
+//   24h → WA suave al disenador
+//   48h → WA mas firme + CC al jefe
+//   72h → WA urgente al jefe + sugerencia reasignar
+// Solo en horario activo (7am-9pm Bogota). Dedupe por pedido+nivel+dia.
+// ═══════════════════════════════════════════════════════════════════
+async function cronCazarDisenadoresTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog < 7 || horaBog > 21) return;
+
+    const peds = leerPedidos();
+    const ahora = Date.now();
+    const _24H = 24 * 60 * 60 * 1000;
+    const _48H = 48 * 60 * 60 * 1000;
+    const _72H = 72 * 60 * 60 * 1000;
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    let avisados = 0;
+
+    for (const p of peds) {
+      if (p.estado !== 'hacer-diseno') continue;
+      if (!p.disenadorAsignado) continue;
+      if (p.pdfDriveListo || p.wtListo) continue; // ya hay archivo, esta avanzando
+      const tsBase = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+      if (!tsBase) continue;
+      const edad = ahora - tsBase;
+      if (edad < _24H) continue;
+
+      const dis = p.disenadorAsignado;
+      const equipoTxt = p.equipo || p.pushNameCliente || `#${p.id}`;
+      let nivel = null;
+      let msgDis = null;
+      let msgJefe = null;
+
+      if (edad >= _72H) {
+        nivel = '72h';
+        msgJefe = `🚨 *URGENTE* — #${p.id} (${equipoTxt}) lleva *3 dias* en hacer-diseno con ${dis}.\n\n` +
+          `Vendedora: ${p.vendedora}.\n\n` +
+          `Sugerencia: reasignar a otro disenador o cancelar.`;
+      } else if (edad >= _48H) {
+        nivel = '48h';
+        msgDis = `🔴 ${dis}, el diseno de *#${p.id} ${equipoTxt}* (vendedora ${p.vendedora}) lleva *2 dias* esperando.\n\n` +
+          `Por favor avisame YA si lo estas haciendo o si necesitas ayuda.\n\n` +
+          `Responde:\n*1* = lo estoy haciendo\n*2* = ya esta listo\n*3* = necesito ayuda`;
+        msgJefe = `⚠️ ${dis} lleva *48h* con #${p.id} (${equipoTxt}, vendedora ${p.vendedora}) sin avanzar. Le mande recordatorio mas firme.`;
+      } else {
+        nivel = '24h';
+        msgDis = `🎨 Hola ${dis}, el diseno de *#${p.id} ${equipoTxt}* (vendedora ${p.vendedora}) lleva *1 dia* sin avanzar.\n\n` +
+          `¿Lo estas haciendo? Responde:\n*1* = ya empece\n*2* = ya esta listo\n*3* = necesito ayuda`;
+      }
+
+      const dedupeKey = `cazar-dis:${p.id}:${nivel}:${hoyISO}`;
+      if (!waPuedeEnviar(dedupeKey)) continue;
+
+      try {
+        if (msgDis) {
+          await notificarWAPersona((dis || '').toLowerCase(), msgDis);
+        }
+        if (msgJefe) {
+          await notificarJefes(msgJefe, { dedupeKey: dedupeKey + ':jefe', soloJefe: true });
+        }
+        avisados++;
+        console.log(`[cazar-dis] #${p.id} ${equipoTxt} -> ${dis} (${nivel})`);
+      } catch (eW) { console.error('[cazar-dis wa]', eW.message); }
+    }
+    if (avisados) console.log(`[cazar-dis] ${avisados} disenadores empujados`);
+  } catch (e) { console.error('[cazar-dis]', e.message); }
+}
+setInterval(cronCazarDisenadoresTick, 6 * 60 * 60 * 1000); // cada 6h
+setTimeout(cronCazarDisenadoresTick, 8 * 60 * 1000); // primer tick a los 8min
+console.log('[cazar-dis] activado — empuja disenadores atrasados cada 6h');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON #2 — AUDITOR DE ARREGLOS (cada 12h)
+// Sigue arreglos abiertos (Lider Meyer en grupo Ventas reporta y queda
+// flotando). Si lleva +24h sin "listo", WA al jefe con detalle.
+// ═══════════════════════════════════════════════════════════════════
+async function cronAuditarArreglosTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog < 7 || horaBog > 21) return;
+
+    const arreglos = (typeof db.leerArreglos === 'function') ? db.leerArreglos() : [];
+    if (!arreglos.length) return;
+    const ahora = Date.now();
+    const _24H = 24 * 60 * 60 * 1000;
+    const _72H = 72 * 60 * 60 * 1000;
+    const hoyISO = new Date().toISOString().slice(0, 10);
+
+    const abiertos = arreglos.filter(a => {
+      if (a.cerrado || a.estado === 'listo' || a.estado === 'entregado') return false;
+      const tsCre = a.creadoEn ? new Date(a.creadoEn).getTime() : (a.ts ? new Date(a.ts).getTime() : 0);
+      if (!tsCre) return false;
+      return (ahora - tsCre) > _24H;
+    });
+    if (!abiertos.length) return;
+
+    // Un solo WA al jefe con TODOS los abiertos
+    const dedupeKey = `auditar-arreglos:${hoyISO}`;
+    if (!waPuedeEnviar(dedupeKey)) return;
+
+    let msg = `🔧 *Arreglos sin cerrar* (${abiertos.length})\n─────────────────────────────\n\n`;
+    abiertos.slice(0, 15).forEach((a, i) => {
+      const tsCre = a.creadoEn ? new Date(a.creadoEn).getTime() : new Date(a.ts || Date.now()).getTime();
+      const dias = Math.floor((ahora - tsCre) / (24 * 60 * 60 * 1000));
+      const urg = (ahora - tsCre) > _72H ? '🚨' : '⚠️';
+      msg += `${urg} *${a.equipo || a.cliente || a.id || '?'}*\n`;
+      msg += `   ${a.descripcion || a.detalle || '(sin descripcion)'}\n`;
+      msg += `   Lleva ${dias} dia${dias===1?'':'s'} abierto\n\n`;
+    });
+    if (abiertos.length > 15) msg += `\n_+${abiertos.length - 15} mas..._\n`;
+    msg += `\n👉 Cuando un arreglo este listo, marcalo en la app o pongan "arreglo X listo" en grupo Ventas.`;
+
+    await notificarJefes(msg, { dedupeKey, soloJefe: true });
+    console.log(`[auditar-arreglos] reporte enviado: ${abiertos.length} abiertos`);
+  } catch (e) { console.error('[auditar-arreglos]', e.message); }
+}
+setInterval(cronAuditarArreglosTick, 12 * 60 * 60 * 1000); // cada 12h
+setTimeout(cronAuditarArreglosTick, 11 * 60 * 1000); // primer tick 11min
+console.log('[auditar-arreglos] activado — reporte arreglos sin cerrar cada 12h');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON #3 — ALERTA CALANDRA +24H SIN DESCARGAR (cada 4h)
+// Pedidos enviados a calandra (wtListo o estado enviado-calandra) que
+// no avanzaron a llego-impresion en +24h: la calandra puede estar
+// atrasada o algo se perdio. Alerta al jefe.
+// ═══════════════════════════════════════════════════════════════════
+async function cronAlertaCalandraTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog < 7 || horaBog > 21) return;
+
+    const peds = leerPedidos();
+    const ahora = Date.now();
+    const _24H = 24 * 60 * 60 * 1000;
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const atrasados = [];
+
+    for (const p of peds) {
+      if (p.estado !== 'enviado-calandra') continue;
+      const ts = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+      if (!ts) continue;
+      if ((ahora - ts) < _24H) continue;
+      atrasados.push({ p, horas: Math.floor((ahora - ts) / (60 * 60 * 1000)) });
+    }
+    if (!atrasados.length) return;
+
+    const dedupeKey = `alerta-calandra:${hoyISO}`;
+    if (!waPuedeEnviar(dedupeKey)) return;
+
+    let msg = `🟠 *Calandra atrasada* (${atrasados.length} pedidos)\n─────────────────────────────\n\n`;
+    atrasados.slice(0, 12).forEach(({ p, horas }) => {
+      const eq = p.equipo || p.pushNameCliente || `#${p.id}`;
+      msg += `⏱️ *#${p.id}* ${eq} — ${horas}h sin moverse\n   Vendedora: ${p.vendedora}\n\n`;
+    });
+    if (atrasados.length > 12) msg += `\n_+${atrasados.length - 12} mas..._\n`;
+    msg += `\n👉 Revisar con calandra si llegaron los archivos o pasaron algo.`;
+
+    await notificarJefes(msg, { dedupeKey, soloJefe: true });
+    console.log(`[alerta-calandra] ${atrasados.length} pedidos atrasados reportados`);
+  } catch (e) { console.error('[alerta-calandra]', e.message); }
+}
+setInterval(cronAlertaCalandraTick, 4 * 60 * 60 * 1000); // cada 4h
+setTimeout(cronAlertaCalandraTick, 9 * 60 * 1000);
+console.log('[alerta-calandra] activado — pedidos calandra +24h cada 4h');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON #4 — DETECTOR DE APROBACION DEL CLIENTE (cada 8h)
+// Lee los ultimos mensajes del cliente para pedidos en hacer-diseno
+// con +12h. Detecta keywords de aprobacion ("perfecto/listo/aprobado")
+// o de rechazo ("cambia/no me gusta"). Si detecta aprobacion + ya hay
+// algun archivo → avanza a confirmado; sin archivo → marca flag y WA
+// vendedora. Si rechazo → WA vendedora para revisar con cliente.
+// (Heuristica por keywords — en futuro se puede mejorar con Gemini)
+// ═══════════════════════════════════════════════════════════════════
+const KW_APROBACION = [
+  'perfecto','aprobado','aprobada','listo asi','me encanta','me encantan',
+  'me gusta','quedo bien','quedo bueno','asi esta bien','dale','ok asi',
+  'queremos asi','si me gusta','si me gustan','aprobamos','asi mismo','si esta bien'
+];
+const KW_RECHAZO = [
+  'cambia','cambien','modifica','modifiquen','arregla','no me gusta',
+  'no me gustan','no asi','otra vez','de nuevo','rehacer','volverlo a',
+  'el color no','el escudo no','no esta bien','cambiar'
+];
+
+async function _ultimosMsjClienteEvolution(telefonoCliente, instance, limit = 15) {
+  try {
+    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const KEY = process.env.EVOLUTION_API_KEY || '';
+    if (!KEY) return [];
+    const r = await fetch(`${EVO}/chat/findMessages/${encodeURIComponent(instance)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: KEY },
+      body: JSON.stringify({
+        where: { key: { remoteJid: `${telefonoCliente}@s.whatsapp.net` } },
+        limit,
+      }),
+    });
+    if (!r.ok) return [];
+    const data = await r.json();
+    const arr = Array.isArray(data?.messages?.records) ? data.messages.records : (Array.isArray(data) ? data : []);
+    return arr;
+  } catch (e) { return []; }
+}
+
+function _textoMensaje(m) {
+  return (m?.message?.conversation
+    || m?.message?.extendedTextMessage?.text
+    || m?.message?.imageMessage?.caption
+    || '').toLowerCase();
+}
+
+async function cronDetectarAprobacionTick() {
+  try {
+    const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+    if (horaBog < 7 || horaBog > 21) return;
+
+    const peds = leerPedidos();
+    const ahora = Date.now();
+    const _12H = 12 * 60 * 60 * 1000;
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    let aprobados = 0, rechazos = 0;
+
+    for (const p of peds) {
+      if (p.estado !== 'hacer-diseno') continue;
+      if (p.clienteAprobo === true) continue; // ya detectado
+      if (!p.telefono) continue;
+      const ts = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
+      if (!ts || (ahora - ts) < _12H) continue;
+
+      const instance = instanciaParaVendedora(p.vendedora) || 'ws-ventas';
+      const msjs = await _ultimosMsjClienteEvolution(String(p.telefono).replace(/\D/g, ''), instance, 15);
+      // Solo mensajes DEL cliente (fromMe=false)
+      const delCliente = msjs.filter(m => m?.key?.fromMe === false);
+      if (!delCliente.length) continue;
+      const textos = delCliente.map(_textoMensaje).filter(Boolean);
+      if (!textos.length) continue;
+
+      const todoTexto = textos.join(' | ');
+      const tieneAprobacion = KW_APROBACION.some(k => todoTexto.includes(k));
+      const tieneRechazo = KW_RECHAZO.some(k => todoTexto.includes(k));
+
+      if (tieneRechazo && !tieneAprobacion) {
+        const dedupeKey = `cliente-rechaza:${p.id}:${hoyISO}`;
+        if (!waPuedeEnviar(dedupeKey)) continue;
+        rechazos++;
+        const eq = p.equipo || p.pushNameCliente || `#${p.id}`;
+        const msgV = `⚠️ Cliente del *#${p.id} ${eq}* pidio cambios al diseno.\n\n` +
+          `Frase detectada: _"${textos.find(t => KW_RECHAZO.some(k => t.includes(k))) || ''}"_\n\n` +
+          `Por favor revisa el chat y haz los cambios.`;
+        try { await notificarWAPersona((p.vendedora || '').toLowerCase(), msgV); } catch (e) {}
+        console.log(`[detectar-aprobacion] RECHAZO #${p.id} (${eq})`);
+        continue;
+      }
+
+      if (tieneAprobacion) {
+        const dedupeKey = `cliente-aprueba:${p.id}:${hoyISO}`;
+        if (!waPuedeEnviar(dedupeKey)) continue;
+        p.clienteAprobo = true;
+        p.fechaAprobacionCliente = new Date().toISOString();
+        p.ultimoMovimiento = new Date().toISOString();
+        aprobados++;
+        const eq = p.equipo || p.pushNameCliente || `#${p.id}`;
+        const frase = textos.find(t => KW_APROBACION.some(k => t.includes(k))) || '';
+        const msgV = `✅ Cliente del *#${p.id} ${eq}* aprobo el diseno.\n\n` +
+          `Frase detectada: _"${frase}"_\n\n` +
+          `👉 Ya podes avanzar el pedido (guarda .cdr en Drive corel y manda WT a calandra).`;
+        try { await notificarWAPersona((p.vendedora || '').toLowerCase(), msgV); } catch (e) {}
+        console.log(`[detectar-aprobacion] APROBADO #${p.id} (${eq})`);
+      }
+    }
+
+    if (aprobados || rechazos) {
+      guardarPedidos(peds, leerNextId());
+      console.log(`[detectar-aprobacion] aprobados=${aprobados} rechazos=${rechazos}`);
+    }
+  } catch (e) { console.error('[detectar-aprobacion]', e.message); }
+}
+setInterval(cronDetectarAprobacionTick, 8 * 60 * 60 * 1000); // cada 8h
+setTimeout(cronDetectarAprobacionTick, 12 * 60 * 1000);
+console.log('[detectar-aprobacion] activado — chats clientes cada 8h');
+
+// ═══════════════════════════════════════════════════════════════════
 // CRON Auto-archivar pedidos abandonados
 // Pedidos en bandeja/hacer-diseno +10 dias sin actividad real
 // (sin pagos, sin total, sin equipo nombrado por humano) → archiva.
