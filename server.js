@@ -944,6 +944,7 @@ function resumenDiaVendedora(vendedora) {
 }
 
 function _formatearMontoCOP(n) {
+  if (n === 0 || n === '0') return '$0';
   if (!n || isNaN(n)) return '$?';
   return '$' + Number(n).toLocaleString('es-CO');
 }
