@@ -3336,6 +3336,9 @@ http.createServer(async (req, res) => {
       const pedirNombre = (new URL(req.url, `http://${req.headers.host || 'localhost'}`))
         .searchParams.get('pedirNombre') === '1';
 
+      // Acumula pedidos sin nombre por vendedora para mandar UN solo WA al final
+      const pedidosSinNombrePorVend = {};
+
       // Indices auxiliares para match
       const refsCalandra = calandra.map(r => ({
         ref: (r.equipo || r.archivo || '').trim(),
@@ -3398,10 +3401,8 @@ http.createServer(async (req, res) => {
           }
         }
 
-        // 4) WA a vendedora pidiendo nombre real (opt-in: ?pedirNombre=1)
-        // Cubre: pedidos con flag equipoVieneDeBot=true Y pedidos antiguos
-        // (sin flag) que llevan +24h en hacer-diseno con nombre "tipo cliente"
-        // (1-2 palabras, emojis, telefono). Asi alcanza a los #281/#283 de Ney.
+        // 4) Marcar candidato a "pedir nombre" — acumulamos por vendedora
+        //    y mandamos UN solo WA al final (anti-spam).
         const seguiraEsperando = p.estado === 'hacer-diseno' && !p.pdfDriveListo && !p.wtListo;
         const nombreSospechoso = (() => {
           if (!p.equipo) return true;
@@ -3412,25 +3413,42 @@ http.createServer(async (req, res) => {
         })();
         const necesitaNombre = seguiraEsperando && (p.equipoVieneDeBot === true || nombreSospechoso);
         if (pedirNombre && necesitaNombre && p.vendedora) {
-          const dedupeKey = `pide-nombre-equipo:${p.id}`;
-          if (typeof waPuedeEnviar === 'function' && waPuedeEnviar(dedupeKey)) {
-            const msg =
-              `🏷️ Hola ${p.vendedora}, el pedido *#${p.id}* sigue sin nombre del equipo.\n\n` +
-              `Cliente: *${p.equipo || p.pushNameCliente}*\n📞 ${p.telefono}\n\n` +
-              `¿Ya le preguntaste al cliente cómo se llama su equipo?\n\n` +
-              `Cuando lo sepas, respondeme acá con:\n` +
-              `*equipo ${p.id} NOMBRE REAL DEL EQUIPO*`;
-            try {
-              await notificarWAPersona((p.vendedora || '').toLowerCase(), msg);
-              reporte.waNombrePedidos++;
-              cambios.push('wa-pide-nombre');
-            } catch (eW) { console.error('[wa-pide-nombre]', eW.message); }
-          }
+          if (!pedidosSinNombrePorVend[p.vendedora]) pedidosSinNombrePorVend[p.vendedora] = [];
+          pedidosSinNombrePorVend[p.vendedora].push(p);
         }
 
         if (cambios.length) {
           p.ultimoMovimiento = new Date().toISOString();
           reporte.detalle.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora, cambios });
+        }
+      }
+
+      // ── 4-final) UN SOLO WA por vendedora con TODOS sus pedidos sin nombre.
+      //    Formato igual al "Resumen del día" para que sea consistente.
+      //    Dedupe diario por vendedora para evitar reenviar el mismo dia.
+      if (pedirNombre) {
+        const hoyISO = new Date().toISOString().slice(0, 10);
+        for (const [vendedora, lista] of Object.entries(pedidosSinNombrePorVend)) {
+          if (!lista.length) continue;
+          const dedupeKey = `pide-nombre-resumen:${vendedora}:${hoyISO}`;
+          if (typeof waPuedeEnviar === 'function' && !waPuedeEnviar(dedupeKey)) continue;
+          let msg = `🏷️ *${vendedora.toUpperCase()} — Pedidos sin nombre del equipo*\n`;
+          msg += `─────────────────────────────\n\n`;
+          msg += `📦 *TUS PEDIDOS SIN NOMBRE:* ${lista.length}\n\n`;
+          lista.forEach(p => {
+            const cli = (p.equipo || p.pushNameCliente || '(sin cliente)').toString();
+            const tel = p.telefono || '?';
+            msg += `  ⚠️ #${p.id} ${cli}\n`;
+            msg += `     📞 ${tel}\n\n`;
+          });
+          msg += `─────────────────────────────\n`;
+          msg += `📋 *PREGUNTALE AL CLIENTE:* "¿Cómo se llama tu equipo?"\n\n`;
+          msg += `Cuando sepas los nombres, respondeme acá (uno por línea):\n`;
+          lista.forEach(p => { msg += `*equipo ${p.id} NOMBRE REAL*\n`; });
+          try {
+            await notificarWAPersona((vendedora || '').toLowerCase(), msg);
+            reporte.waNombrePedidos += lista.length;
+          } catch (eW) { console.error('[wa-pide-nombre-resumen]', eW.message); }
         }
       }
 
