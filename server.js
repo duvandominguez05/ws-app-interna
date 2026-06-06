@@ -1788,12 +1788,17 @@ function vendedoraDeInstancia(instance) {
 // tenga ambas señales: PDF en Drive Y correo WeTransfer.
 function evaluarPasoCalandra(pedido) {
   if (!pedido) return false;
-  if (pedido.estado !== 'confirmado') return false;
+  // Acepta hacer-diseno o confirmado. La regla previa exigia confirmado
+  // (aprobacion explicita del cliente), pero en la practica nadie pasa
+  // pedidos a confirmado en la app — si PDF + WT estan listos, el cliente
+  // ya aprobo de hecho (no se envia a calandra sin aprobacion).
+  if (pedido.estado !== 'confirmado' && pedido.estado !== 'hacer-diseno') return false;
   if (!pedido.pdfDriveListo) return false;
   if (!pedido.wtListo) return false;
+  const estadoAnterior = pedido.estado;
   pedido.estado = 'enviado-calandra';
   pedido.ultimoMovimiento = new Date().toISOString();
-  console.log(`[auto-avance] #${pedido.id} confirmado → enviado-calandra (PDF+WT listos)`);
+  console.log(`[auto-avance] #${pedido.id} ${estadoAnterior} → enviado-calandra (PDF+WT listos)`);
   return true;
 }
 
@@ -3324,8 +3329,11 @@ http.createServer(async (req, res) => {
         pdfAmarrados: 0,
         wtAmarrados: 0,
         avanzaronACalandra: 0,
+        waNombrePedidos: 0,
         detalle: [],
       };
+      const pedirNombre = (new URL(req.url, `http://${req.headers.host || 'localhost'}`))
+        .searchParams.get('pedirNombre') === '1';
 
       // Indices auxiliares para match
       const refsCalandra = calandra.map(r => ({
@@ -3386,6 +3394,28 @@ http.createServer(async (req, res) => {
           if (evaluarPasoCalandra(p)) {
             cambios.push('paso-a-calandra');
             reporte.avanzaronACalandra++;
+          }
+        }
+
+        // 4) WA a vendedora pidiendo nombre real (opt-in: ?pedirNombre=1)
+        // Solo si: pedido sigue en hacer-diseno, vino del bot (pushName),
+        // no se le acaban de amarrar archivos en esta corrida.
+        const seguiraEsperando = p.estado === 'hacer-diseno' && !p.pdfDriveListo && !p.wtListo;
+        const necesitaNombre = p.equipoVieneDeBot === true && seguiraEsperando;
+        if (pedirNombre && necesitaNombre && p.vendedora) {
+          const dedupeKey = `pide-nombre-equipo:${p.id}`;
+          if (typeof waPuedeEnviar === 'function' && waPuedeEnviar(dedupeKey)) {
+            const msg =
+              `🏷️ Hola ${p.vendedora}, el pedido *#${p.id}* sigue sin nombre del equipo.\n\n` +
+              `Cliente: *${p.equipo || p.pushNameCliente}*\n📞 ${p.telefono}\n\n` +
+              `¿Ya le preguntaste al cliente cómo se llama su equipo?\n\n` +
+              `Cuando lo sepas, respondeme acá con:\n` +
+              `*equipo ${p.id} NOMBRE REAL DEL EQUIPO*`;
+            try {
+              await notificarWAPersona((p.vendedora || '').toLowerCase(), msg);
+              reporte.waNombrePedidos++;
+              cambios.push('wa-pide-nombre');
+            } catch (eW) { console.error('[wa-pide-nombre]', eW.message); }
           }
         }
 
@@ -5622,6 +5652,41 @@ http.createServer(async (req, res) => {
             }
           } catch (errCmd) {
             console.error('[jefe-listener err]', errCmd);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // LISTENER COMANDO 'equipo N NOMBRE' DESDE CUALQUIER VENDEDORA
+        // Cuando la vendedora le escribe al jefe (a su numero) desde su
+        // propia instancia (ws-wendy, ws-ney, ws-paola, ws-ventas), si el
+        // texto es "equipo 12 LEONES FC" lo procesamos igual que si lo
+        // mandara el jefe. Asi cualquier vendedora corrige el nombre del
+        // pedido sin esperar que Camilo lo haga.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' &&
+            (eventData?.messageType === 'conversation' || eventData?.messageType === 'extendedTextMessage')) {
+          try {
+            const instanciasVend = new Set(['ws-ventas','ws-wendy','ws wendy','ws-ney','ws-paola','ws paola']);
+            const inst = payload.instance || '';
+            const fromMe = eventData.key?.fromMe === true;
+            const dstJid = eventData.key?.remoteJid || '';
+            const dstNum = dstJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            const jefeNum = (process.env.WA_DUVAN || process.env.WA_CAMILO || '573124858901').replace(/\D/g, '');
+            // Vendedora -> jefe: fromMe=true, instancia vendedora, destino=jefe
+            const esVendAlJefe = fromMe && instanciasVend.has(inst) && dstNum === jefeNum;
+            if (esVendAlJefe) {
+              const texto = (eventData.message?.conversation
+                || eventData.message?.extendedTextMessage?.text
+                || '').trim();
+              if (/^(equipo|nombre|eq)\s+\d+\s+\S/i.test(texto)) {
+                (async () => {
+                  try { await procesarRespuestaJefe(texto); }
+                  catch (e) { console.error('[vend-cmd equipo err]', e.message); }
+                })();
+              }
+            }
+          } catch (errCmdV) {
+            console.error('[vend-equipo-listener err]', errCmdV);
           }
         }
 
