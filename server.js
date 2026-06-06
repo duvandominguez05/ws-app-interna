@@ -9499,66 +9499,93 @@ console.log('[cron-zombi] activado — verifica instancias Evolution cada 30 min
 //   72h → WA urgente al jefe + sugerencia reasignar
 // Solo en horario activo (7am-9pm Bogota). Dedupe por pedido+nivel+dia.
 // ═══════════════════════════════════════════════════════════════════
+// Calcula la "edad real" del pedido en hacer-diseno: usa fechaVenta o
+// creadoEn (que NO cambian con reparaciones), no ultimoMovimiento.
+function _edadHacerDiseno(p) {
+  let ts = 0;
+  if (p.fechaVenta) {
+    const d = new Date(p.fechaVenta);
+    if (!isNaN(d.getTime())) ts = d.getTime();
+  }
+  if (!ts && p.creadoEn) {
+    const parts = String(p.creadoEn).split('/');
+    if (parts.length === 3) {
+      const dt = new Date(parseInt(parts[2],10), parseInt(parts[1],10)-1, parseInt(parts[0],10));
+      if (!isNaN(dt.getTime())) ts = dt.getTime();
+    }
+  }
+  return ts ? (Date.now() - ts) : 0;
+}
+
 async function cronCazarDisenadoresTick() {
   try {
     const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
     if (horaBog < 7 || horaBog > 21) return;
 
     const peds = leerPedidos();
-    const ahora = Date.now();
     const _24H = 24 * 60 * 60 * 1000;
     const _48H = 48 * 60 * 60 * 1000;
     const _72H = 72 * 60 * 60 * 1000;
+    const _7D = 7 * 24 * 60 * 60 * 1000;
     const hoyISO = new Date().toISOString().slice(0, 10);
-    let avisados = 0;
+
+    // Agrupa atrasados por disenador para mandar UN solo WA consolidado
+    const porDis = {};
+    let jefeUrgentes = [];
 
     for (const p of peds) {
       if (p.estado !== 'hacer-diseno') continue;
       if (!p.disenadorAsignado) continue;
-      if (p.pdfDriveListo || p.wtListo) continue; // ya hay archivo, esta avanzando
-      const tsBase = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : 0;
-      if (!tsBase) continue;
-      const edad = ahora - tsBase;
+      if (p.pdfDriveListo || p.wtListo) continue;
+      const edad = _edadHacerDiseno(p);
       if (edad < _24H) continue;
+      if (edad > _7D) continue; // pedidos +7 dias se manejan por archivar, no por cazador
 
+      const nivel = edad >= _72H ? '72h' : edad >= _48H ? '48h' : '24h';
       const dis = p.disenadorAsignado;
-      const equipoTxt = p.equipo || p.pushNameCliente || `#${p.id}`;
-      let nivel = null;
-      let msgDis = null;
-      let msgJefe = null;
+      const dias = Math.floor(edad / (24 * 60 * 60 * 1000));
+      if (!porDis[dis]) porDis[dis] = [];
+      porDis[dis].push({ p, nivel, dias });
+      if (nivel === '72h') jefeUrgentes.push({ p, dis, dias });
+    }
 
-      if (edad >= _72H) {
-        nivel = '72h';
-        msgJefe = `🚨 *URGENTE* — #${p.id} (${equipoTxt}) lleva *3 dias* en hacer-diseno con ${dis}.\n\n` +
-          `Vendedora: ${p.vendedora}.\n\n` +
-          `Sugerencia: reasignar a otro disenador o cancelar.`;
-      } else if (edad >= _48H) {
-        nivel = '48h';
-        msgDis = `🔴 ${dis}, el diseno de *#${p.id} ${equipoTxt}* (vendedora ${p.vendedora}) lleva *2 dias* esperando.\n\n` +
-          `Por favor avisame YA si lo estas haciendo o si necesitas ayuda.\n\n` +
-          `Responde:\n*1* = lo estoy haciendo\n*2* = ya esta listo\n*3* = necesito ayuda`;
-        msgJefe = `⚠️ ${dis} lleva *48h* con #${p.id} (${equipoTxt}, vendedora ${p.vendedora}) sin avanzar. Le mande recordatorio mas firme.`;
-      } else {
-        nivel = '24h';
-        msgDis = `🎨 Hola ${dis}, el diseno de *#${p.id} ${equipoTxt}* (vendedora ${p.vendedora}) lleva *1 dia* sin avanzar.\n\n` +
-          `¿Lo estas haciendo? Responde:\n*1* = ya empece\n*2* = ya esta listo\n*3* = necesito ayuda`;
-      }
-
-      const dedupeKey = `cazar-dis:${p.id}:${nivel}:${hoyISO}`;
+    let avisados = 0;
+    // Un solo WA por disenador con TODOS sus atrasados (anti-spam)
+    for (const [dis, lista] of Object.entries(porDis)) {
+      const dedupeKey = `cazar-dis-consolidado:${dis}:${hoyISO}`;
       if (!waPuedeEnviar(dedupeKey)) continue;
-
+      const tiene72 = lista.some(x => x.nivel === '72h');
+      const tiene48 = lista.some(x => x.nivel === '48h');
+      const icono = tiene72 ? '🚨' : tiene48 ? '🔴' : '🎨';
+      let msg = `${icono} Hola ${dis}, tienes *${lista.length} disenos pendientes*\n─────────────────────────────\n\n`;
+      lista.sort((a,b) => b.dias - a.dias).forEach(({ p, dias }) => {
+        const eq = p.equipo || p.pushNameCliente || `#${p.id}`;
+        const urg = dias >= 3 ? '🚨' : dias >= 2 ? '🔴' : '⚠️';
+        msg += `${urg} *#${p.id}* ${eq} — ${dias} dia${dias===1?'':'s'}\n   Vendedora: ${p.vendedora}\n\n`;
+      });
+      msg += `─────────────────────────────\n`;
+      msg += `Por favor avisanos en que vas con cada uno:\n`;
+      msg += `*1 #X* = ya empece\n*2 #X* = ya esta listo\n*3 #X* = necesito ayuda`;
       try {
-        if (msgDis) {
-          await notificarWAPersona((dis || '').toLowerCase(), msgDis);
-        }
-        if (msgJefe) {
-          await notificarJefes(msgJefe, { dedupeKey: dedupeKey + ':jefe', soloJefe: true });
-        }
+        await notificarWAPersona((dis || '').toLowerCase(), msg);
         avisados++;
-        console.log(`[cazar-dis] #${p.id} ${equipoTxt} -> ${dis} (${nivel})`);
+        console.log(`[cazar-dis] ${dis} -> ${lista.length} pedidos avisados`);
       } catch (eW) { console.error('[cazar-dis wa]', eW.message); }
     }
-    if (avisados) console.log(`[cazar-dis] ${avisados} disenadores empujados`);
+    // Un WA al jefe SOLO si hay urgentes 72h+
+    if (jefeUrgentes.length) {
+      const dedupeKeyJ = `cazar-dis-jefe:${hoyISO}`;
+      if (waPuedeEnviar(dedupeKeyJ)) {
+        let msg = `🚨 *URGENTE* — ${jefeUrgentes.length} disenos llevan +3 dias sin avanzar:\n─────────────────────────────\n\n`;
+        jefeUrgentes.forEach(({ p, dis, dias }) => {
+          const eq = p.equipo || p.pushNameCliente || `#${p.id}`;
+          msg += `🚨 *#${p.id}* ${eq} — ${dis} (${dias}d) — vendedora ${p.vendedora}\n`;
+        });
+        msg += `\n👉 Considera reasignar o cancelar.`;
+        try { await notificarJefes(msg, { dedupeKey: dedupeKeyJ, soloJefe: true }); } catch (e) {}
+      }
+    }
+    if (avisados) console.log(`[cazar-dis] ${avisados} disenadores avisados, ${jefeUrgentes.length} urgentes al jefe`);
   } catch (e) { console.error('[cazar-dis]', e.message); }
 }
 setInterval(cronCazarDisenadoresTick, 6 * 60 * 60 * 1000); // cada 6h
