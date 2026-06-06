@@ -3555,13 +3555,21 @@ http.createServer(async (req, res) => {
   }
 
   // ── GET /api/admin/qr/:name — HTML simple con el QR para escanear ──
-  // Llama internamente al revivir-instancia y muestra el QR como imagen.
+  // Llama directo a Evolution /instance/connect/{name} y muestra el QR.
+  // Si la instancia no existe, devuelve mensaje claro.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/qr/')) {
     try {
       const name = req.url.split('/').pop().split('?')[0];
-      const host = req.headers.host || 'localhost';
-      const r = await fetch(`http://${host}/api/admin/revivir-instancia?name=${encodeURIComponent(name)}`, { method: 'POST' });
-      const data = await r.json();
+      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const KEY = process.env.EVOLUTION_API_KEY || '';
+      let data = {};
+      try {
+        const r = await fetch(`${EVO}/instance/connect/${encodeURIComponent(name)}`, { headers: { apikey: KEY } });
+        data = await r.json();
+      } catch (e) { data = { error: e.message }; }
+      // Estructura puede venir en data.qrcode.base64 o data.base64 directo
+      data.qrBase64 = data?.base64 || data?.qrcode?.base64 || data?.qr?.base64 || null;
+      data.qrPairingCode = data?.pairingCode || data?.qrcode?.pairingCode || null;
       cors(res);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       const qr = data.qrBase64 || '';
@@ -3580,7 +3588,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
 <li>Escanear el QR o escribir el código</li>
 <li>Esperar a que aparezca "conectado"</li></ol>
 <a class="btn" href="javascript:location.reload()">Refrescar (regenerar QR)</a>
-<pre style="text-align:left;font-size:11px;color:#666;margin-top:30px">${JSON.stringify(data.pasos||{},null,2)}</pre>
+<pre style="text-align:left;font-size:11px;color:#666;margin-top:30px">${JSON.stringify({state:data?.instance?.state||null,error:data.error||null},null,2)}</pre>
 </body></html>`);
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
