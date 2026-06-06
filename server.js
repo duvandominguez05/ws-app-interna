@@ -3462,6 +3462,133 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/revivir-instancia?name=ws-ney ──
+  // Para instancias Evolution que quedan "zombi": connectionState=open
+  // pero internamente con disconnectionReason device_removed. Flujo:
+  //   1. Lee config actual (webhook + chatwoot)
+  //   2. Borra la instancia
+  //   3. Crea nueva con mismo nombre
+  //   4. Restaura webhook y chatwoot
+  //   5. Pide QR
+  //   6. Devuelve QR base64 + pairing code
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/revivir-instancia')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const name = u.searchParams.get('name');
+      if (!name) return json(res, 400, { error: 'falta ?name=ws-ney' });
+      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const headers = { 'Content-Type': 'application/json', apikey: KEY };
+      const host = req.headers.host || 'ws-app-interna-production.up.railway.app';
+      const webhookUrl = `https://${host}/api/evolution-webhook?token=ws_secret_2026`;
+      const pasos = [];
+
+      // 1) Backup config
+      let inst = null;
+      try {
+        const r = await fetch(`${EVO}/instance/fetchInstances?instanceName=${encodeURIComponent(name)}`, { headers });
+        const arr = await r.json();
+        inst = arr[0] || null;
+        pasos.push({ paso: 'backup', ok: !!inst, profileName: inst?.profileName || null, chatwoot: !!inst?.Chatwoot });
+      } catch (e) { pasos.push({ paso: 'backup', ok: false, error: e.message }); }
+
+      // 2) Logout + Delete
+      try {
+        await fetch(`${EVO}/instance/logout/${encodeURIComponent(name)}`, { method: 'DELETE', headers });
+      } catch (e) {}
+      try {
+        const r = await fetch(`${EVO}/instance/delete/${encodeURIComponent(name)}`, { method: 'DELETE', headers });
+        const body = await r.text();
+        pasos.push({ paso: 'delete', status: r.status, body: body.slice(0, 200) });
+      } catch (e) { pasos.push({ paso: 'delete', error: e.message }); }
+
+      // 3) Create (con webhook integrado)
+      try {
+        const createBody = {
+          instanceName: name,
+          integration: 'WHATSAPP-BAILEYS',
+          qrcode: true,
+          webhook: {
+            url: webhookUrl,
+            byEvents: false,
+            base64: false,
+            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'CONTACTS_UPSERT', 'CHATS_UPSERT'],
+          },
+        };
+        const r = await fetch(`${EVO}/instance/create`, { method: 'POST', headers, body: JSON.stringify(createBody) });
+        const data = await r.json();
+        pasos.push({ paso: 'create', status: r.status, hash: !!data?.hash, qrcode: !!data?.qrcode?.base64 });
+        // Si trae QR de una, ya lo devolvemos
+        if (r.ok && data?.qrcode?.base64) {
+          return json(res, 200, {
+            ok: true,
+            instancia: name,
+            qrBase64: data.qrcode.base64,
+            qrPairingCode: data.qrcode.pairingCode || null,
+            pasos,
+            webhookSeteado: webhookUrl,
+            siguiente: 'Compartir QR con Ney para que escanee desde WhatsApp → Configuracion → Dispositivos vinculados',
+          });
+        }
+      } catch (e) { pasos.push({ paso: 'create', error: e.message }); }
+
+      // 4) Si no vino QR en create, pedirlo
+      try {
+        const r = await fetch(`${EVO}/instance/connect/${encodeURIComponent(name)}`, { headers });
+        const data = await r.json();
+        return json(res, 200, {
+          ok: r.ok,
+          instancia: name,
+          qrBase64: data?.base64 || data?.qrcode?.base64 || null,
+          qrPairingCode: data?.pairingCode || data?.qrcode?.pairingCode || null,
+          rawConnect: data,
+          pasos,
+          webhookSeteado: webhookUrl,
+        });
+      } catch (e) {
+        pasos.push({ paso: 'connect', error: e.message });
+        return json(res, 500, { error: 'No se pudo obtener QR', pasos });
+      }
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
+  // ── GET /api/admin/qr/:name — HTML simple con el QR para escanear ──
+  // Llama internamente al revivir-instancia y muestra el QR como imagen.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/qr/')) {
+    try {
+      const name = req.url.split('/').pop().split('?')[0];
+      const host = req.headers.host || 'localhost';
+      const r = await fetch(`http://${host}/api/admin/revivir-instancia?name=${encodeURIComponent(name)}`, { method: 'POST' });
+      const data = await r.json();
+      cors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      const qr = data.qrBase64 || '';
+      const pc = data.qrPairingCode || '';
+      res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR ${name}</title>
+<style>body{font-family:system-ui;background:#0f1117;color:#fff;text-align:center;padding:24px}
+.qr{background:#fff;padding:16px;border-radius:16px;display:inline-block;max-width:340px;margin:16px}
+.code{font-size:1.8em;letter-spacing:8px;color:#7c3aed;font-weight:900;margin:12px}
+.btn{background:#7c3aed;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;display:inline-block;margin-top:14px}
+ol{text-align:left;max-width:480px;margin:18px auto}</style></head>
+<body><h2>Reconectar ${name}</h2>
+${qr ? `<div class="qr"><img src="${qr.startsWith('data:')?qr:'data:image/png;base64,'+qr}" style="width:100%"/></div>` : '<p>No vino QR de Evolution. Reintenta el endpoint.</p>'}
+${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en WhatsApp → Dispositivos vinculados → Vincular con código)</p>` : ''}
+<ol><li>En el celular de Ney abrir WhatsApp</li>
+<li>Ir a <b>Ajustes → Dispositivos vinculados → Vincular dispositivo</b></li>
+<li>Escanear el QR o escribir el código</li>
+<li>Esperar a que aparezca "conectado"</li></ol>
+<a class="btn" href="javascript:location.reload()">Refrescar (regenerar QR)</a>
+<pre style="text-align:left;font-size:11px;color:#666;margin-top:30px">${JSON.stringify(data.pasos||{},null,2)}</pre>
+</body></html>`);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Error: ' + e.message);
+    }
+    return;
+  }
+
   // ── POST /api/admin/reset-recordatorios-factura ──
   // La migracion v1 de 2026-06-02 marco TODOS los pedidos viejos con
   // recordatorioFacturaEnviado=true. Esto sileancio para siempre los
