@@ -9347,6 +9347,123 @@ setTimeout(cronResumenAtascosTick, 10 * 60 * 1000);
 console.log('[cron-atascos] activado — resumen 10 AM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON Detector de instancias ZOMBI cada 30 min
+// Antecedente: ws-ney quedo "open" (mentirosa) pero desconectada desde
+// el 9-mayo. Perdimos 28 dias de ventas. NUNCA MAS.
+// Detecta 2 tipos de problema:
+//   1. connectionStatus != 'open' (caida clara, esperando QR)
+//   2. status='open' PERO sin eventos webhook hace +6h (zombi silencioso)
+// Dedupe por instancia+dia para no spamear.
+// ═══════════════════════════════════════════════════════════════════
+const INSTANCIAS_VIGILADAS = ['ws-ventas', 'ws-ney', 'ws wendy', 'ws-paola', 'ws-duvan'];
+
+function _ultimoEventoInstancia(instanceName) {
+  // Busca en logs de hoy y ayer el ultimo evento de esa instancia
+  const tz = 'America/Bogota';
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: tz });
+  let maxTs = 0;
+  for (const fecha of [hoy, ayer]) {
+    try {
+      const evs = db.leerEvolutionEvents(fecha) || [];
+      for (const ev of evs) {
+        const inst = ev?.instance || ev?.payload?.instance;
+        if (inst !== instanceName) continue;
+        const ts = ev?.data?.messageTimestamp
+          ? ev.data.messageTimestamp * 1000
+          : (ev?.date_time ? new Date(ev.date_time).getTime() : 0);
+        if (ts > maxTs) maxTs = ts;
+      }
+    } catch (e) {}
+  }
+  return maxTs;
+}
+
+async function cronInstanciasZombiTick() {
+  try {
+    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const KEY = process.env.EVOLUTION_API_KEY || '';
+    if (!KEY) return;
+    const host = process.env.RAILWAY_PUBLIC_DOMAIN || 'ws-app-interna-production.up.railway.app';
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const SEIS_HORAS = 6 * 60 * 60 * 1000;
+    const ahora = Date.now();
+
+    for (const name of INSTANCIAS_VIGILADAS) {
+      try {
+        const r = await fetch(`${EVO}/instance/fetchInstances?instanceName=${encodeURIComponent(name)}`, {
+          headers: { apikey: KEY },
+        });
+        if (!r.ok) continue;
+        const arr = await r.json();
+        const inst = Array.isArray(arr) ? arr[0] : null;
+        if (!inst) {
+          // Instancia no existe
+          const dedupeKey = `zombie:${name}:no-existe:${hoyISO}`;
+          if (waPuedeEnviar(dedupeKey)) {
+            const msg = `⚠️ *Instancia ${name} NO existe en Evolution*\n\n` +
+              `Hay que crearla. Avisame para hacerlo.`;
+            await notificarJefes(msg, { dedupeKey, soloJefe: true });
+          }
+          continue;
+        }
+
+        const status = inst.connectionStatus;
+        const ultimoEv = _ultimoEventoInstancia(name);
+        const sinEventosHace = ultimoEv ? (ahora - ultimoEv) : Infinity;
+
+        // Caso 1: caida clara
+        if (status !== 'open') {
+          const dedupeKey = `zombie:${name}:caida:${hoyISO}`;
+          if (waPuedeEnviar(dedupeKey)) {
+            const msg = `🚨 *${name} DESCONECTADA*\n\n` +
+              `Estado: ${status}\n` +
+              `Telefono: ${inst.number || '?'} (${inst.profileName || '?'})\n` +
+              `Ultima caida: ${inst.disconnectionAt || '?'}\n\n` +
+              `👉 Para arreglar:\n` +
+              `1. Abre https://${host}/api/admin/qr/${encodeURIComponent(name)}\n` +
+              `2. La persona escanea el QR desde su WhatsApp\n` +
+              `3. Esperar mensaje "conectado"`;
+            await notificarJefes(msg, { dedupeKey, soloJefe: true });
+            console.log(`[cron-zombi] ALERTA enviada: ${name} status=${status}`);
+          }
+          continue;
+        }
+
+        // Caso 2: zombi silencioso (open pero sin trafico)
+        // Horario activo Bogota 7am-9pm — fuera de eso, NO alertamos por silencio
+        const horaBog = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }), 10);
+        const esHoraActiva = horaBog >= 7 && horaBog <= 21;
+        if (esHoraActiva && sinEventosHace > SEIS_HORAS) {
+          const dedupeKey = `zombie:${name}:silencioso:${hoyISO}`;
+          if (waPuedeEnviar(dedupeKey)) {
+            const horasSinEv = Math.round(sinEventosHace / (60 * 60 * 1000));
+            const msg = `🟡 *${name} SOSPECHOSA (zombi silencioso)*\n\n` +
+              `Evolution dice "open" pero no llegan eventos hace ${horasSinEv}h.\n` +
+              `Telefono: ${inst.number || '?'} (${inst.profileName || '?'})\n\n` +
+              `Posible causa: el dueño removio el dispositivo vinculado.\n\n` +
+              `👉 Para diagnosticar:\n` +
+              `1. Reinicia el servicio Evolution en Railway\n` +
+              `2. Si despues sigue silenciosa, abre https://${host}/api/admin/qr/${encodeURIComponent(name)} y re-escanea`;
+            await notificarJefes(msg, { dedupeKey, soloJefe: true });
+            console.log(`[cron-zombi] ALERTA silenciosa: ${name} sinEventos=${horasSinEv}h`);
+          }
+        }
+      } catch (eInst) {
+        console.error(`[cron-zombi ${name}]`, eInst.message);
+      }
+    }
+  } catch (e) {
+    console.error('[cron-zombi]', e.message);
+  }
+}
+// Cada 30 min
+setInterval(cronInstanciasZombiTick, 30 * 60 * 1000);
+// Primer tick 3 min despues de arrancar
+setTimeout(cronInstanciasZombiTick, 3 * 60 * 1000);
+console.log('[cron-zombi] activado — verifica instancias Evolution cada 30 min');
+
+// ═══════════════════════════════════════════════════════════════════
 // CRON Auto-archivar pedidos abandonados
 // Pedidos en bandeja/hacer-diseno +10 dias sin actividad real
 // (sin pagos, sin total, sin equipo nombrado por humano) → archiva.
