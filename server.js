@@ -3398,10 +3398,18 @@ http.createServer(async (req, res) => {
         }
 
         // 4) WA a vendedora pidiendo nombre real (opt-in: ?pedirNombre=1)
-        // Solo si: pedido sigue en hacer-diseno, vino del bot (pushName),
-        // no se le acaban de amarrar archivos en esta corrida.
+        // Cubre: pedidos con flag equipoVieneDeBot=true Y pedidos antiguos
+        // (sin flag) que llevan +24h en hacer-diseno con nombre "tipo cliente"
+        // (1-2 palabras, emojis, telefono). Asi alcanza a los #281/#283 de Ney.
         const seguiraEsperando = p.estado === 'hacer-diseno' && !p.pdfDriveListo && !p.wtListo;
-        const necesitaNombre = p.equipoVieneDeBot === true && seguiraEsperando;
+        const nombreSospechoso = (() => {
+          if (!p.equipo) return true;
+          if (/^cliente\s+\+?\d/i.test(p.equipo)) return true; // "Cliente +57 ..."
+          if (/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(p.equipo)) return true; // emoji
+          const palabras = p.equipo.split(/\s+/).filter(w => w.length >= 3);
+          return palabras.length <= 2; // 1-2 palabras = probable pushName
+        })();
+        const necesitaNombre = seguiraEsperando && (p.equipoVieneDeBot === true || nombreSospechoso);
         if (pedirNombre && necesitaNombre && p.vendedora) {
           const dedupeKey = `pide-nombre-equipo:${p.id}`;
           if (typeof waPuedeEnviar === 'function' && waPuedeEnviar(dedupeKey)) {
@@ -3430,6 +3438,49 @@ http.createServer(async (req, res) => {
       }
 
       return json(res, 200, reporte);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
+    }
+  }
+
+  // ── POST /api/admin/reset-recordatorios-factura ──
+  // La migracion v1 de 2026-06-02 marco TODOS los pedidos viejos con
+  // recordatorioFacturaEnviado=true. Esto sileancio para siempre los
+  // recordatorios de pedidos antiguos sin factura.
+  // Este endpoint resetea el flag para pedidos:
+  //   - Sin factura asociada
+  //   - No en estados cerrados
+  //   - Marcados por la migracion (recordatorioFacturaFecha = 'migracion-2026-06-02')
+  // Y dispara el cron para que mande los recordatorios ahora.
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/reset-recordatorios-factura')) {
+    try {
+      const peds = leerPedidos();
+      const ESTADOS_CERRADOS = new Set(['enviado-final', 'archivado', 'cancelado']);
+      const reset = [];
+      for (const p of peds) {
+        if (ESTADOS_CERRADOS.has(p.estado)) continue;
+        if (p.recordatorioFacturaFecha !== 'migracion-2026-06-02') continue;
+        // verificar si ya tiene factura
+        try {
+          const facts = (typeof db.leerFacturasPorPedido === 'function')
+            ? (db.leerFacturasPorPedido(p.id) || [])
+            : [];
+          if (facts.length > 0) continue; // sigue ok, tiene factura
+        } catch (e) {}
+        p.recordatorioFacturaEnviado = false;
+        delete p.recordatorioFacturaFecha;
+        reset.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora });
+      }
+      if (reset.length) guardarPedidos(peds, leerNextId());
+      // Disparar cron ahora para que envie los recordatorios
+      let enviadoAhora = 0;
+      try {
+        if (typeof cronRecordatorioFacturaTick === 'function') {
+          await cronRecordatorioFacturaTick();
+          enviadoAhora = 1;
+        }
+      } catch (e) {}
+      return json(res, 200, { ok: true, reseteados: reset.length, detalle: reset, cronDisparado: enviadoAhora });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: (e.stack || '').slice(0, 500) });
     }
@@ -7918,16 +7969,14 @@ async function enviarResumenComprobantes() {
       pedidosPorVend[v].push(p);
     });
 
-    // ── Vendedoras que necesitan resumen (tienen pedidos hoy O comprobantes sin sticker) ──
+    // ── Vendedoras: SIEMPRE incluir las 4 (Betty/Ney/Wendy/Paola)
+    //    para que cada una sepa cómo cerró su día (aunque sea 0 ventas).
+    //    Sigue mostrando comprobantes/pedidos cuando hay; si no, "Día sin actividad".
     const vendedorasActivas = new Set([
+      'Betty', 'Ney', 'Wendy', 'Paola',
       ...Object.keys(compSinStickerPorVend),
       ...Object.keys(pedidosPorVend),
     ]);
-
-    if (!vendedorasActivas.size) {
-      console.log('[resumen-8pm] sin actividad en las últimas 18h — silencio');
-      return;
-    }
 
     // ── Mandar WA detallado a cada vendedora ──
     for (const vendedora of vendedorasActivas) {
@@ -7980,9 +8029,17 @@ async function enviarResumenComprobantes() {
           const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
           texto += `${n++}. Sticker a ${r.telefono} (pago ${monto})\n`;
         }
-      } else {
+      } else if (peds.length || compsSin.length) {
         texto += `─────────────────────────────\n`;
         texto += `🎉 ¡Día completo! Todo con sticker + factura.\n`;
+      } else {
+        // Vendedora SIN actividad hoy — mensaje suave para que sepa
+        // que el sistema sigue vivo y a la espera.
+        texto += `─────────────────────────────\n`;
+        texto += `🌙 Hoy no registramos ventas tuyas.\n\n`;
+        texto += `Si vendiste y no aparece:\n`;
+        texto += `  • Revisá que hayas pasado el sticker 💰 al chat del cliente\n`;
+        texto += `  • Verificá que el cliente haya pagado y mandado comprobante\n`;
       }
 
       texto += `\n💰 Total vendido hoy: ${_formatearMontoCOP(dia.totalMonto)}`;
