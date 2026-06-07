@@ -3597,6 +3597,144 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // VIGILANTE W&S — endpoint que reciben los agentes locales en cada PC
+  // de los disenadores. Cuando aparece archivo en corel/PDF RIP/CATALOGO,
+  // el vigilante reporta aca:
+  //   { pc, carpeta, archivo, evento, ts }
+  // Matchea por nombre del equipo y avanza el estado del pedido.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/agente-evento') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const { pc, carpeta, archivo, evento, ts } = data;
+        if (!pc || !evento) return json(res, 400, { error: 'falta pc o evento' });
+
+        // Heartbeat: solo log, no procesa archivo
+        if (evento === 'heartbeat') {
+          console.log(`[agente] heartbeat de ${pc}`);
+          return json(res, 200, { ok: true, heartbeat: true });
+        }
+
+        if (!carpeta || !archivo) return json(res, 400, { error: 'falta carpeta o archivo' });
+
+        console.log(`[agente] ${pc} ${evento} ${carpeta}/${archivo}`);
+
+        // Matchear con pedido por nombre del archivo (sin extension)
+        const nombreSinExt = archivo.replace(/\.[^.]+$/, '').trim();
+        const peds = leerPedidos();
+        const ESTADOS_FINALES = new Set(['enviado-final','archivado','cancelado']);
+        const candidatos = peds.filter(p => {
+          if (ESTADOS_FINALES.has(p.estado)) return false;
+          return nombresCoinciden(p.equipo, nombreSinExt) ||
+                 (p.pushNameCliente && nombresCoinciden(p.pushNameCliente, nombreSinExt)) ||
+                 (Array.isArray(p.archivosAlias) && p.archivosAlias.some(a => nombresCoinciden(a, nombreSinExt)));
+        });
+
+        const carpetaNorm = String(carpeta).toLowerCase();
+        const accion = { pc, archivo, carpeta: carpetaNorm, ts, candidatos: candidatos.length };
+
+        // Caso 1: 1 candidato claro → vincular y avanzar
+        if (candidatos.length === 1) {
+          const p = candidatos[0];
+          let cambio = null;
+          if (carpetaNorm === 'corel') {
+            if (!p.disenoIniciado) {
+              p.disenoIniciado = true;
+              p.fechaDisenoIniciado = ts || new Date().toISOString();
+              p.disenadorReal = pc; // quien EFECTIVAMENTE hizo el diseno
+              cambio = 'diseno-iniciado';
+            }
+          } else if (carpetaNorm === 'pdf-rip' || carpetaNorm === 'pdfrip') {
+            if (!p.pdfDriveListo) {
+              p.pdfDriveListo = true;
+              p.fechaPdfDrive = ts || new Date().toISOString();
+              cambio = 'pdf-rip-listo';
+            }
+            // Avanzar a confirmado si seguia en hacer-diseno
+            if (p.estado === 'hacer-diseno') {
+              p.estado = 'confirmado';
+              p.disenadorReal = p.disenadorReal || pc;
+              cambio = (cambio ? cambio + '+' : '') + 'avance-a-confirmado';
+            }
+          } else if (carpetaNorm === 'catalogo') {
+            if (!p.enCatalogo) {
+              p.enCatalogo = true;
+              p.fechaCatalogo = ts || new Date().toISOString();
+              cambio = 'catalogado';
+            }
+          }
+          if (cambio) {
+            p.ultimoMovimiento = new Date().toISOString();
+            // Guardar alias para futuras vinculaciones por el mismo nombre
+            if (!Array.isArray(p.archivosAlias)) p.archivosAlias = [];
+            const aliasLimpio = nombreLimpio(nombreSinExt);
+            if (aliasLimpio && !p.archivosAlias.includes(aliasLimpio)) p.archivosAlias.push(aliasLimpio);
+            guardarPedidos(peds, leerNextId());
+            console.log(`[agente] #${p.id} ${p.equipo} -> ${cambio} (PC ${pc})`);
+            // Avanzar a enviado-calandra si ambas senales (PDF + WT) estan
+            try {
+              if (typeof evaluarPasoCalandra === 'function') evaluarPasoCalandra(p);
+              guardarPedidos(peds, leerNextId());
+            } catch {}
+            // Notif al jefe (dedupe por pedido+cambio+dia)
+            const dedupeKey = `agente:${p.id}:${cambio}:${new Date().toISOString().slice(0,10)}`;
+            if (waPuedeEnviar(dedupeKey)) {
+              const eq = p.equipo || `#${p.id}`;
+              const iconos = { 'diseno-iniciado': '✏️', 'pdf-rip-listo': '📄', 'catalogado': '📸' };
+              const ico = iconos[cambio.split('+')[0]] || '🎨';
+              const msg = `${ico} *Avance auto #${p.id} ${eq}*\n` +
+                `PC: ${pc}\nArchivo: ${archivo}\nEstado: ${cambio}`;
+              notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
+            }
+            accion.matcheado = true;
+            accion.pedidoId = p.id;
+            accion.cambio = cambio;
+          } else {
+            accion.matcheado = true;
+            accion.pedidoId = p.id;
+            accion.cambio = 'ya-marcado';
+          }
+        }
+        // Caso 2: 0 candidatos → archivo huerfano, alerta al jefe
+        else if (candidatos.length === 0) {
+          const dedupeKey = `agente-huerfano:${archivo}:${pc}:${new Date().toISOString().slice(0,10)}`;
+          if (waPuedeEnviar(dedupeKey)) {
+            const msg = `🟡 *Archivo huerfano detectado*\n\n` +
+              `PC: ${pc}\nCarpeta: ${carpeta}\nArchivo: ${archivo}\n\n` +
+              `No encontre pedido con nombre parecido. ¿Renombrarlo o crear pedido?`;
+            notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
+          }
+          accion.matcheado = false;
+          accion.razon = 'sin-candidatos';
+        }
+        // Caso 3: multiples candidatos → preguntar al jefe
+        else {
+          const dedupeKey = `agente-ambiguo:${archivo}:${pc}:${new Date().toISOString().slice(0,10)}`;
+          if (waPuedeEnviar(dedupeKey)) {
+            const lista = candidatos.slice(0, 5).map(c => `• #${c.id} ${c.equipo} (${c.vendedora})`).join('\n');
+            const msg = `🟠 *Archivo ambiguo*\n\nPC: ${pc}\nArchivo: ${archivo}\n\n` +
+              `Match con ${candidatos.length} pedidos:\n${lista}\n\n` +
+              `Responde: *vincular N ${candidatos[0].id}* (donde N es el pedido correcto).`;
+            notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
+          }
+          accion.matcheado = false;
+          accion.razon = 'ambiguo';
+          accion.candidatosIds = candidatos.map(c => c.id);
+        }
+
+        return json(res, 200, { ok: true, accion });
+      } catch (e) {
+        console.error('[agente-evento]', e.message);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/admin/disparar-cron?cron=cazar-dis|arreglos|calandra|aprobacion|zombi ──
   // Permite forzar la ejecucion de cualquier cron del flujo automatizado
   // sin esperar el intervalo. Util para verificar que estan funcionando.

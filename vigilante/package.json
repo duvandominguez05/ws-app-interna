@@ -1,0 +1,21 @@
+{
+  "name": "ws-vigilante",
+  "version": "1.0.0",
+  "description": "Vigilante W&S — corre en background en PCs de disenadores y reporta archivos nuevos en Drive a Railway",
+  "main": "index.js",
+  "bin": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "pkg . --targets node18-win-x64 --output dist/ws-vigilante.exe"
+  },
+  "dependencies": {
+    "chokidar": "^3.5.3"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": ["readline-sync/**/*"],
+    "outputPath": "dist"
+  }
+}
