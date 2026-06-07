@@ -22,13 +22,34 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
+const { exec } = require('child_process');
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const SERVER_URL = process.env.WS_VIGILANTE_URL || 'https://ws-app-interna-production.up.railway.app';
 const ENDPOINT = '/api/agente-evento';
+const ENDPOINT_ACTIVIDAD = '/api/agente-actividad';
 const CONFIG_DIR = path.join(process.env.APPDATA || os.homedir(), 'ws-vigilante');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const LOG_PATH = path.join(CONFIG_DIR, 'vigilante.log');
+
+// Intervalos
+const INTERVALO_SNAPSHOT_MS = 30 * 1000; // cada 30 seg
+const INTERVALO_HEARTBEAT_MS = 60 * 60 * 1000; // cada 1 hora
+
+// Procesos que queremos detectar (nombres del ejecutable)
+const PROCESOS_DISEÑO = {
+  'CorelDRW.exe': 'corel',
+  'CorelDraw.exe': 'corel',
+  'Coreldrw.exe': 'corel',
+  'Photoshop.exe': 'photoshop',
+  'Illustrator.exe': 'illustrator',
+  'chrome.exe': 'chrome',
+  'msedge.exe': 'edge',
+  'firefox.exe': 'firefox',
+  'WhatsApp.exe': 'whatsapp',
+  'WhatsApp.exe.WerFault.exe': 'whatsapp',
+  'rip.exe': 'rip',
+};
 
 // Nombres de carpeta que vamos a buscar (case-insensitive)
 const CARPETAS_OBJETIVO = ['corel', 'pdf rip', 'catalogo'];
@@ -200,6 +221,219 @@ async function setupInicial() {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// SNAPSHOT DE ACTIVIDAD — captura cada 30 seg lo que esta haciendo la PC.
+//
+// Captura:
+//   - Procesos activos con titulos de ventanas (Corel, Photoshop, Illustrator, Chrome, WhatsApp)
+//   - Para Corel/PS/AI: extrae nombre del archivo abierto
+//   - Para Chrome: detecta tabs con WhatsApp Web (con cliente) y WeTransfer
+//   - Para WhatsApp Desktop: detecta chat activo
+//
+// Envia al servidor consolidado en un POST cada 30 seg.
+// ───────────────────────────────────────────────────────────────────
+function execPromise(cmd, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    exec(cmd, { timeout: timeoutMs, windowsHide: true, maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
+      if (err) return resolve('');
+      resolve(stdout || '');
+    });
+  });
+}
+
+// Parsea salida CSV de tasklist /v
+function parsearTasklistCSV(csv) {
+  const lineas = csv.split(/\r?\n/).filter(Boolean);
+  const procesos = [];
+  for (const linea of lineas) {
+    // CSV con comillas: "Imagen","PID","Sesion","Sesion#","Memoria","Estado","Usuario","CPU","Titulo"
+    const partes = linea.match(/"([^"]*)"/g);
+    if (!partes || partes.length < 9) continue;
+    const limpios = partes.map(p => p.replace(/^"|"$/g, ''));
+    const imagen = limpios[0];
+    const titulo = limpios[8] || '';
+    if (!titulo || titulo === 'N/A' || titulo === 'N/D' || titulo === 'N/V') continue;
+    procesos.push({ imagen, titulo });
+  }
+  return procesos;
+}
+
+// Extrae nombre de archivo de un titulo tipico de Corel/PS/AI
+//  - "CorelDRAW 2024 - [almany_v3.cdr]"
+//  - "almany_v3.cdr - CorelDRAW Graphics Suite 2024"
+//  - "Photoshop - escudo.psd"
+//  - "Adobe Illustrator - <archivo>"
+function extraerArchivoDeTitulo(titulo, programa) {
+  if (!titulo) return null;
+  const t = titulo.replace(/\s+/g, ' ').trim();
+  // Patron 1: [archivo.ext]
+  let m = t.match(/\[([^\]]+\.(cdr|psd|ai|eps|svg|png|jpg|jpeg|pdf))\]/i);
+  if (m) return m[1];
+  // Patron 2: archivo.ext - Programa
+  m = t.match(/([^\\\/:*?"<>|\r\n]+\.(cdr|psd|ai|eps|svg|pdf))\s*[-–]\s*(CorelDRAW|Photoshop|Illustrator|Adobe)/i);
+  if (m) return m[1];
+  // Patron 3: Programa - archivo.ext
+  m = t.match(/(CorelDRAW|Photoshop|Illustrator|Adobe)[^-]*[-–]\s*([^\\\/:*?"<>|\r\n]+\.(cdr|psd|ai|eps|svg|pdf))/i);
+  if (m) return m[2];
+  // Patron 4: solo archivo.ext en titulo
+  m = t.match(/([^\\\/:*?"<>|\r\n]+\.(cdr|psd|ai|eps|svg))/i);
+  if (m) return m[1];
+  return null;
+}
+
+// Filtro de privacidad: solo titulos de Chrome relacionados al trabajo W&S.
+// NO se mandan al servidor titulos de navegacion personal del disenador.
+function esTituloRelevante(titulo) {
+  if (!titulo) return false;
+  const t = titulo.toLowerCase();
+  return /(whatsapp|wetransfer|drive\.google|\bdrive\b|corel|photoshop|illustrator|\.cdr|\.psd|\.ai|\.pdf|gmail|mi unidad|my drive)/.test(t);
+}
+
+// Detecta si un titulo de Chrome es WhatsApp Web con cliente
+// Ejemplos:
+//   "Manuel Bustamante (3104999999) - WhatsApp - Google Chrome"
+//   "Almany FC - WhatsApp - Google Chrome"
+//   "WhatsApp - Google Chrome"  (sin chat activo)
+function extraerChatWhatsApp(titulo) {
+  if (!titulo) return null;
+  const t = titulo.trim();
+  // Regex: cualquier cosa antes de " - WhatsApp"
+  const m = t.match(/^(.+?)\s*[-–]\s*WhatsApp/i);
+  if (!m) return null;
+  const chat = m[1].trim();
+  if (!chat || /^WhatsApp/i.test(chat)) return null;
+  // Extraer telefono si esta entre parentesis
+  let telefono = null;
+  const tel = chat.match(/\(?(\+?\d[\d\s().-]{6,})\)?/);
+  if (tel) telefono = tel[1].replace(/\D/g, '');
+  // Nombre = sin el telefono
+  const nombre = chat.replace(/\s*\(?\+?\d[\d\s().-]{6,}\)?\s*/g, '').trim() || null;
+  return { chat, nombre, telefono };
+}
+
+// Detecta WeTransfer en titulo de Chrome
+function esWeTransfer(titulo) {
+  if (!titulo) return false;
+  return /wetransfer/i.test(titulo);
+}
+
+// State interno de tracking
+let _wtAbierto = { activo: false, desde: 0 };
+let _archivoCorelPrev = null;
+let _archivoCorelDesde = 0;
+
+async function capturarSnapshot(cfg) {
+  if (process.platform !== 'win32') return null;
+  // tasklist /V /FO CSV /NH = sin header, CSV con titulos
+  const csv = await execPromise('tasklist /V /FO CSV /NH');
+  if (!csv) return null;
+  const procesos = parsearTasklistCSV(csv);
+
+  const programasActivos = new Set();
+  const archivosAbiertos = []; // {programa, archivo, titulo}
+  const chatsWhatsApp = []; // {chat, nombre, telefono, fuente}
+  let weTransferAbierto = false;
+
+  for (const { imagen, titulo } of procesos) {
+    const prog = PROCESOS_DISEÑO[imagen] || PROCESOS_DISEÑO[imagen.toLowerCase()];
+    if (prog) programasActivos.add(prog);
+
+    if (prog === 'corel' || prog === 'photoshop' || prog === 'illustrator') {
+      const archivo = extraerArchivoDeTitulo(titulo, prog);
+      if (archivo) archivosAbiertos.push({ programa: prog, archivo, titulo });
+    }
+    if (prog === 'chrome' || prog === 'edge' || prog === 'firefox') {
+      // Filtro privacidad: solo procesamos titulos relacionados a W&S
+      if (!esTituloRelevante(titulo)) continue;
+      // Verifica chat WhatsApp Web
+      const chat = extraerChatWhatsApp(titulo);
+      if (chat) chatsWhatsApp.push({ ...chat, fuente: 'whatsapp-web' });
+      // Verifica WeTransfer
+      if (esWeTransfer(titulo)) weTransferAbierto = true;
+    }
+    if (prog === 'whatsapp') {
+      // WhatsApp Desktop: titulo tipo "Manuel Bustamante - WhatsApp"
+      const chat = extraerChatWhatsApp(titulo);
+      if (chat) chatsWhatsApp.push({ ...chat, fuente: 'whatsapp-desktop' });
+    }
+  }
+
+  // Detectar WT abierto +2min
+  const ahora = Date.now();
+  if (weTransferAbierto) {
+    if (!_wtAbierto.activo) {
+      _wtAbierto = { activo: true, desde: ahora };
+    }
+  } else if (_wtAbierto.activo) {
+    _wtAbierto = { activo: false, desde: 0 };
+  }
+  const wtMinutosAbierto = _wtAbierto.activo ? Math.floor((ahora - _wtAbierto.desde) / 60000) : 0;
+
+  // Detectar cambio de archivo Corel (tiempo activo por archivo)
+  let archivoActual = null;
+  let tiempoActivoArchivoMin = 0;
+  const corelArchivo = archivosAbiertos.find(a => a.programa === 'corel');
+  if (corelArchivo) {
+    archivoActual = corelArchivo.archivo;
+    if (archivoActual !== _archivoCorelPrev) {
+      _archivoCorelPrev = archivoActual;
+      _archivoCorelDesde = ahora;
+    } else {
+      tiempoActivoArchivoMin = Math.floor((ahora - _archivoCorelDesde) / 60000);
+    }
+  } else if (_archivoCorelPrev) {
+    _archivoCorelPrev = null;
+    _archivoCorelDesde = 0;
+  }
+
+  return {
+    pc: cfg.persona,
+    hostname: os.hostname(),
+    ts: new Date().toISOString(),
+    programasActivos: Array.from(programasActivos),
+    archivosAbiertos,
+    chatsWhatsApp,
+    weTransfer: {
+      abierto: weTransferAbierto,
+      minutosAbierto: wtMinutosAbierto,
+    },
+    corelActivo: archivoActual ? {
+      archivo: archivoActual,
+      tiempoActivoMin: tiempoActivoArchivoMin,
+    } : null,
+    vigilanteVersion: VERSION,
+  };
+}
+
+async function enviarSnapshot(snapshot) {
+  if (!snapshot) return;
+  try {
+    const r = await fetch(SERVER_URL + ENDPOINT_ACTIVIDAD, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(snapshot),
+    });
+    if (!r.ok) log(`fallo snapshot HTTP ${r.status}`);
+  } catch (e) {
+    log(`error red snapshot:`, e.message);
+  }
+}
+
+function iniciarCapturaSnapshot(cfg) {
+  const tick = async () => {
+    try {
+      const snap = await capturarSnapshot(cfg);
+      if (snap) {
+        await enviarSnapshot(snap);
+        log(`snapshot enviado: progs=${snap.programasActivos.join(',')||'-'} arch=${snap.archivosAbiertos.length} chats=${snap.chatsWhatsApp.length} wt=${snap.weTransfer.abierto}`);
+      }
+    } catch (e) { log('snapshot err:', e.message); }
+  };
+  setInterval(tick, INTERVALO_SNAPSHOT_MS);
+  setTimeout(tick, 10 * 1000); // primer snapshot a los 10s
+  log('captura de actividad activa (cada 30s)');
+}
+
+// ───────────────────────────────────────────────────────────────────
 // AUTO-START EN WINDOWS
 // Crea una entrada en Run del registro para que arranque al iniciar sesion.
 // ───────────────────────────────────────────────────────────────────
@@ -301,6 +535,7 @@ function iniciarVigilancia(cfg) {
       configurarAutoStart();
     }
     iniciarVigilancia(cfg);
+    iniciarCapturaSnapshot(cfg);
   } catch (e) {
     log('ERROR fatal:', e.message);
     if (process.env.WS_VIGILANTE_VERBOSE === '1') console.error(e);

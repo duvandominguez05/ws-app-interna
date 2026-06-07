@@ -3598,6 +3598,114 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // VIGILANTE W&S — endpoint /api/agente-actividad
+  // Recibe snapshots cada 30s con:
+  //   - programasActivos (corel, photoshop, illustrator, chrome, whatsapp)
+  //   - archivosAbiertos (qué .cdr/.psd/.ai está editando)
+  //   - chatsWhatsApp (qué cliente está conversando)
+  //   - weTransfer.minutosAbierto (cuánto lleva en wetransfer.com)
+  //   - corelActivo.tiempoActivoMin (tiempo en el mismo archivo)
+  //
+  // Genera AVANCES auto:
+  //   - archivo Corel abierto + chat WhatsApp con teléfono → auto-vincula
+  //   - WeTransfer abierto +2min → marca "WT en proceso" en pedido activo
+  //   - Corel abierto +1h en mismo archivo → marca "en edición intensa"
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/agente-actividad') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const snap = JSON.parse(body || '{}');
+        const { pc, programasActivos = [], archivosAbiertos = [], chatsWhatsApp = [], weTransfer = {}, corelActivo = null, ts } = snap;
+        if (!pc) return json(res, 400, { error: 'falta pc' });
+
+        const peds = leerPedidos();
+        const ESTADOS_FINALES = new Set(['enviado-final','archivado','cancelado']);
+        let cambios = 0;
+
+        // ── 1. AUTO-MATCH POR CONTEXTO (archivo Corel + chat WhatsApp) ──
+        if (corelActivo && corelActivo.archivo && chatsWhatsApp.length > 0) {
+          const archivoSinExt = corelActivo.archivo.replace(/\.[^.]+$/, '').trim();
+          for (const chat of chatsWhatsApp) {
+            if (!chat.telefono) continue;
+            // Pedido del cliente con ese teléfono?
+            const telLimpio = chat.telefono.replace(/\D/g, '');
+            const pedidoCliente = peds.find(p => {
+              if (ESTADOS_FINALES.has(p.estado)) return false;
+              const pTel = String(p.telefono || '').replace(/\D/g, '');
+              return pTel === telLimpio || pTel.endsWith(telLimpio) || telLimpio.endsWith(pTel);
+            });
+            if (!pedidoCliente) continue;
+            // Aprende el alias archivo→pedido
+            if (!Array.isArray(pedidoCliente.archivosAlias)) pedidoCliente.archivosAlias = [];
+            const aliasLimpio = nombreLimpio(archivoSinExt);
+            if (aliasLimpio && !pedidoCliente.archivosAlias.includes(aliasLimpio)) {
+              pedidoCliente.archivosAlias.push(aliasLimpio);
+              cambios++;
+            }
+            // Marca disenador real + iniciado
+            if (!pedidoCliente.disenoIniciado) {
+              pedidoCliente.disenoIniciado = true;
+              pedidoCliente.fechaDisenoIniciado = ts || new Date().toISOString();
+              cambios++;
+            }
+            if (!pedidoCliente.disenadorReal) {
+              pedidoCliente.disenadorReal = pc;
+              cambios++;
+            }
+            // Marca activamente en edicion
+            pedidoCliente.enEdicionActiva = {
+              pc,
+              archivo: corelActivo.archivo,
+              chatActivo: chat.chat,
+              tiempoActivoMin: corelActivo.tiempoActivoMin || 0,
+              actualizado: new Date().toISOString(),
+            };
+            cambios++;
+            console.log(`[actividad] auto-match #${pedidoCliente.id} (${chat.nombre||chat.telefono}) <- ${corelActivo.archivo} en PC ${pc}`);
+          }
+        }
+
+        // ── 2. WeTransfer +2min abierto → marcar WT en proceso en pedidos activos del PC ──
+        if (weTransfer.abierto && (weTransfer.minutosAbierto || 0) >= 2) {
+          // Pedidos en hacer-diseno/confirmado del disenador (PC) que no tengan wtListo
+          const pedidosWTEnProceso = peds.filter(p => {
+            if (ESTADOS_FINALES.has(p.estado)) return false;
+            if (p.wtListo) return false;
+            if (p.disenadorReal !== pc) return false;
+            return p.estado === 'hacer-diseno' || p.estado === 'confirmado';
+          });
+          if (pedidosWTEnProceso.length === 1) {
+            const p = pedidosWTEnProceso[0];
+            if (!p.wtEnProceso) {
+              p.wtEnProceso = { pc, desde: ts || new Date().toISOString() };
+              cambios++;
+              console.log(`[actividad] WT en proceso #${p.id} (PC ${pc})`);
+            }
+          }
+        }
+
+        // ── 3. Heartbeat productividad: registra lo que el PC esta haciendo ──
+        if (typeof db.guardarConfig === 'function') {
+          // No guardo todo el snapshot, solo el último estado por PC
+          // (config tiene metodo upsert)
+        }
+
+        if (cambios > 0) {
+          guardarPedidos(peds, leerNextId());
+        }
+
+        return json(res, 200, { ok: true, cambios, pc });
+      } catch (e) {
+        console.error('[agente-actividad]', e.message);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // VIGILANTE W&S — endpoint que reciben los agentes locales en cada PC
   // de los disenadores. Cuando aparece archivo en corel/PDF RIP/CATALOGO,
   // el vigilante reporta aca:

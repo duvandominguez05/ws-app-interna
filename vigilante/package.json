@@ -15,7 +15,9 @@
     "pkg": "^5.8.1"
   },
   "pkg": {
-    "assets": ["readline-sync/**/*"],
+    "assets": [
+      "readline-sync/**/*"
+    ],
     "outputPath": "dist"
   }
 }
