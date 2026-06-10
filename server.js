@@ -3821,6 +3821,48 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // DIAGNOSTICO MATCHER DRIVE: muestra archivos del Drive corel y por que
+  // cada uno SI/NO se vinculo con un pedido
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/admin/diagnostico-drive') {
+    try {
+      const conectado = gmailWT.estaConectado();
+      if (!conectado) return json(res, 200, { error: 'Drive NO conectado (gmailWT.estaConectado=false)' });
+      const pedidos = leerPedidos();
+      const archivos = await driveSync.listarArchivos(driveSync.FOLDER_COREL, 100);
+      const cdrs = archivos.filter(a => /\.cdr$/i.test(a.name) && !/^Copia_de_seguridad_/i.test(a.name));
+      const diagnostico = cdrs.map(a => {
+        const parsed = gmailWT.parsearArchivo(a.name);
+        if (!parsed || !parsed.base) return { archivo: a.name, parsed: null, match: null, motivo: 'parseo fallo' };
+        const m = gmailWT.matchPedido(parsed.base, pedidos);
+        return {
+          archivo: a.name,
+          base: parsed.base,
+          baseNormalizada: nombreLimpio(parsed.base),
+          match: m ? { pedidoId: m.pedido.id, equipo: m.pedido.equipo, score: m.score } : null,
+        };
+      });
+      const pedidosResumen = pedidos.filter(p => !['enviado-final','archivado','entregado','cancelado'].includes(p.estado)).map(p => ({
+        id: p.id,
+        estado: p.estado,
+        equipo: p.equipo,
+        equipoNormalizado: nombreLimpio(p.equipo || ''),
+        telefono: p.telefono,
+      }));
+      return json(res, 200, {
+        archivosTotal: cdrs.length,
+        archivosMatcheados: diagnostico.filter(d => d.match).length,
+        archivosHuerfanos: diagnostico.filter(d => !d.match).length,
+        diagnostico: diagnostico.slice(0, 50),
+        pedidosElegibles: pedidosResumen.length,
+        muestraPedidos: pedidosResumen.slice(0, 30),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR REPROCESO DE DRIVE AHORA (no esperar el cron de 10 min)
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'POST' && req.url === '/api/admin/forzar-reproceso-drive') {
