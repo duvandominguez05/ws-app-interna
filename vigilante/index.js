@@ -24,7 +24,7 @@ const os = require('os');
 const readline = require('readline');
 const { exec } = require('child_process');
 
-const VERSION = '2.0.0';
+const VERSION = '3.0.0';
 const SERVER_URL = process.env.WS_VIGILANTE_URL || 'https://ws-app-interna-production.up.railway.app';
 const ENDPOINT = '/api/agente-evento';
 const ENDPOINT_ACTIVIDAD = '/api/agente-actividad';
@@ -48,7 +48,37 @@ const PROCESOS_DISEÑO = {
   'firefox.exe': 'firefox',
   'WhatsApp.exe': 'whatsapp',
   'WhatsApp.exe.WerFault.exe': 'whatsapp',
+  'WhatsApp.Root.exe': 'whatsapp', // Windows Store version
+  'WhatsAppDesktop.exe': 'whatsapp',
   'rip.exe': 'rip',
+};
+
+// Procesos NO laborales (juegos, redes, streaming, ocio)
+const PROCESOS_NO_LABORALES = {
+  'Steam.exe': 'steam',
+  'EpicGamesLauncher.exe': 'epic',
+  'RiotClientServices.exe': 'riot',
+  'Riot Client.exe': 'riot',
+  'LeagueOfLegends.exe': 'lol',
+  'LeagueClientUx.exe': 'lol',
+  'LeagueClient.exe': 'lol',
+  'FortniteClient-Win64-Shipping.exe': 'fortnite',
+  'FIFA23.exe': 'fifa',
+  'FIFA24.exe': 'fifa',
+  'FIFA25.exe': 'fifa',
+  'Spotify.exe': 'spotify',
+  'Discord.exe': 'discord',
+  'Telegram.exe': 'telegram',
+  'TelegramDesktop.exe': 'telegram',
+  'Netflix.exe': 'netflix',
+  'vlc.exe': 'vlc',
+};
+
+// Set categorias para acumular tiempo
+const CATEGORIAS_PROGRAMA = {
+  diseno: ['corel', 'photoshop', 'illustrator'],
+  comunicacion: ['chrome', 'edge', 'firefox', 'whatsapp'],
+  no_laboral: Object.values(PROCESOS_NO_LABORALES),
 };
 
 // Nombres de carpeta que vamos a buscar (case-insensitive)
@@ -231,7 +261,7 @@ async function setupInicial() {
 //
 // Envia al servidor consolidado en un POST cada 30 seg.
 // ───────────────────────────────────────────────────────────────────
-function execPromise(cmd, timeoutMs = 8000) {
+function execPromise(cmd, timeoutMs = 20000) {
   return new Promise((resolve) => {
     exec(cmd, { timeout: timeoutMs, windowsHide: true, maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
       if (err) return resolve('');
@@ -262,6 +292,7 @@ function parsearTasklistCSV(csv) {
 //  - "almany_v3.cdr - CorelDRAW Graphics Suite 2024"
 //  - "Photoshop - escudo.psd"
 //  - "Adobe Illustrator - <archivo>"
+//  - "CorelDRAW (Versión OEM) - Recuperada_CAFETEROS FUT TB*"  (sin extension visible)
 function extraerArchivoDeTitulo(titulo, programa) {
   if (!titulo) return null;
   const t = titulo.replace(/\s+/g, ' ').trim();
@@ -277,6 +308,16 @@ function extraerArchivoDeTitulo(titulo, programa) {
   // Patron 4: solo archivo.ext en titulo
   m = t.match(/([^\\\/:*?"<>|\r\n]+\.(cdr|psd|ai|eps|svg))/i);
   if (m) return m[1];
+  // Patron 5: "Programa - nombre" sin extension (Corel recuperado, archivo modificado)
+  // Ej: "CorelDRAW (Versión OEM) - Recuperada_CAFETEROS FUT TB*"
+  m = t.match(/(CorelDRAW|Photoshop|Illustrator|Adobe)[^-]*[-–]\s*(.+?)\s*$/i);
+  if (m) {
+    const nombre = m[2].replace(/\*+$/, '').trim(); // quitar * de "modificado"
+    // Solo si tiene sentido (>= 3 chars y no es solo "Sin titulo")
+    if (nombre.length >= 3 && !/^(untitled|sin\s*t.tulo|new\s*document|nuevo\s*documento|documento\s*sin\s*nombre)/i.test(nombre)) {
+      return nombre;
+    }
+  }
   return null;
 }
 
@@ -285,7 +326,7 @@ function extraerArchivoDeTitulo(titulo, programa) {
 function esTituloRelevante(titulo) {
   if (!titulo) return false;
   const t = titulo.toLowerCase();
-  return /(whatsapp|wetransfer|drive\.google|\bdrive\b|corel|photoshop|illustrator|\.cdr|\.psd|\.ai|\.pdf|gmail|mi unidad|my drive)/.test(t);
+  return /(whatsapp|wetransfer|drive\.google|\bdrive\b|corel|photoshop|illustrator|\.cdr|\.psd|\.ai|\.pdf|gmail|mi unidad|my drive|n8n|workflow|notion|airtable|w&s|ws-app|app-interna|nequi|bancolombia|comprobante|stickers?|chatwoot|chat\s*woot|conversaci.n|inbox|hoja\s*de\s*c.lculo|sheets|google\s*meet|w&s\s*textil|deportivos|asesora)/.test(t);
 }
 
 // Detecta si un titulo de Chrome es WhatsApp Web con cliente
@@ -310,6 +351,48 @@ function extraerChatWhatsApp(titulo) {
   return { chat, nombre, telefono };
 }
 
+// Detecta chat activo en Chatwoot (panel web omnichannel que usa la empresa)
+// Ejemplos de titulos vistos:
+//   "Manuel Bustamante - Chatwoot"
+//   "Conversation #123 - Inbox WhatsApp - Chatwoot"
+//   "Pedro Mendoza · 3204525872 - Chatwoot"
+//   "(3) Manuel Bustamante - Chatwoot"  (el numero entre parentesis = mensajes sin leer)
+function extraerChatChatwoot(titulo) {
+  if (!titulo) return null;
+  const t = titulo.trim();
+  // Debe contener "Chatwoot" para procesar
+  if (!/chatwoot/i.test(t)) return null;
+  // Sacar contadores tipo "(3) " al principio
+  let limpio = t.replace(/^\(\d+\)\s*/, '');
+  // Sacar el sufijo " - Chatwoot" y posibles " - Inbox X - Chatwoot"
+  limpio = limpio.replace(/\s*[-–|]\s*Chatwoot.*$/i, '').trim();
+  // Si quedan partes tipo "Nombre - Inbox WhatsApp" tomar la primera
+  const partes = limpio.split(/\s*[-–|·]\s*/);
+  const primero = partes[0]?.trim();
+  if (!primero || /^(conversation|inbox|conversaciones|bandeja)/i.test(primero)) {
+    // Si la primera parte es la palabra Inbox/Conversation, buscar nombre en partes siguientes
+    for (let i = 1; i < partes.length; i++) {
+      const p = partes[i].trim();
+      if (p && !/^(inbox|conversation|whatsapp|sms|telegram|email|messenger|instagram)/i.test(p)) {
+        return { chat: p, nombre: p, telefono: extraerTelefonoDeTexto(p), fuente: 'chatwoot' };
+      }
+    }
+    return null;
+  }
+  return {
+    chat: primero,
+    nombre: primero.replace(/\(?\+?\d[\d\s().-]{6,}\)?/g, '').trim() || primero,
+    telefono: extraerTelefonoDeTexto(primero),
+    fuente: 'chatwoot',
+  };
+}
+
+function extraerTelefonoDeTexto(s) {
+  if (!s) return null;
+  const m = s.match(/\(?(\+?\d[\d\s().-]{6,})\)?/);
+  return m ? m[1].replace(/\D/g, '') : null;
+}
+
 // Detecta WeTransfer en titulo de Chrome
 function esWeTransfer(titulo) {
   if (!titulo) return false;
@@ -320,22 +403,166 @@ function esWeTransfer(titulo) {
 let _wtAbierto = { activo: false, desde: 0 };
 let _archivoCorelPrev = null;
 let _archivoCorelDesde = 0;
+let _ultimoTimestampMs = 0;
+let _diaActual = ''; // YYYY-MM-DD
+let _tiempoAcumuladoHoy = {}; // { diseno: ms, comunicacion: ms, no_laboral: ms, idle: ms, programas: { corel: ms, photoshop: ms, ... } }
+let _pcArranqueMs = Date.now();
+let _ultimosUsbs = new Set();
+let _archivosCopiadosUSBRecientes = 0;
+let _exportsRecientes = []; // {archivo, ts, carpeta}
+
+function resetSiCambioElDia() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (hoy !== _diaActual) {
+    _diaActual = hoy;
+    _tiempoAcumuladoHoy = { diseno: 0, comunicacion: 0, no_laboral: 0, idle: 0, programas: {}, programasAbiertosMs: {} };
+    _ultimoTimestampMs = Date.now();
+  }
+}
+
+// Llama a un PowerShell que devuelve JSON con:
+//   { idleSeg, ventanaEnFoco, procFoco, usbs, uptimeMin,
+//     procesos: [{name, title}], todosProcesos: [name, ...] }
+// Reemplaza tasklist /V (que tarda 20+ segundos en algunas PCs).
+async function capturarEstadoWindows() {
+  if (process.platform !== 'win32') return {};
+  const psScript = `
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class W {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+  [StructLayout(LayoutKind.Sequential)]
+  public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+}
+"@ -ErrorAction SilentlyContinue
+$lii = New-Object W+LASTINPUTINFO
+$lii.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($lii)
+[W]::GetLastInputInfo([ref]$lii) | Out-Null
+$idle = ([Environment]::TickCount - $lii.dwTime) / 1000
+$hwnd = [W]::GetForegroundWindow()
+$sb = New-Object System.Text.StringBuilder 512
+[W]::GetWindowText($hwnd, $sb, 512) | Out-Null
+$procPid = 0
+[W]::GetWindowThreadProcessId($hwnd, [ref]$procPid) | Out-Null
+$procName = ''
+try { $procName = (Get-Process -Id $procPid -ErrorAction Stop).ProcessName + '.exe' } catch {}
+# Procesos con ventana (rapido, ~50-100 normalmente)
+$conVentana = @(Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+  @{ name = $_.ProcessName + '.exe'; title = $_.MainWindowTitle }
+})
+# Todos los nombres (rapido)
+$todos = @(Get-Process | ForEach-Object { $_.ProcessName + '.exe' } | Sort-Object -Unique)
+$usbs = @()
+try { $usbs = @(Get-WmiObject Win32_DiskDrive -ErrorAction Stop | Where-Object { $_.InterfaceType -eq 'USB' } | ForEach-Object { $_.Model }) } catch {}
+$uptime = [int]([Environment]::TickCount / 60000)
+@{
+  idleSeg = [int]$idle
+  ventanaEnFoco = $sb.ToString()
+  procFoco = $procName
+  procesos = $conVentana
+  todosProcesos = $todos
+  usbs = $usbs
+  uptimeMin = $uptime
+} | ConvertTo-Json -Compress -Depth 4
+`;
+  return new Promise(resolve => {
+    // Base64 UTF-16LE encoding evita problemas de escapado de comillas/Ñ
+    const utf16 = Buffer.from(psScript, 'utf16le').toString('base64');
+    const t0 = Date.now();
+    exec(`powershell.exe -NoProfile -NonInteractive -EncodedCommand ${utf16}`, { timeout: 30000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout) => {
+      const ms = Date.now() - t0;
+      if (err) {
+        log(`PS error tras ${ms}ms: ${err.message}`);
+        return resolve({});
+      }
+      if (!stdout) {
+        log(`PS sin output tras ${ms}ms`);
+        return resolve({});
+      }
+      try {
+        const j = JSON.parse(stdout.trim());
+        if (ms > 5000) log(`PS lento: ${ms}ms`);
+        resolve(j);
+      } catch (e) {
+        log(`PS JSON parse err tras ${ms}ms: ${e.message}`);
+        resolve({});
+      }
+    });
+  });
+}
+
+// Acumula tiempo desde la ultima medicion. Se llama desde capturarSnapshot.
+function acumularTiempo(idleSeg, procFoco, programasActivos) {
+  resetSiCambioElDia();
+  const ahora = Date.now();
+  if (_ultimoTimestampMs === 0) { _ultimoTimestampMs = ahora; return; }
+  const deltaMs = ahora - _ultimoTimestampMs;
+  _ultimoTimestampMs = ahora;
+
+  // Tiempo de cada programa ABIERTO (aunque NO este en foco)
+  if (!_tiempoAcumuladoHoy.programasAbiertosMs) _tiempoAcumuladoHoy.programasAbiertosMs = {};
+  for (const prog of programasActivos) {
+    _tiempoAcumuladoHoy.programasAbiertosMs[prog] = (_tiempoAcumuladoHoy.programasAbiertosMs[prog] || 0) + deltaMs;
+  }
+
+  // Si idle > 60s consideramos todo idle, sino bucket por programa en foco
+  if (idleSeg > 60) {
+    _tiempoAcumuladoHoy.idle = (_tiempoAcumuladoHoy.idle || 0) + deltaMs;
+    return;
+  }
+  // Quien tiene el foco? bucket por categoria
+  const exeFoco = (procFoco || '').toLowerCase();
+  const progFoco = Object.entries(PROCESOS_DISEÑO).find(([k]) => k.toLowerCase() === exeFoco)?.[1];
+  const progFocoNoLab = Object.entries(PROCESOS_NO_LABORALES).find(([k]) => k.toLowerCase() === exeFoco)?.[1];
+  let categoria = 'otros';
+  if (progFoco && CATEGORIAS_PROGRAMA.diseno.includes(progFoco)) categoria = 'diseno';
+  else if (progFoco && CATEGORIAS_PROGRAMA.comunicacion.includes(progFoco)) categoria = 'comunicacion';
+  else if (progFocoNoLab) categoria = 'no_laboral';
+  _tiempoAcumuladoHoy[categoria] = (_tiempoAcumuladoHoy[categoria] || 0) + deltaMs;
+  if (progFoco) {
+    _tiempoAcumuladoHoy.programas[progFoco] = (_tiempoAcumuladoHoy.programas[progFoco] || 0) + deltaMs;
+  }
+  if (progFocoNoLab) {
+    _tiempoAcumuladoHoy.programas[progFocoNoLab] = (_tiempoAcumuladoHoy.programas[progFocoNoLab] || 0) + deltaMs;
+  }
+}
+
+function detectarUsbsNuevosYSospecha(usbsActuales) {
+  const setActual = new Set(usbsActuales || []);
+  const nuevos = [...setActual].filter(u => !_ultimosUsbs.has(u));
+  _ultimosUsbs = setActual;
+  return { conectados: [...setActual], nuevos };
+}
 
 async function capturarSnapshot(cfg) {
+  try {
   if (process.platform !== 'win32') return null;
-  // tasklist /V /FO CSV /NH = sin header, CSV con titulos
-  const csv = await execPromise('tasklist /V /FO CSV /NH');
-  if (!csv) return null;
-  const procesos = parsearTasklistCSV(csv);
+  // Captura nativa todo en una llamada PS: procesos+titulos+foco+idle+usbs
+  const winState = await capturarEstadoWindows();
+  const procesos = (winState.procesos || []).map(p => ({ imagen: p.name, titulo: p.title || '' }));
+  const todosNombres = new Set(winState.todosProcesos || []);
 
   const programasActivos = new Set();
   const archivosAbiertos = []; // {programa, archivo, titulo}
   const chatsWhatsApp = []; // {chat, nombre, telefono, fuente}
+  const programasNoLaborales = []; // {tipo, imagen}
   let weTransferAbierto = false;
 
   for (const { imagen, titulo } of procesos) {
     const prog = PROCESOS_DISEÑO[imagen] || PROCESOS_DISEÑO[imagen.toLowerCase()];
     if (prog) programasActivos.add(prog);
+
+    // Grupo 6: detectar programas no laborales
+    const noLab = PROCESOS_NO_LABORALES[imagen] || PROCESOS_NO_LABORALES[imagen.toLowerCase()];
+    if (noLab && !programasNoLaborales.find(p => p.tipo === noLab)) {
+      programasNoLaborales.push({ tipo: noLab, imagen });
+    }
 
     if (prog === 'corel' || prog === 'photoshop' || prog === 'illustrator') {
       const archivo = extraerArchivoDeTitulo(titulo, prog);
@@ -345,8 +572,11 @@ async function capturarSnapshot(cfg) {
       // Filtro privacidad: solo procesamos titulos relacionados a W&S
       if (!esTituloRelevante(titulo)) continue;
       // Verifica chat WhatsApp Web
-      const chat = extraerChatWhatsApp(titulo);
-      if (chat) chatsWhatsApp.push({ ...chat, fuente: 'whatsapp-web' });
+      const chatWA = extraerChatWhatsApp(titulo);
+      if (chatWA) chatsWhatsApp.push({ ...chatWA, fuente: 'whatsapp-web' });
+      // Verifica chat Chatwoot
+      const chatCW = extraerChatChatwoot(titulo);
+      if (chatCW) chatsWhatsApp.push(chatCW);
       // Verifica WeTransfer
       if (esWeTransfer(titulo)) weTransferAbierto = true;
     }
@@ -356,6 +586,17 @@ async function capturarSnapshot(cfg) {
       if (chat) chatsWhatsApp.push({ ...chat, fuente: 'whatsapp-desktop' });
     }
   }
+
+  // Grupo 1, 3, 5: foco + idle + usbs ya vinieron arriba en winState
+  // Extra para programas no laborales corriendo SIN ventana visible:
+  for (const nombre of todosNombres) {
+    const noLab = PROCESOS_NO_LABORALES[nombre] || PROCESOS_NO_LABORALES[nombre.toLowerCase()];
+    if (noLab && !programasNoLaborales.find(p => p.tipo === noLab)) {
+      programasNoLaborales.push({ tipo: noLab, imagen: nombre });
+    }
+  }
+  acumularTiempo(winState.idleSeg || 0, winState.procFoco || '', programasActivos);
+  const usbInfo = detectarUsbsNuevosYSospecha(winState.usbs);
 
   // Detectar WT abierto +2min
   const ahora = Date.now();
@@ -385,6 +626,33 @@ async function capturarSnapshot(cfg) {
     _archivoCorelDesde = 0;
   }
 
+  // Categorizar foco actual
+  const exeFoco = (winState.procFoco || '').toLowerCase();
+  const progFoco = Object.entries(PROCESOS_DISEÑO).find(([k]) => k.toLowerCase() === exeFoco)?.[1] || null;
+  const progFocoNoLab = Object.entries(PROCESOS_NO_LABORALES).find(([k]) => k.toLowerCase() === exeFoco)?.[1] || null;
+  let categoriaFoco = 'otros';
+  if (progFoco && CATEGORIAS_PROGRAMA.diseno.includes(progFoco)) categoriaFoco = 'diseno';
+  else if (progFoco && CATEGORIAS_PROGRAMA.comunicacion.includes(progFoco)) categoriaFoco = 'comunicacion';
+  else if (progFocoNoLab) categoriaFoco = 'no_laboral';
+  else if (!winState.procFoco) categoriaFoco = 'desconocido';
+
+  // Tiempo acumulado convertido a minutos
+  const tiempoMin = {
+    diseno: Math.round((_tiempoAcumuladoHoy.diseno || 0) / 60000),
+    comunicacion: Math.round((_tiempoAcumuladoHoy.comunicacion || 0) / 60000),
+    no_laboral: Math.round((_tiempoAcumuladoHoy.no_laboral || 0) / 60000),
+    idle: Math.round((_tiempoAcumuladoHoy.idle || 0) / 60000),
+    otros: Math.round((_tiempoAcumuladoHoy.otros || 0) / 60000),
+    // Tiempo de programas EN FOCO (lo que dedicas atencion real)
+    programas: Object.fromEntries(
+      Object.entries(_tiempoAcumuladoHoy.programas || {}).map(([k, v]) => [k, Math.round(v / 60000)])
+    ),
+    // Tiempo de programas ABIERTOS (aunque no esten en foco)
+    programasAbiertos: Object.fromEntries(
+      Object.entries(_tiempoAcumuladoHoy.programasAbiertosMs || {}).map(([k, v]) => [k, Math.round(v / 60000)])
+    ),
+  };
+
   return {
     pc: cfg.persona,
     hostname: os.hostname(),
@@ -400,8 +668,26 @@ async function capturarSnapshot(cfg) {
       archivo: archivoActual,
       tiempoActivoMin: tiempoActivoArchivoMin,
     } : null,
+    // === Nuevos campos v3 ===
+    foco: {
+      ventana: winState.ventanaEnFoco || '',
+      proceso: winState.procFoco || '',
+      categoria: categoriaFoco,
+      programa: progFoco || progFocoNoLab || null,
+    },
+    idleSeg: winState.idleSeg || 0,
+    enUso: (winState.idleSeg || 0) < 60,
+    uptimeMin: winState.uptimeMin || 0,
+    usbs: usbInfo,
+    programasNoLaborales,
+    tiempoHoyMin: tiempoMin,
+    dia: _diaActual,
     vigilanteVersion: VERSION,
   };
+  } catch (e) {
+    log(`capturarSnapshot EXCEPCION: ${e.message} @ ${e.stack?.split('\n')[1] || ''}`);
+    return null;
+  }
 }
 
 async function enviarSnapshot(snapshot) {
@@ -419,18 +705,31 @@ async function enviarSnapshot(snapshot) {
 }
 
 function iniciarCapturaSnapshot(cfg) {
+  let tickCount = 0;
   const tick = async () => {
+    const n = ++tickCount;
+    log(`tick #${n} start`);
     try {
       const snap = await capturarSnapshot(cfg);
+      log(`tick #${n} snap=${!!snap}`);
       if (snap) {
         await enviarSnapshot(snap);
-        log(`snapshot enviado: progs=${snap.programasActivos.join(',')||'-'} arch=${snap.archivosAbiertos.length} chats=${snap.chatsWhatsApp.length} wt=${snap.weTransfer.abierto}`);
+        const foco = snap.foco?.programa || snap.foco?.proceso || 'nada';
+        const noLab = (snap.programasNoLaborales || []).length ? ` noLab=${snap.programasNoLaborales.map(p=>p.tipo).join(',')}` : '';
+        const usbNew = (snap.usbs?.nuevos || []).length ? ` USB+=${snap.usbs.nuevos.length}` : '';
+        const archivoCorel = snap.corelActivo?.archivo ? ` cdr="${snap.corelActivo.archivo}"` : '';
+        const corelAbiertoMin = snap.tiempoHoyMin?.programasAbiertos?.corel || 0;
+        log(`snap: foco=${foco}/${snap.foco?.categoria} idle=${snap.idleSeg}s diseñoHoy=${snap.tiempoHoyMin?.diseno}m corelAbierto=${corelAbiertoMin}m progs=${snap.programasActivos.join(',')||'-'}${archivoCorel} arch=${snap.archivosAbiertos.length} chats=${snap.chatsWhatsApp.length}${noLab}${usbNew}`);
       }
-    } catch (e) { log('snapshot err:', e.message); }
+    } catch (e) { log(`tick #${n} ERR:`, e.message, e.stack?.split('\n')[1] || ''); }
   };
-  setInterval(tick, INTERVALO_SNAPSHOT_MS);
-  setTimeout(tick, 10 * 1000); // primer snapshot a los 10s
-  log('captura de actividad activa (cada 30s)');
+  // Warm-up PowerShell .NET runtime para que primera captura no demore 9s
+  capturarEstadoWindows().catch(() => {}).then(() => {
+    log('PS warm-up ok');
+    setInterval(tick, INTERVALO_SNAPSHOT_MS);
+    setTimeout(tick, 5 * 1000); // primer snapshot a los 5s post-warmup
+  });
+  log('captura de actividad activa (cada 30s, primer snap tras warm-up)');
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -499,6 +798,11 @@ function iniciarVigilancia(cfg) {
       depth: 3, // no recursar muy profundo
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 },
       ignored: [/(^|[\/\\])\../, /\.tmp$/i, /~\$/], // hidden + tmp
+      // Drive Stream (H:\) no emite eventos de FS hasta que sincroniza.
+      // Polling cada 3s revisa la carpeta manual y ve los archivos nuevos.
+      usePolling: true,
+      interval: 3000,
+      binaryInterval: 5000,
     });
     watcher.on('add', f => reportar('add', carpeta, f, cfg.persona));
     watcher.on('change', f => reportar('change', carpeta, f, cfg.persona));

@@ -3686,10 +3686,33 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           }
         }
 
-        // ── 3. Heartbeat productividad: registra lo que el PC esta haciendo ──
-        if (typeof db.guardarConfig === 'function') {
-          // No guardo todo el snapshot, solo el último estado por PC
-          // (config tiene metodo upsert)
+        // ── 3. Persistir snapshot por PC (para dashboard "que pasa AHORA") ──
+        try {
+          const snapsPath = path.join(__dirname, 'data', 'pcs-vivos.json');
+          let snaps = {};
+          try { snaps = JSON.parse(fs.readFileSync(snapsPath, 'utf8')); } catch {}
+          snaps[pc] = {
+            ts: ts || new Date().toISOString(),
+            recibidoEn: new Date().toISOString(),
+            programasActivos,
+            archivosAbiertos,
+            chatsWhatsApp,
+            weTransfer,
+            corelActivo,
+            foco: snap.foco || null,
+            idleSeg: snap.idleSeg ?? null,
+            enUso: snap.enUso ?? null,
+            uptimeMin: snap.uptimeMin ?? null,
+            usbs: snap.usbs || null,
+            programasNoLaborales: snap.programasNoLaborales || [],
+            tiempoHoyMin: snap.tiempoHoyMin || null,
+            dia: snap.dia || null,
+            hostname: snap.hostname || null,
+            vigilanteVersion: snap.vigilanteVersion || null,
+          };
+          fs.writeFileSync(snapsPath, JSON.stringify(snaps, null, 2));
+        } catch (e) {
+          console.error('[actividad] no guardo pcs-vivos:', e.message);
         }
 
         if (cambios > 0) {
@@ -3702,6 +3725,149 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         return json(res, 500, { error: e.message });
       }
     });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // VIGILANTE W&S — GET para que Camilo vea que pasa AHORA en cada PC
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/admin/que-pasa-ahora') {
+    try {
+      const snapsPath = path.join(__dirname, 'data', 'pcs-vivos.json');
+      let snaps = {};
+      try { snaps = JSON.parse(fs.readFileSync(snapsPath, 'utf8')); } catch {}
+      const ahora = Date.now();
+      // Anotar cada PC con "online" si snapshot < 3min
+      const pcs = Object.entries(snaps).map(([pc, s]) => {
+        const ageSec = Math.floor((ahora - new Date(s.recibidoEn || s.ts).getTime()) / 1000);
+        return { pc, ageSec, online: ageSec < 180, ...s };
+      });
+      pcs.sort((a, b) => a.pc.localeCompare(b.pc));
+      return json(res, 200, { pcs, generado: new Date().toISOString() });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // Dashboard HTML "QUE PASA AHORA"
+  if (req.method === 'GET' && req.url === '/admin/que-pasa-ahora') {
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Que pasa AHORA - W&S</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: 'Segoe UI', sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:20px; }
+h1 { color:#a78bfa; margin:0 0 20px; font-size:24px; }
+.subtitle { color:#94a3b8; font-size:13px; margin-bottom:30px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:20px; }
+.card { background:#1e293b; border-radius:12px; padding:20px; border-left:4px solid #475569; }
+.card.online { border-left-color:#22c55e; }
+.card.offline { border-left-color:#ef4444; opacity:0.6; }
+.card.warn { border-left-color:#f59e0b; }
+.pc-name { font-size:20px; font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
+.status { font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600; }
+.status.online { background:#22c55e22; color:#22c55e; }
+.status.offline { background:#ef444422; color:#ef4444; }
+.host { font-size:11px; color:#64748b; margin-bottom:14px; }
+.row { display:flex; justify-content:space-between; margin:6px 0; font-size:13px; }
+.label { color:#94a3b8; }
+.val { color:#e2e8f0; font-weight:500; max-width:60%; text-align:right; word-break:break-word; }
+.foco { background:#312e81; border-radius:6px; padding:8px 10px; margin:10px 0; font-size:13px; }
+.foco.diseno { background:#14532d; }
+.foco.no_laboral { background:#7f1d1d; }
+.tag { display:inline-block; background:#374151; border-radius:6px; padding:2px 8px; font-size:11px; margin:2px 4px 2px 0; }
+.tag.bad { background:#7f1d1d; color:#fca5a5; }
+.tag.good { background:#14532d; color:#86efac; }
+.divider { border-top:1px solid #334155; margin:14px 0 10px; }
+.section-label { color:#a78bfa; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:10px 0 6px; }
+.empty { color:#64748b; font-size:12px; font-style:italic; }
+.bar { display:flex; height:8px; border-radius:4px; overflow:hidden; background:#0f172a; margin:6px 0; }
+.bar-fill.diseno { background:#22c55e; }
+.bar-fill.comunicacion { background:#3b82f6; }
+.bar-fill.no_laboral { background:#ef4444; }
+.bar-fill.idle { background:#475569; }
+.bar-fill.otros { background:#a78bfa; }
+.bar-text { font-size:10px; color:#94a3b8; margin-top:4px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.refresh-btn { background:#7c3aed; color:#fff; border:0; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer; }
+.refresh-btn:hover { background:#6d28d9; }
+.empty-state { text-align:center; color:#64748b; padding:60px 20px; }
+.archivo { color:#fde047; font-weight:600; }
+</style></head><body>
+<h1>QUE PASA AHORA en cada PC</h1>
+<div class="subtitle">Actualizado automaticamente cada 15 segundos. <button class="refresh-btn" onclick="cargar()">Refrescar</button> <span id="ultima"></span></div>
+<div id="contenido" class="grid"></div>
+<script>
+function fmtTiempo(seg) {
+  if (seg < 60) return seg + 's';
+  if (seg < 3600) return Math.floor(seg/60) + 'm';
+  return Math.floor(seg/3600) + 'h ' + Math.floor((seg%3600)/60) + 'm';
+}
+function fmtMin(min) {
+  if (!min) return '0m';
+  if (min < 60) return min + 'm';
+  return Math.floor(min/60) + 'h ' + (min%60) + 'm';
+}
+async function cargar() {
+  const r = await fetch('/api/admin/que-pasa-ahora');
+  const data = await r.json();
+  document.getElementById('ultima').textContent = ' Ultimo refresh: ' + new Date().toLocaleTimeString();
+  const cont = document.getElementById('contenido');
+  if (!data.pcs || data.pcs.length === 0) {
+    cont.innerHTML = '<div class="empty-state">Ninguna PC reportando todavia. Cuando el vigilante envie su primer snapshot, aparecera aqui.</div>';
+    return;
+  }
+  cont.innerHTML = data.pcs.map(p => renderPc(p)).join('');
+}
+function renderPc(p) {
+  const cls = !p.online ? 'offline' : (p.programasNoLaborales && p.programasNoLaborales.length > 0 ? 'warn' : 'online');
+  const t = p.tiempoHoyMin || {};
+  const total = (t.diseno||0) + (t.comunicacion||0) + (t.no_laboral||0) + (t.idle||0) + (t.otros||0);
+  const pct = (n) => total > 0 ? (n/total*100).toFixed(0) : 0;
+  const focoCat = p.foco?.categoria || 'desconocido';
+  const focoNombre = p.foco?.programa || p.foco?.proceso || 'nada';
+  const archivoStr = p.corelActivo?.archivo ? '<span class="archivo">' + p.corelActivo.archivo + '</span>' : '<span class="empty">ninguno</span>';
+  const chatsHtml = (p.chatsWhatsApp && p.chatsWhatsApp.length > 0)
+    ? p.chatsWhatsApp.slice(0,3).map(c => '<span class="tag good">' + (c.nombre || c.chat) + (c.telefono ? ' (' + c.telefono + ')' : '') + ' <small>['+c.fuente+']</small></span>').join('')
+    : '<span class="empty">ninguno</span>';
+  const noLabHtml = (p.programasNoLaborales && p.programasNoLaborales.length > 0)
+    ? p.programasNoLaborales.map(n => '<span class="tag bad">'+n.tipo+'</span>').join('')
+    : '<span class="empty">ninguno</span>';
+  const usbHtml = (p.usbs?.conectados?.length > 0)
+    ? p.usbs.conectados.map(u => '<span class="tag">'+u+'</span>').join('')
+    : '<span class="empty">ninguno</span>';
+  return '<div class="card '+cls+'">' +
+    '<div class="pc-name">' + p.pc + '<span class="status '+(p.online?'online':'offline')+'">'+(p.online?'EN VIVO':'OFFLINE')+'</span></div>' +
+    '<div class="host">' + (p.hostname||'') + ' · v' + (p.vigilanteVersion||'?') + ' · hace ' + fmtTiempo(p.ageSec) + '</div>' +
+    '<div class="foco '+focoCat+'">FOCO AHORA: <b>' + focoNombre + '</b> <small>('+focoCat+')</small></div>' +
+    '<div class="row"><span class="label">Archivo en Corel</span><span class="val">'+archivoStr+'</span></div>' +
+    '<div class="row"><span class="label">Programas abiertos</span><span class="val">'+(p.programasActivos||[]).join(', ')+'</span></div>' +
+    '<div class="row"><span class="label">Idle</span><span class="val">'+(p.idleSeg ?? '?')+'s</span></div>' +
+    '<div class="row"><span class="label">Uptime PC</span><span class="val">'+fmtMin(p.uptimeMin)+'</span></div>' +
+    '<div class="divider"></div>' +
+    '<div class="section-label">Tiempo HOY (' + fmtMin(total) + ' total)</div>' +
+    '<div class="bar">' +
+      '<div class="bar-fill diseno" style="width:'+pct(t.diseno||0)+'%"></div>' +
+      '<div class="bar-fill comunicacion" style="width:'+pct(t.comunicacion||0)+'%"></div>' +
+      '<div class="bar-fill otros" style="width:'+pct(t.otros||0)+'%"></div>' +
+      '<div class="bar-fill no_laboral" style="width:'+pct(t.no_laboral||0)+'%"></div>' +
+      '<div class="bar-fill idle" style="width:'+pct(t.idle||0)+'%"></div>' +
+    '</div>' +
+    '<div class="bar-text">' +
+      '<span style="color:#22c55e">Diseno '+fmtMin(t.diseno)+'</span>' +
+      '<span style="color:#3b82f6">Comunic '+fmtMin(t.comunicacion)+'</span>' +
+      '<span style="color:#a78bfa">Otros '+fmtMin(t.otros)+'</span>' +
+      '<span style="color:#ef4444">NoLab '+fmtMin(t.no_laboral)+'</span>' +
+      '<span style="color:#64748b">Idle '+fmtMin(t.idle)+'</span>' +
+    '</div>' +
+    '<div class="section-label">Chats activos</div>' + chatsHtml +
+    '<div class="section-label">Programas NO laborales</div>' + noLabHtml +
+    '<div class="section-label">USBs conectados</div>' + usbHtml +
+  '</div>';
+}
+cargar();
+setInterval(cargar, 15000);
+</script></body></html>`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
     return;
   }
 
