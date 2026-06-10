@@ -3867,18 +3867,40 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'POST' && req.url === '/api/admin/forzar-reproceso-drive') {
     try {
-      const antes = leerPedidos().length;
-      const sinDriveAntes = leerPedidos().filter(p => !p.drive?.corel && (p.estado === 'bandeja' || p.estado === 'hacer-diseno')).length;
-      // Llamar el cron manualmente
-      await cronDriveTick();
-      const pedidosAhora = leerPedidos();
-      const sinDriveAhora = pedidosAhora.filter(p => !p.drive?.corel && (p.estado === 'bandeja' || p.estado === 'hacer-diseno')).length;
-      const conDriveAhora = pedidosAhora.filter(p => p.drive?.corel).length;
+      const conectado = gmailWT.estaConectado();
+      if (!conectado) {
+        return json(res, 200, {
+          ok: false,
+          error: 'Drive NO conectado (gmailWT.estaConectado=false). Hay que re-vincular OAuth.',
+          accion: 'Ir a /admin/google-oauth para reconectar'
+        });
+      }
+      // Llamar la sync directo para tener resultado en vivo
+      const pedidos = leerPedidos();
+      const resultado = await driveSync.sincronizarConPedidos(pedidos);
+      // Aplicar los updates
+      const aplicados = [];
+      let cambios = false;
+      for (const u of resultado.updates) {
+        const p = pedidos.find(x => x.id === u.pedidoId);
+        if (!p) continue;
+        p.drive = p.drive || {};
+        if (u.corel) { p.drive.corel = u.corel; cambios = true; aplicados.push({ id: p.id, equipo: p.equipo, corel: u.corel.nombre }); }
+        if (u.pdfRip) { p.drive.pdfRip = u.pdfRip; cambios = true; }
+        if (u.disenadorSugerido && !p.disenadorAsignado) p.disenadorAsignado = u.disenadorSugerido;
+        if (u.corel && p.estado === 'bandeja') p.estado = 'hacer-diseno';
+      }
+      if (cambios) guardarPedidos(pedidos, leerNextId());
       return json(res, 200, {
         ok: true,
-        antes: { totalPedidos: antes, sinDriveCorel: sinDriveAntes },
-        despues: { conDriveCorel: conDriveAhora, sinDriveCorel: sinDriveAhora },
-        destrancados: sinDriveAntes - sinDriveAhora,
+        sync: {
+          updates: resultado.updates.length,
+          huerfanos: resultado.huerfanos.length,
+          totalCorelEnDrive: resultado.totales?.corel,
+          totalPdfRipEnDrive: resultado.totales?.pdfRip,
+        },
+        aplicados: aplicados.slice(0, 20),
+        huerfanos: resultado.huerfanos.slice(0, 30).map(h => ({ archivo: h.archivo, tipo: h.tipo })),
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
@@ -9647,11 +9669,20 @@ console.log('[cron-wt] activado — sincronizará WeTransfer cada 5 minutos');
 let _driveSyncEnCurso = false;
 async function cronDriveTick() {
   if (_driveSyncEnCurso) return;
-  if (!gmailWT.estaConectado()) return; // mismo OAuth
+  const conectado = gmailWT.estaConectado();
+  console.log(`[cron-drive] estaConectado=${conectado}`);
+  if (!conectado) {
+    console.log('[cron-drive] ABORT: Drive NO conectado (gmailWT.estaConectado=false)');
+    return;
+  }
   _driveSyncEnCurso = true;
   try {
     const pedidos = db.leerPedidos();
     const resultado = await driveSync.sincronizarConPedidos(pedidos);
+    console.log(`[cron-drive] sync resultado: updates=${resultado.updates.length} huerfanos=${resultado.huerfanos.length} totalCorel=${resultado.totales?.corel} totalPdfRip=${resultado.totales?.pdfRip}`);
+    if (resultado.huerfanos.length > 0) {
+      console.log('[cron-drive] huerfanos (10 primeros):', resultado.huerfanos.slice(0, 10).map(h => h.archivo).join(' | '));
+    }
     const aplicados = [];
     let cambios = false;
     for (const u of resultado.updates) {
