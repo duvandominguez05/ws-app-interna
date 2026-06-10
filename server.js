@@ -1638,64 +1638,156 @@ const ESTADOS_VALIDOS = [
 
 // ── Matching de nombres de archivo a equipos ───────────────────
 // "Camilo 1.pdf" → "camilo"  |  "Galaktiturkos 1.50m.pdf" → "galaktiturkos"
+// Stopwords y sufijos comunes que NO deben contar en el match (versiones, copias, etc)
+const _STOPWORDS_MATCH = new Set([
+  'fc', 'cf', 'sas', 'club', 'team', 'equipo', 'sa', 'fb', 'fut',
+  'copia', 'copy', 'final', 'finall', 'def', 'definitivo',
+  'nuevo', 'new', 'corregido', 'editado', 'modificado', 'reparado',
+  'recuperada', 'recuperado', 'backup', 'respaldo',
+  'v', 'ver', 'version',
+]);
+
+// Normaliza un texto para match: minusculas, sin emojis, sin tildes, sin
+// caracteres extranos, sin numeros sueltos, sin sufijos basura (v2, copia, etc)
 function nombreLimpio(s) {
   if (!s) return '';
-  return String(s)
-    .toLowerCase()
-    .replace(/\.pdf$/i, '')
-    .replace(/[\s_-]+\d+(\.\d+)?\s*m?$/i, '') // sufijo "1", "2", "1.50m" al final
-    .replace(/[\s_-]+\d+(\.\d+)?\s*m?[\s_-]+/gi, ' ') // mismo en medio
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
+  let t = String(s);
+  // 1. Sacar extension de archivo
+  t = t.replace(/\.(pdf|cdr|psd|ai|eps|svg|jpg|jpeg|png|tiff|tif)$/i, '');
+  // 2. Sacar prefijos "Recuperada_", "Copia de", "Backup ", etc
+  t = t.replace(/^(recuperada?[_ -]|copia[_ -]de[_ -]?|copy[_ -]of[_ -]?|backup[_ -]of[_ -]?|resp[_ -]?)/i, '');
+  // 3. Sacar sufijo "v2", "v3", "(1)", "(2)", "1.50m" al final
+  t = t.replace(/\s*[\(\[]?v?\d+(\.\d+)?\s*m?[\)\]]?\s*$/i, '');
+  // 4. Sacar emojis (Unicode emoji ranges) — quita los rotos tambien
+  t = t.replace(/[\u{1F000}-\u{1FFFF}]/gu, ' ');
+  t = t.replace(/[\u{2000}-\u{2BFF}]/gu, ' ');
+  t = t.replace(/[\u{FE00}-\u{FE0F}]/gu, ' '); // variation selectors (emoji modifiers)
+  t = t.replace(/[\u{200D}]/gu, ' ');           // ZWJ (joiner emojis)
+  // 5. Sacar caracteres "rotos" de UTF-8 mal interpretado (Ã, Â, â½, ð, ï¿½, etc)
+  t = t.replace(/[-ÿ]+/g, c => {
+    // Mantener Ñ ñ y vocales con tilde (caracteres validos latino)
+    if (/[ñÑáéíóúÁÉÍÓÚ¿¡]/.test(c)) return c;
+    return ' ';
+  });
+  // 6. Quitar tildes y caracteres combinantes
+  t = t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // 7. Bajar a lowercase
+  t = t.toLowerCase();
+  // 8. Reemplazar todo lo que no sea letra/numero por espacio
+  t = t.replace(/[^a-z0-9ñ]+/g, ' ');
+  // 9. Colapsar espacios y trim
+  t = t.replace(/\s+/g, ' ').trim();
+  return t;
+}
+
+// Devuelve set de palabras "ricas" (>=3 chars, no stopwords, no solo numeros)
+function palabrasRicas(s) {
+  const limpio = typeof s === 'string' && s.includes(' ') ? s : nombreLimpio(s);
+  return new Set(
+    limpio.split(' ').filter(w => w.length >= 3 && !_STOPWORDS_MATCH.has(w) && !/^\d+$/.test(w))
+  );
+}
+
+// Saca telefonos de un string (cualquier secuencia de >= 7 digitos)
+function extraerTelefonos(s) {
+  if (!s) return [];
+  return (String(s).match(/\d{7,}/g) || []).map(t => t.replace(/^57/, '')); // sin prefijo 57
 }
 
 function nombresCoinciden(equipoPedido, archivo) {
   const a = nombreLimpio(equipoPedido);
   const b = nombreLimpio(archivo);
   if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  // 1. Match exacto
+  if (a === b) return true;
+  // 2. Subcadena
+  if (a.includes(b) || b.includes(a)) return true;
+  // 3. Match por palabras ricas: >= 50% de palabras coinciden, minimo 2
+  const palA = palabrasRicas(a);
+  const palB = palabrasRicas(b);
+  if (palA.size < 1 || palB.size < 1) return false;
+  let comunes = 0;
+  for (const w of palB) if (palA.has(w)) comunes++;
+  const minSize = Math.min(palA.size, palB.size);
+  if (comunes >= 2) return true;
+  if (comunes >= 1 && comunes / minSize >= 0.5) return true;
+  return false;
 }
 
-// Devuelve un score 0-1 de qué tan parecidos son dos nombres (overlap de palabras).
-// Útil como fallback cuando nombresCoinciden() falla pero hay similitud parcial.
+// Devuelve un score 0-1 de qué tan parecidos son dos nombres.
 function scoreSimilitud(equipoPedido, archivo) {
   const a = nombreLimpio(equipoPedido);
   const b = nombreLimpio(archivo);
   if (!a || !b) return 0;
   if (a === b) return 1;
   if (a.includes(b) || b.includes(a)) return 0.95;
-  const palabrasA = new Set(a.split(' ').filter(w => w.length >= 3));
-  const palabrasB = b.split(' ').filter(w => w.length >= 3);
-  if (!palabrasA.size || !palabrasB.length) return 0;
-  const matches = palabrasB.filter(w => palabrasA.has(w)).length;
-  return matches / Math.max(palabrasA.size, palabrasB.length);
+  const palA = palabrasRicas(a);
+  const palB = palabrasRicas(b);
+  if (!palA.size || !palB.size) return 0;
+  let comunes = 0;
+  for (const w of palB) if (palA.has(w)) comunes++;
+  return comunes / Math.max(palA.size, palB.size);
 }
 
-// Busca un pedido cuyo equipo, cliente o alias coincida con el archivo.
-// pedido.archivosAlias es un array de nombres limpios aprendidos por vinculaciones manuales.
-function buscarPedidoPorArchivo(pedidos, archivo, equipoHint) {
+// Busca un pedido cuyo equipo, cliente, alias o telefono coincida con el archivo.
+// pedido.archivosAlias = nombres limpios aprendidos por vinculaciones previas.
+// Argumentos extra (opcionales): telefonoHint, vendedoraHint, disenadorHint
+function buscarPedidoPorArchivo(pedidos, archivo, equipoHint, opts = {}) {
+  const ESTADOS_AVANZADOS = ['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final','entregado','archivado'];
+  const elegibles = pedidos.filter(p => !ESTADOS_AVANZADOS.includes(p.estado));
   const ref = equipoHint || archivo;
   const refLimpio = nombreLimpio(ref);
+  // 0) Si hay telefonoHint -> match directo por telefono del pedido (mas fuerte)
+  if (opts.telefonoHint) {
+    const telH = String(opts.telefonoHint).replace(/\D/g, '').replace(/^57/, '');
+    if (telH.length >= 7) {
+      const pdTel = elegibles.find(p => {
+        const t = String(p.telefono || '').replace(/\D/g, '').replace(/^57/, '');
+        return t && (t === telH || t.endsWith(telH) || telH.endsWith(t));
+      });
+      if (pdTel) return pdTel;
+    }
+  }
+  // Si el archivo tiene un telefono adentro del nombre, tambien intentar match
+  const telsArchivo = extraerTelefonos(archivo);
+  for (const t of telsArchivo) {
+    if (t.length < 7) continue;
+    const pdTel = elegibles.find(p => {
+      const pt = String(p.telefono || '').replace(/\D/g, '').replace(/^57/, '');
+      return pt && (pt === t || pt.endsWith(t) || t.endsWith(pt));
+    });
+    if (pdTel) return pdTel;
+  }
   if (!refLimpio) return null;
-  // 1) Coincidencia con alias guardado (más fuerte: aprendido manualmente)
-  let pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
+  // 1) Coincidencia con alias guardado (mas fuerte: aprendido manualmente)
+  let pd = elegibles.find(p => {
     const aliases = Array.isArray(p.archivosAlias) ? p.archivosAlias : [];
     return aliases.some(a => a === refLimpio || a.includes(refLimpio) || refLimpio.includes(a));
   });
   if (pd) return pd;
-  // 2) Coincidencia con equipo
-  pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
-    return nombresCoinciden(p.equipo, ref);
-  });
+  // 2) Coincidencia con equipo (matcher robusto: emojis, tildes, palabras parciales)
+  pd = elegibles.find(p => nombresCoinciden(p.equipo, ref));
   if (pd) return pd;
-  // 3) Coincidencia con cliente (a veces el archivo se llama como el cliente, no como el equipo)
-  pd = pedidos.find(p => {
-    if (['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo','enviado-final'].includes(p.estado)) return false;
-    return p.cliente && nombresCoinciden(p.cliente, ref);
-  });
-  return pd || null;
+  // 3) Coincidencia con cliente (a veces el archivo se llama como el cliente)
+  pd = elegibles.find(p => p.cliente && nombresCoinciden(p.cliente, ref));
+  if (pd) return pd;
+  // 4) Filtrar por disenadora/vendedora hint y matchear por palabras parciales
+  if (opts.disenadorHint || opts.vendedoraHint) {
+    const dh = opts.disenadorHint;
+    const vh = opts.vendedoraHint;
+    const filtrados = elegibles.filter(p =>
+      (dh && (p.disenadorAsignado === dh || p.disenadorReal === dh)) ||
+      (vh && p.vendedora === vh)
+    );
+    let mejor = null;
+    let mejorScore = 0.4; // umbral minimo
+    for (const p of filtrados) {
+      const sc = scoreSimilitud(p.equipo || p.cliente || '', ref);
+      if (sc > mejorScore) { mejorScore = sc; mejor = p; }
+    }
+    if (mejor) return mejor;
+  }
+  return null;
 }
 
 // Re-evalua amarres WT/PDF para un pedido cuyo nombre fue corregido por el
@@ -3726,6 +3818,29 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
     });
     return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FORZAR REPROCESO DE DRIVE AHORA (no esperar el cron de 10 min)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/forzar-reproceso-drive') {
+    try {
+      const antes = leerPedidos().length;
+      const sinDriveAntes = leerPedidos().filter(p => !p.drive?.corel && (p.estado === 'bandeja' || p.estado === 'hacer-diseno')).length;
+      // Llamar el cron manualmente
+      await cronDriveTick();
+      const pedidosAhora = leerPedidos();
+      const sinDriveAhora = pedidosAhora.filter(p => !p.drive?.corel && (p.estado === 'bandeja' || p.estado === 'hacer-diseno')).length;
+      const conDriveAhora = pedidosAhora.filter(p => p.drive?.corel).length;
+      return json(res, 200, {
+        ok: true,
+        antes: { totalPedidos: antes, sinDriveCorel: sinDriveAntes },
+        despues: { conDriveCorel: conDriveAhora, sinDriveCorel: sinDriveAhora },
+        destrancados: sinDriveAntes - sinDriveAhora,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════

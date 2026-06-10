@@ -282,40 +282,82 @@ function extraerLinkWT(cuerpo) {
 }
 
 // ── Matching pedido por nombre base ──────────────────────────────────
+const _STOPWORDS_GW = new Set([
+  'fc', 'cf', 'sas', 'sa', 'club', 'team', 'equipo', 'fb', 'fut',
+  'copia', 'copy', 'final', 'finall', 'def', 'definitivo',
+  'nuevo', 'new', 'corregido', 'editado', 'modificado',
+  'recuperada', 'recuperado', 'backup', 'respaldo',
+  'v', 'ver', 'version',
+]);
+
 function _normalizar(s) {
-  return String(s || '')
+  let t = String(s || '');
+  // Sacar prefijos basura
+  t = t.replace(/^(recuperada?[_ -]|copia[_ -]de[_ -]?|copy[_ -]of[_ -]?|backup[_ -]of[_ -]?|resp[_ -]?)/i, '');
+  // Sacar sufijo v2, (1), v3 al final
+  t = t.replace(/\s*[\(\[]?v?\d+(\.\d+)?\s*m?[\)\]]?\s*$/i, '');
+  return t
     .toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '') // sin tildes
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')          // saca emojis, simbolos, basura UTF-8 rota
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function _palabrasRicas(s) {
+  return new Set(
+    _normalizar(s).split(' ')
+      .filter(w => w.length >= 3 && !_STOPWORDS_GW.has(w) && !/^\d+$/.test(w))
+  );
 }
 
 function matchPedido(base, pedidos) {
   const baseNorm = _normalizar(base);
   if (!baseNorm) return null;
-  // 1) Match exacto por equipo
+  const palabrasFile = _palabrasRicas(base);
+
+  // ESTADOS NO ELEGIBLES
+  const noEleg = new Set(['enviado-final','archivado','entregado','cancelado']);
+
   let mejor = null;
   let mejorScore = 0;
+
   for (const p of pedidos) {
-    if (!p.equipo) continue;
-    if (p.estado === 'enviado-final' || p.estado === 'archivado') continue;
-    const eq = _normalizar(p.equipo);
-    if (!eq) continue;
-    // Score: cuántas palabras del archivo aparecen en el equipo (y vice-versa)
-    const palabrasFile = new Set(baseNorm.split(' ').filter(w => w.length >= 3));
-    const palabrasEquipo = new Set(eq.split(' ').filter(w => w.length >= 3));
-    let coincidencias = 0;
-    for (const w of palabrasFile) if (palabrasEquipo.has(w)) coincidencias++;
-    // Score = % de palabras del file que coinciden
-    const score = palabrasFile.size > 0 ? coincidencias / palabrasFile.size : 0;
-    // Si el archivo tiene 2+ palabras, exigir al menos 2 coincidencias (no solo 1 palabra suelta como "negro")
-    const minCoincidencias = palabrasFile.size >= 2 ? 2 : 1;
-    if (score > mejorScore && score >= 0.6 && coincidencias >= minCoincidencias) {
+    if (noEleg.has(p.estado)) continue;
+    if (!p.equipo && !p.cliente) continue;
+
+    // 0) Alias guardado = match fuerte
+    if (Array.isArray(p.archivosAlias) && p.archivosAlias.length) {
+      for (const al of p.archivosAlias) {
+        if (_normalizar(al) === baseNorm) return { pedido: p, score: 1 };
+      }
+    }
+
+    // 1) Match contra equipo
+    const palEq = _palabrasRicas(p.equipo || '');
+    let comunesEq = 0;
+    for (const w of palabrasFile) if (palEq.has(w)) comunesEq++;
+    const minPal = Math.max(1, Math.min(palabrasFile.size, palEq.size));
+    const scoreEq = minPal ? comunesEq / minPal : 0;
+
+    // 2) Match contra cliente (a veces el archivo se llama como el cliente)
+    const palCl = _palabrasRicas(p.cliente || '');
+    let comunesCl = 0;
+    for (const w of palabrasFile) if (palCl.has(w)) comunesCl++;
+    const minPalCl = Math.max(1, Math.min(palabrasFile.size, palCl.size));
+    const scoreCl = minPalCl ? comunesCl / minPalCl : 0;
+
+    // Tomamos el mayor de los 2
+    const score = Math.max(scoreEq, scoreCl);
+    const comunes = Math.max(comunesEq, comunesCl);
+
+    // Umbral: 50% Y al menos 1 palabra rica coincidente
+    if (score > mejorScore && score >= 0.5 && comunes >= 1) {
       mejorScore = score;
       mejor = p;
     }
   }
+
   return mejor ? { pedido: mejor, score: mejorScore } : null;
 }
 
