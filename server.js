@@ -4115,6 +4115,34 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // FORZAR REPROCESO DEL GRUPO TRABAJO EN FAMILIA (historico hasta N dias)
+  // POST /api/admin/forzar-grupo-trabajo?dias=7
+  // Re-analiza los ultimos N dias de mensajes y avanza pedidos
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url.startsWith('/api/admin/forzar-grupo-trabajo')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const dias = parseInt(u.searchParams.get('dias') || '7', 10);
+      // Resetear state.ultimoTs para que reprocese
+      try {
+        const s = grupoTrabajoFamiliaWatcher.leerState();
+        s.ultimoTs = Date.now() - (dias * 24 * 60 * 60 * 1000);
+        s.procesados = {}; // limpiar dedupe para que reprocese mensajes
+        grupoTrabajoFamiliaWatcher.guardarState(s);
+      } catch (eS) { console.error('[forzar-grupo state]', eS.message); }
+      const r = await grupoTrabajoFamiliaWatcher.procesarYAvanzar({
+        db,
+        diasAtras: dias,
+        notificarWAVendedora: typeof notificarWAVendedora === 'function' ? notificarWAVendedora : null,
+        notificarJefes: typeof notificarJefes === 'function' ? notificarJefes : null,
+      });
+      return json(res, 200, { ok: true, dias, resultado: r });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR cron de aprobacion Chatwoot AHORA (no esperar 10 min)
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'POST' && req.url === '/api/admin/forzar-cron-aprobacion') {
