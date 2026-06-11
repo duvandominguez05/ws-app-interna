@@ -10447,25 +10447,10 @@ async function cronResolverAtascosTick() {
             await new Promise(r => setTimeout(r, 800));
             continue;
           }
-          // Cliente pidio cambios + vendedora sin responder +24h
-          if (analisis && analisis.estado === 'cambios' && ultimoFueDelCliente && diasSinActividad >= 1) {
-            try {
-              await notificarWAVendedora(p.vendedora, `🔁 *Cliente pidio cambios y no le has respondido*\n\nPedido: *${p.equipo}* (#${p.id})\nLleva ${diasSinActividad} dia(s) esperando.\nUltimo del cliente: _"${(ultimoMsg.content||'').slice(0,180)}"_\n\n👉 Respondele al cliente.`);
-              empujonesVend++;
-              state.ultimaAccionPorPedido[p.id] = ahora;
-            } catch {}
-          }
+          // Las reglas de EMPUJONES por cambios/pago-sin-diseno se desactivaron
+          // (decidido 11-jun-2026: causaban demasiado spam a vendedoras).
+          // Esa info ya va en el resumen matutino consolidado.
           await new Promise(r => setTimeout(r, 800));
-        }
-
-        // ─── REGLA 3: pago entro pero diseno NO iniciado +3 dias → EMPUJON ───
-        if (!tieneDiseno && p.abonado > 0 && diasSinActividad >= 3) {
-          try {
-            const ab = _formatearMontoCOP(p.abonado);
-            await notificarWAVendedora(p.vendedora, `🎨 *Pedido pagado SIN diseno iniciado*\n\nPedido: *${p.equipo}* (#${p.id})\nCliente: ${p.pushNameCliente || p.telefono}\nAbono: ${ab}\nDias esperando: ${diasSinActividad}\n\n👉 Empezá el diseno YA — el cliente espera hace dias.`);
-            empujonesVend++;
-            state.ultimaAccionPorPedido[p.id] = ahora;
-          } catch {}
         }
       } catch (eP) {
         console.error(`[cron-resolver #${p.id}]`, eP.message);
