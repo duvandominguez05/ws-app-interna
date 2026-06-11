@@ -4416,16 +4416,47 @@ setInterval(cargar, 15000);
         const carpetaNorm = String(carpeta).toLowerCase();
         const accion = { pc, archivo, carpeta: carpetaNorm, ts, candidatos: candidatos.length };
 
+        // Detectar tipo de archivo por extension
+        const extArchivo = (archivo.match(/\.([^.]+)$/i)?.[1] || '').toLowerCase();
+        const esCDR = extArchivo === 'cdr';
+        const esEXPORT_VISUAL = ['jpg', 'jpeg', 'png', 'pdf'].includes(extArchivo);
+
         // Caso 1: 1 candidato claro → vincular y avanzar
         if (candidatos.length === 1) {
           const p = candidatos[0];
           let cambio = null;
           if (carpetaNorm === 'corel') {
-            if (!p.disenoIniciado) {
+            // (a) Si es .cdr → arranco diseño
+            if (esCDR && !p.disenoIniciado) {
               p.disenoIniciado = true;
               p.fechaDisenoIniciado = ts || new Date().toISOString();
-              p.disenadorReal = pc; // quien EFECTIVAMENTE hizo el diseno
+              p.disenadorReal = pc;
               cambio = 'diseno-iniciado';
+            }
+            // (b) Si es JPG/PNG/PDF y YA hay disenoIniciado → es EXPORT para mostrar al cliente
+            //     Marcar pedido como "diseno listo para aprobacion del cliente"
+            else if (esEXPORT_VISUAL && p.disenoIniciado && !p.disenoListoParaAprobacion) {
+              p.disenoListoParaAprobacion = true;
+              p.fechaDisenoListo = ts || new Date().toISOString();
+              p.archivoVisualExportado = archivo;
+              cambio = 'diseno-listo-para-aprobacion';
+              // WA a vendedora: "ya hiciste el JPG, vas a mandar al cliente?"
+              try {
+                const msgV = `🎨 *Diseño listo para mostrar al cliente*\n\n` +
+                  `Pedido: *${p.equipo}* (#${p.id})\n` +
+                  `Exportaste: ${archivo}\n\n` +
+                  `📤 ¿Ya se lo mandaste al cliente para que apruebe?\n` +
+                  `Cuando responda en Chatwoot, yo detecto la aprobacion y avanzo el pedido solo.`;
+                notificarWAVendedora(p.vendedora, msgV).catch(()=>{});
+              } catch {}
+            }
+            // (c) Si es JPG/PNG/PDF SIN .cdr previo → tambien marcar diseno-iniciado
+            else if (esEXPORT_VISUAL && !p.disenoIniciado) {
+              p.disenoIniciado = true;
+              p.fechaDisenoIniciado = ts || new Date().toISOString();
+              p.disenadorReal = pc;
+              p.archivoVisualExportado = archivo;
+              cambio = 'diseno-iniciado-via-export';
             }
           } else if (carpetaNorm === 'pdf-rip' || carpetaNorm === 'pdfrip') {
             if (!p.pdfDriveListo) {
@@ -9986,10 +10017,14 @@ async function cronDetectarAprobacionChatwootTick() {
         || (Array.isArray(p.archivosAlias) && p.archivosAlias.length > 0)
         || (p.drive && p.drive.corel);
       if (!tieneDiseno) return false;
-      // No chequear el mismo pedido mas de 1 vez por hora
+      // No chequear el mismo pedido mas de 1 vez por hora (mas frecuente si esta listo para aprobacion)
+      const ventanaMs = p.disenoListoParaAprobacion ? 20 * 60 * 1000 : 60 * 60 * 1000;
       const ult = state.ultimoChequeoPorPedido?.[p.id] || 0;
-      return (ahora - ult) > 60 * 60 * 1000;
-    }).slice(0, 5); // procesar max 5 por tick para no saturar Gemini ni Chatwoot
+      return (ahora - ult) > ventanaMs;
+    })
+    // Priorizar los que tienen export visual (mas probable que cliente este respondiendo)
+    .sort((a, b) => (b.disenoListoParaAprobacion ? 1 : 0) - (a.disenoListoParaAprobacion ? 1 : 0))
+    .slice(0, 5);
 
     if (!candidatos.length) {
       console.log('[cron-aprobacion] sin candidatos');
