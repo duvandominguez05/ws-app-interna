@@ -24,7 +24,7 @@ const os = require('os');
 const readline = require('readline');
 const { exec } = require('child_process');
 
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 const SERVER_URL = process.env.WS_VIGILANTE_URL || 'https://ws-app-interna-production.up.railway.app';
 const ENDPOINT = '/api/agente-evento';
 const ENDPOINT_ACTIVIDAD = '/api/agente-actividad';
@@ -784,24 +784,32 @@ function configurarAutoStart() {
     log('error configurando auto-start:', e.message);
   }
   // 2. Watchdog scheduled task — cada 5 min revive el proceso si murio
-  // schtasks /TR tiene limite 261 chars, asi que usamos un .bat auxiliar
+  // Usamos un .vbs (Visual Basic Script) porque WScript.Shell.Run con
+  // parametro 0 = SW_HIDE oculta TODA ventana, incluso de procesos consola.
+  // Borramos .bat viejo si existe (versiones anteriores).
   try {
     const { execSync } = require('child_process');
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    const batPath = path.join(CONFIG_DIR, 'watchdog.bat');
-    // .bat verifica si el proceso esta corriendo, si no, lo lanza oculto
-    const batContent = '@echo off\r\n' +
-      'tasklist /FI "IMAGENAME eq ws-vigilante.exe" /NH 2>NUL | findstr /I "ws-vigilante.exe" >NUL\r\n' +
-      'if errorlevel 1 (\r\n' +
-      `  start "" "${exePath}"\r\n` +
-      ')\r\n';
-    fs.writeFileSync(batPath, batContent);
+    // Borrar .bat viejo de v3.2.0 si existe
+    try { fs.unlinkSync(path.join(CONFIG_DIR, 'watchdog.bat')); } catch {}
+    const vbsPath = path.join(CONFIG_DIR, 'watchdog.vbs');
+    // VBS: verifica si el proceso esta corriendo via WMI, si no, lo lanza OCULTO (param 0).
+    // Las comillas dobles en exePath se escapan duplicandolas en VBS string.
+    const exePathVbs = exePath.replace(/"/g, '""');
+    const vbsContent =
+      'Set objWMI = GetObject("winmgmts:\\\\.\\root\\cimv2")\r\n' +
+      'Set procs = objWMI.ExecQuery("Select * From Win32_Process Where Name=\'ws-vigilante.exe\'")\r\n' +
+      'If procs.Count = 0 Then\r\n' +
+      '  Set sh = CreateObject("WScript.Shell")\r\n' +
+      `  sh.Run """${exePathVbs}""", 0, False\r\n` +
+      'End If\r\n';
+    fs.writeFileSync(vbsPath, vbsContent);
     // Borrar tarea vieja
     try { execSync('schtasks /Delete /TN "WSVigilanteWatchdog" /F', { stdio: 'ignore' }); } catch {}
-    // Crear tarea programada cada 5 minutos, indefinidamente
-    const cmdSch = `schtasks /Create /TN "WSVigilanteWatchdog" /TR "\\"${batPath}\\"" /SC MINUTE /MO 5 /F`;
+    // Crear tarea programada cada 5 minutos. wscript.exe con //B = batch silencioso
+    const cmdSch = `schtasks /Create /TN "WSVigilanteWatchdog" /TR "wscript.exe //B //Nologo \\"${vbsPath}\\"" /SC MINUTE /MO 5 /F`;
     execSync(cmdSch, { stdio: 'ignore' });
-    log(`watchdog configurado: ${batPath} cada 5 min`);
+    log(`watchdog configurado: ${vbsPath} cada 5 min (oculto)`);
   } catch (e) {
     log('error configurando watchdog:', e.message);
   }
