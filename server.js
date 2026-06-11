@@ -539,28 +539,53 @@ function validarBeneficiarioWS(destinatarioNombre) {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// GEMINI — analizar TEXTO de un chat de Chatwoot para detectar si el
-// cliente aprobo el diseno, pidio cambios, o todavia no respondio.
-// Devuelve: { estado: "aprobado" | "cambios" | "pendiente" | "no-detectado",
-//             confianza: "alta" | "media" | "baja",
-//             cita: "fragmento del chat que lo sustenta" }
+// GEMINI — analizar el FLUJO de la conversacion entre vendedora y
+// cliente para detectar el estado real del diseno.
+//
+// LOGICA REAL DEL FLUJO:
+// El cliente NUNCA dice "aprobado" explicitamente. El patron es:
+//   Vendedora manda imagen → Cliente pide cambios → Vendedora rehace
+//   → ... iteraciones ... → Cliente NO pide mas cambios = APROBADO
+//
+// Por eso analizamos las imagenes y la AUSENCIA de pedidos de cambio
+// despues de la ultima imagen, NO buscamos palabras "aprobado".
 // ═════════════════════════════════════════════════════════════════
 async function analizarChatAprobacionConGemini(conversacionTexto, nombreEquipo) {
   global._geminiUltimoError = null;
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) { global._geminiUltimoError = 'no api key'; return null; }
-    const prompt = `Sos un asistente que analiza chats de WhatsApp entre una vendedora de uniformes deportivos en Colombia y un cliente.\n` +
-      `El pedido en cuestion se llama: "${nombreEquipo || 'sin nombre'}"\n\n` +
-      `Conversacion (mensaje mas reciente al final):\n${conversacionTexto}\n\n` +
-      `Tu tarea: detectar si el cliente YA APROBO el diseno o si pidio cambios.\n\n` +
-      `Reglas:\n` +
-      `- "aprobado": cliente dice claramente que le gusta / acepta / autoriza producir. Tambien aceptaciones cortas como "ok", "vale", "si", "dale", "perfecto", "listo", "esta bien", "me gusta", "asi quedo bonito", "denle pa adelante", "vamos asi", "bacano", "sigan", "produzcan", "pueden hacer asi", "asi mismo", "todo bien". Si el cliente responde "ok"/"vale" DESPUES de que la vendedora le mostro una imagen de diseno, ESO ES APROBACION.\n` +
-      `- "cambios": cliente pide modificar algo. Ej: "podes cambiar X", "no me convence", "cambia el escudo", "ponle otro color", "esta feo el numero", "me gusta mas el anterior", "muy oscuro", "agrega/quita".\n` +
-      `- "pendiente": cliente todavia esta consultando, no decide. Ej: "lo estoy viendo", "lo reviso", "espera", "consulto con mi gente", "lo pienso", "te aviso". Tambien si el ultimo mensaje es de la vendedora SIN respuesta del cliente.\n` +
-      `- "no-detectado": el chat no parece tratarse de la aprobacion de un diseno.\n\n` +
-      `Responde SOLO con JSON valido (sin markdown):\n` +
-      `{"estado": "aprobado" | "cambios" | "pendiente" | "no-detectado", "confianza": "alta" | "media" | "baja", "cita": "fragmento exacto del chat que lo sustenta o vacio si no aplica"}\n\n` +
+    const prompt = `Analiza el FLUJO de una conversacion entre una vendedora de uniformes deportivos y su cliente en Colombia.\n` +
+      `Pedido: "${nombreEquipo || 'sin nombre'}"\n\n` +
+      `Conversacion (mensaje mas reciente al final, [IMG] = imagen):\n${conversacionTexto}\n\n` +
+      `══════════════════════════════════════════════════════════\n` +
+      `IMPORTANTE: El cliente RARAMENTE dice "aprobado" o "perfecto" explicitamente.\n` +
+      `El patron normal es:\n` +
+      `  Vendedora manda imagen del diseno → Cliente pide cambios\n` +
+      `  Vendedora hace cambios y manda nueva imagen → Cliente pide mas cambios\n` +
+      `  ... iteraciones ...\n` +
+      `  Cliente NO pide mas cambios despues de la ultima imagen = APROBADO\n` +
+      `  Cliente dice "no, asi queda bien" / "ya esta" / "no mas" / silencio = APROBADO\n` +
+      `══════════════════════════════════════════════════════════\n\n` +
+      `Para clasificar, primero encuentra LA ULTIMA IMAGEN que mando la VENDEDORA al cliente.\n` +
+      `Despues analiza los mensajes del CLIENTE posteriores a esa imagen:\n\n` +
+      `- "aprobado": despues de la ultima imagen de la vendedora, el cliente:\n` +
+      `   * NO pidio mas cambios, O\n` +
+      `   * dijo "asi queda bien" / "ya esta" / "vamos asi" / "perfecto" / "ok" / "dale" / "listo" / "vale" / "gracias", O\n` +
+      `   * dijo "no" cuando se le pregunto si queria mas cambios, O\n` +
+      `   * dio info logistica (talla, fecha entrega, jugadores) sin pedir cambios al diseno, O\n` +
+      `   * agradecio recibir las prendas / dijo "quedaron lindas" / "muchas gracias" → ESTO ES ENTREGADO YA\n\n` +
+      `- "cambios": despues de la ultima imagen de la vendedora, el cliente pidio modificacion clara al diseno.\n` +
+      `   Ej: "cambia el escudo", "ponle otro color", "me gusta mas el anterior", "muy oscuro", "agrega/quita Y", "este no", "modifica X".\n\n` +
+      `- "esperando-respuesta": la vendedora mando la ultima imagen pero el cliente NO ha respondido (ultimo mensaje es de la vendedora).\n\n` +
+      `- "entregado": el cliente ya recibio las prendas y agradecio. Ej: "muchas gracias", "quedaron bien las tallas", "ya las recibi", "todo bien con el envio". Esto significa que el pedido YA ESTA TERMINADO.\n\n` +
+      `- "sin-imagen": la vendedora todavia no mando ninguna imagen de diseno en la conversacion.\n\n` +
+      `- "no-detectado": el chat no parece sobre aprobacion de diseno (es consulta inicial, precios, etc).\n\n` +
+      `Responde SOLO JSON valido (sin markdown):\n` +
+      `{"estado": "aprobado" | "cambios" | "esperando-respuesta" | "entregado" | "sin-imagen" | "no-detectado",\n` +
+      ` "confianza": "alta" | "media" | "baja",\n` +
+      ` "cita": "frase exacta del cliente que lo sustenta o vacio si no aplica",\n` +
+      ` "razonamiento": "una linea explicando el flujo detectado"}\n\n` +
       `Respuesta:`;
     const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
@@ -655,6 +680,137 @@ Respuesta:`;
     }
   } catch (e) {
     console.error('[gemini error]', e.message);
+    global._geminiUltimoError = `exception: ${e.message}`;
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Descarga un attachment de Chatwoot (imagen o audio) y devuelve {base64, mime}.
+// dataUrl viene del payload de Chatwoot (ej: https://app.chatwoot.com/rails/active_storage/...).
+// Si falla devuelve null.
+async function descargarAttachmentChatwootBase64(dataUrl, timeoutMs = 15000) {
+  try {
+    if (!dataUrl) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    // En Chatwoot self-hosted, data_url a veces requiere autenticacion. Probamos con header.
+    const r = await fetch(dataUrl, {
+      headers: apiKey ? { 'api_access_token': apiKey } : {},
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!r.ok) {
+      console.error('[chatwoot-att]', 'HTTP', r.status, dataUrl.slice(0, 80));
+      return null;
+    }
+    const mime = r.headers.get('content-type') || 'application/octet-stream';
+    const buf = await r.arrayBuffer();
+    const base64 = Buffer.from(buf).toString('base64');
+    // Tamano en KB para logs
+    const kb = Math.round(base64.length / 1024);
+    return { base64, mime, kb };
+  } catch (e) {
+    console.error('[chatwoot-att]', e.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Analiza una conversacion COMPLETA (texto + imagenes + audios) con Gemini multimodal.
+// mensajes: [{ quien: 'cliente'|'vendedora', texto, fecha, attachments: [{base64,mime,kind}] }]
+// Devuelve {estado, confianza, resumen, pedidosDetectados, ultimaImagen, cita}.
+async function analizarChatMultimediaConGemini(mensajes, nombreEquipo) {
+  global._geminiUltimoError = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) { global._geminiUltimoError = 'no api key'; return null; }
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+
+    const preamble = `Sos un analista de W&S Enterprise (uniformes deportivos, Colombia).\n` +
+      `Te paso una conversacion entera entre la VENDEDORA (W&S) y un CLIENTE sobre el pedido: "${nombreEquipo || 'sin nombre'}".\n` +
+      `La conversacion incluye TEXTOS, IMAGENES y AUDIOS en orden cronologico (mas viejo primero).\n\n` +
+      `IMPORTANTE — patron de aprobacion REAL:\n` +
+      `  El cliente NUNCA dice "aprobado" explicitamente. Vendedora manda imagen → cliente pide cambios → vendedora corrige → repite.\n` +
+      `  Cuando el cliente DEJA de pedir cambios despues de la ultima imagen, o pide MAS pedidos / da tallas / da fecha → ESO es la aprobacion.\n` +
+      `  Tambien escucha los AUDIOS — ahi el cliente suele dar tallas, direccion, cambios, o decir "asi queda".\n` +
+      `  Mira las IMAGENES — pueden ser: diseno mostrado por la vendedora, comprobante de pago, lista de jugadores escrita a mano, foto del producto terminado.\n\n` +
+      `Tareas:\n` +
+      `1) Resume en 3-5 lineas que pasa en este chat (texto + audios + imagenes).\n` +
+      `2) Detecta cuantos PEDIDOS distintos hay en esta conversacion (pedido original + adiciones / nuevos).\n` +
+      `3) Determina el estado REAL del PEDIDO ACTUAL: "${nombreEquipo || 'sin nombre'}".\n\n` +
+      `Estados posibles:\n` +
+      `  - "aprobado-listo-calandra": diseno aprobado por silencio o por dar tallas/info logistica/pedir mas.\n` +
+      `  - "en-correcciones": cliente pidio cambios y vendedora no ha respondido con nueva imagen.\n` +
+      `  - "esperando-respuesta-cliente": vendedora mando la ultima imagen y cliente no respondio aun.\n` +
+      `  - "entregado": cliente ya recibio las prendas y agradecio fisicamente recibirlas.\n` +
+      `  - "sin-imagen-aun": no se ha mandado ningun diseno aun (chat inicial).\n` +
+      `  - "no-aplica": no es chat de aprobacion de diseno.\n\n` +
+      `Responde SOLO JSON valido (sin markdown):\n` +
+      `{"resumen": "texto corto del chat",\n` +
+      ` "pedidosDetectados": numero,\n` +
+      ` "estadoReal": "aprobado-listo-calandra"|"en-correcciones"|"esperando-respuesta-cliente"|"entregado"|"sin-imagen-aun"|"no-aplica",\n` +
+      ` "confianza": "alta"|"media"|"baja",\n` +
+      ` "cita": "frase exacta del cliente (o transcripcion de audio) que sustenta el estado",\n` +
+      ` "audiosResumen": "que dicen los audios brevemente",\n` +
+      ` "imagenesResumen": "que se ve en las imagenes (disenos, comprobantes, listas, prendas)"}\n\n` +
+      `═══════════════════════════════════════════════════════════════\n` +
+      `CONVERSACION:\n`;
+
+    const parts = [{ text: preamble }];
+    let idxMsg = 0;
+    let imagenesUsadas = 0, audiosUsados = 0;
+    const MAX_IMG = 10, MAX_AUDIO = 8;
+    for (const m of mensajes) {
+      idxMsg++;
+      const cabecera = `\n[msg ${idxMsg} | ${m.quien} | ${m.fecha || ''}]${m.texto ? ' ' + m.texto.slice(0, 500) : ''}`;
+      parts.push({ text: cabecera });
+      for (const a of (m.attachments || [])) {
+        if (!a || !a.base64 || !a.mime) continue;
+        const isImg = a.mime.startsWith('image/');
+        const isAud = a.mime.startsWith('audio/');
+        if (isImg && imagenesUsadas < MAX_IMG) {
+          parts.push({ text: `[IMG adjunta de ${m.quien}]:` });
+          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
+          imagenesUsadas++;
+        } else if (isAud && audiosUsados < MAX_AUDIO) {
+          parts.push({ text: `[AUDIO adjunto de ${m.quien}, transcribe y considera el contenido]:` });
+          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
+          audiosUsados++;
+        }
+      }
+    }
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
+
+    const body = {
+      contents: [{ parts }],
+      generationConfig: { temperature: 0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini-multi] HTTP', r.status, errText.slice(0, 200));
+      global._geminiUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      const parsed = JSON.parse(limpio);
+      parsed._meta = { imagenesUsadas, audiosUsados, mensajesAnalizados: idxMsg };
+      return parsed;
+    } catch {
+      global._geminiUltimoError = `parse error: ${limpio.slice(0, 300)}`;
+      return { _raw: limpio.slice(0, 1000), _meta: { imagenesUsadas, audiosUsados } };
+    }
+  } catch (e) {
+    console.error('[gemini-multi error]', e.message);
     global._geminiUltimoError = `exception: ${e.message}`;
     return null;
   }
@@ -1215,7 +1371,14 @@ async function listarMensajesChatwoot(conversationId, limit = 25) {
       content: m.content || '',
       created_at: m.created_at,
       message_type: m.message_type,
-    })).filter(m => m.content && m.content.trim());
+      attachments: (m.attachments || []).map(a => ({
+        file_type: a.file_type,
+        data_url: a.data_url,
+        thumb_url: a.thumb_url,
+      })),
+    }))
+    // Mantener mensajes con contenido O con attachments (imagenes)
+    .filter(m => (m.content && m.content.trim()) || (m.attachments && m.attachments.length > 0));
   } catch (e) {
     console.error('[chatwoot-msg]', e.message);
     return [];
@@ -4186,6 +4349,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         })),
       }));
       const conImagenes = mensajes.filter(m => m.attachments.some(a => a.file_type === 'image'));
+      const conAudio = mensajes.filter(m => m.attachments.some(a => a.file_type === 'audio'));
       return json(res, 200, {
         pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono, vendedora: p.vendedora, estado: p.estado },
         contactoId: contacto.id,
@@ -4193,13 +4357,104 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         chatwootUrl: `${url}/app/accounts/${accountId}/conversations/${conv.id}`,
         totalMensajes: mensajes.length,
         mensajesConImagen: conImagenes.length,
-        mensajes: mensajes.slice(-30),
+        mensajesConAudio: conAudio.length,
+        mensajes: mensajes.slice(-40),
         imagenes: conImagenes.map(m => ({
           fecha: m.created_at,
           quien: m.sender_type,
           texto: m.content,
           urls: m.attachments.filter(a => a.file_type === 'image').map(a => a.data_url),
         })),
+        audios: conAudio.map(m => ({
+          fecha: m.created_at,
+          quien: m.sender_type,
+          texto: m.content,
+          urls: m.attachments.filter(a => a.file_type === 'audio').map(a => a.data_url),
+        })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ANALISIS COMPLETO con Gemini multimedia: texto + imagenes + audios
+  // GET /api/admin/analizar-chat-completo?id=X&limit=30
+  // Descarga TODOS los attachments de Chatwoot y los pasa a Gemini para
+  // determinar el estado REAL del pedido, sin enviar ningun WA.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/analizar-chat-completo')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const limit = Math.min(parseInt(u.searchParams.get('limit') || '40', 10), 80);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      if (!p.telefono) return json(res, 200, { error: 'pedido sin telefono', pedido: { id: p.id, equipo: p.equipo } });
+
+      const contacto = await buscarContactoChatwoot(p.telefono);
+      if (!contacto?.id) return json(res, 200, { error: 'sin contacto chatwoot', pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono } });
+      const url = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiKey = process.env.CHATWOOT_API_KEY;
+      const rConv = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const dataConv = await rConv.json();
+      const conv = (dataConv.payload || [])[0];
+      if (!conv?.id) return json(res, 200, { error: 'sin conversacion', pedido: { id: p.id, equipo: p.equipo } });
+      const rMsg = await fetch(`${url}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const dataMsg = await rMsg.json();
+      const todosMensajes = dataMsg.payload || dataMsg || [];
+      // Tomar los ultimos N
+      const recientes = todosMensajes.slice(-limit);
+
+      // Convertir a estructura {quien, texto, fecha, attachments}
+      // y descargar cada attachment (max 10 img + 8 audio) a base64
+      const mensajesEnriquecidos = [];
+      let imgsTotal = 0, audsTotal = 0;
+      const MAX_IMG_TOTAL = 10, MAX_AUDIO_TOTAL = 8;
+      for (const m of recientes) {
+        const quien = (m.message_type === 0) ? 'cliente' : 'vendedora';
+        const fecha = m.created_at ? (new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' })) : '';
+        const adj = [];
+        for (const a of (m.attachments || [])) {
+          if (a.file_type === 'image' && imgsTotal < MAX_IMG_TOTAL) {
+            const dl = await descargarAttachmentChatwootBase64(a.data_url);
+            if (dl) { adj.push({ ...dl, kind: 'image' }); imgsTotal++; }
+          } else if (a.file_type === 'audio' && audsTotal < MAX_AUDIO_TOTAL) {
+            const dl = await descargarAttachmentChatwootBase64(a.data_url);
+            if (dl) { adj.push({ ...dl, kind: 'audio' }); audsTotal++; }
+          }
+        }
+        mensajesEnriquecidos.push({
+          quien,
+          fecha,
+          texto: (m.content || '').slice(0, 600),
+          attachments: adj,
+        });
+      }
+
+      const analisis = await analizarChatMultimediaConGemini(mensajesEnriquecidos, p.equipo);
+
+      // Resumen rapido para el usuario (sin base64 ruidoso)
+      const mensajesResumen = mensajesEnriquecidos.map(m => ({
+        quien: m.quien,
+        fecha: m.fecha,
+        texto: m.texto,
+        adjuntos: m.attachments.map(a => `${a.kind}(${a.mime}, ${a.kb}KB)`),
+      }));
+
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
+        chatwootUrl: `${url}/app/accounts/${accountId}/conversations/${conv.id}`,
+        descargadas: { imagenes: imgsTotal, audios: audsTotal, mensajesAnalizados: mensajesEnriquecidos.length },
+        analisis,
+        cronologia: mensajesResumen,
+        errorGemini: global._geminiUltimoError || null,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
@@ -10416,42 +10671,73 @@ async function cronResolverAtascosTick() {
         // (decidido 11-jun-2026: usuario no quiere archivar, quiere solucionar)
         // Si +14 dias sin actividad, solo registrar pero NO cambiar estado.
 
-        // ─── REGLA 2: Gemini detecta APROBACION → AVANZAR ───
-        // Solo si pedido tiene diseno (alias o disenoIniciado)
-        const tieneDiseno = p.disenoIniciado || (Array.isArray(p.archivosAlias) && p.archivosAlias.length > 0) || (p.drive && p.drive.corel);
-        if (tieneDiseno) {
-          const texto = chat.messages.map(m => {
-            const quien = m.sender_type === 'Contact' ? 'Cliente' : 'Vendedora';
-            return `${quien}: ${(m.content || '').slice(0, 400)}`;
-          }).join('\n');
-          const analisis = await analizarChatAprobacionConGemini(texto, p.equipo);
-          if (analisis && analisis.estado === 'aprobado' && (analisis.confianza === 'alta' || analisis.confianza === 'media')) {
+        // ─── ANALISIS FLUJO COMPLETO (sin importar si tiene disenoIniciado) ───
+        // Construir texto del chat marcando imagenes con [IMG]
+        const texto = chat.messages.map(m => {
+          const quien = m.sender_type === 'Contact' ? 'Cliente' : 'Vendedora';
+          const hayImg = (m.attachments || []).some(a => a.file_type === 'image');
+          const marcaImg = hayImg ? ' [IMG]' : '';
+          return `${quien}${marcaImg}: ${(m.content || '').slice(0, 400)}`;
+        }).join('\n');
+        const analisis = await analizarChatAprobacionConGemini(texto, p.equipo);
+        if (!analisis) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+
+        // ── ENTREGADO: cliente recibio prendas y agradecio ──
+        if (analisis.estado === 'entregado' && (analisis.confianza === 'alta' || analisis.confianza === 'media')) {
+          p.estado = 'enviado-final';
+          p.fechaEntregaCliente = new Date().toISOString();
+          p.aprobacionFuente = 'cron-resolver-flujo';
+          p.aprobacionCita = (analisis.cita || '').slice(0, 300);
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'cron-resolver-flujo',
+            accion: 'entregado-detectado',
+            nota: `Cliente agradecio recibir. Razonamiento: ${analisis.razonamiento || ''}. Cita: "${(analisis.cita||'').slice(0,150)}"`,
+          });
+          state.ultimaAccionPorPedido[p.id] = ahora;
+          avanzados++;
+          cambios++;
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+
+        // ── APROBADO: cliente no pidio mas cambios despues de ultima imagen ──
+        if (analisis.estado === 'aprobado' && analisis.confianza === 'alta') {
+          // Solo avanzar a confirmado si pedido tiene alguna senal de diseno (imagen en chat o archivosAlias)
+          const huboImagenVendedora = chat.messages.some(m =>
+            m.sender_type !== 'Contact' && (m.attachments || []).some(a => a.file_type === 'image')
+          );
+          const tieneDiseno = p.disenoIniciado || (Array.isArray(p.archivosAlias) && p.archivosAlias.length > 0) || (p.drive && p.drive.corel) || huboImagenVendedora;
+          if (tieneDiseno) {
             p.estado = 'confirmado';
             p.fechaAprobacionCliente = new Date().toISOString();
-            p.aprobacionFuente = 'cron-resolver';
+            p.aprobacionFuente = 'cron-resolver-flujo';
             p.aprobacionCita = (analisis.cita || '').slice(0, 300);
             p.ultimoMovimiento = new Date().toISOString();
             p.historial = p.historial || [];
             p.historial.push({
               fecha: new Date().toISOString(),
-              por: 'cron-resolver',
+              por: 'cron-resolver-flujo',
               accion: 'avanzar-por-aprobacion',
-              nota: `Gemini ${analisis.confianza}. "${(analisis.cita||'').slice(0,150)}"`,
+              nota: `Razonamiento: ${analisis.razonamiento || ''}. Cita: "${(analisis.cita||'').slice(0,150)}"`,
             });
             state.ultimaAccionPorPedido[p.id] = ahora;
             avanzados++;
             cambios++;
-            try {
-              await notificarWAVendedora(p.vendedora, `✅ *Cliente aprobo el diseno*\n\nPedido: *${p.equipo}* (#${p.id})\n_"${(analisis.cita||'').slice(0,180)}"_\n\nMarcado como *confirmado*. Listo para mandar a calandra.`);
-            } catch {}
-            await new Promise(r => setTimeout(r, 800));
-            continue;
           }
-          // Las reglas de EMPUJONES por cambios/pago-sin-diseno se desactivaron
-          // (decidido 11-jun-2026: causaban demasiado spam a vendedoras).
-          // Esa info ya va en el resumen matutino consolidado.
-          await new Promise(r => setTimeout(r, 800));
+          await new Promise(r => setTimeout(r, 600));
+          continue;
         }
+
+        // ── CAMBIOS / ESPERANDO / SIN-IMAGEN / NO-DETECTADO: NO TOCAR ──
+        // El sistema queda silencioso. Sin WA spam. La info pendiente
+        // ya va en el resumen matutino consolidado existente.
+        await new Promise(r => setTimeout(r, 500));
       } catch (eP) {
         console.error(`[cron-resolver #${p.id}]`, eP.message);
       }
