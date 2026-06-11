@@ -4235,6 +4235,39 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // EMERGENCY: RESTAURAR pedidos archivados por error por el cron-resolver
+  // POST /api/admin/restaurar-archivados-por-cron
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/restaurar-archivados-por-cron') {
+    try {
+      const pedidos = leerPedidos();
+      let restaurados = 0;
+      const lista = [];
+      for (const p of pedidos) {
+        if (p.estado !== 'archivado') continue;
+        // Solo los archivados por mi bug del cron-resolver
+        const archivadoPorCron = Array.isArray(p.historial) && p.historial.some(h => h.por === 'cron-resolver' && h.accion === 'archivar-por-inactividad');
+        if (!archivadoPorCron) continue;
+        // Volver a hacer-diseno
+        p.estado = 'hacer-diseno';
+        delete p.archivadoEn;
+        delete p.archivadoMotivo;
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'admin-restaurar',
+          accion: 'des-archivar',
+          nota: 'Archivado por error del cron-resolver (bug timestamp Chatwoot), restaurado',
+        });
+        restaurados++;
+        lista.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora });
+      }
+      if (restaurados > 0) guardarPedidos(pedidos, leerNextId());
+      return json(res, 200, { ok: true, restaurados, lista });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR RESOLVEDOR DE ATASCOS AHORA (no esperar 30 min)
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'POST' && req.url === '/api/admin/forzar-resolver-atascos') {
@@ -10366,7 +10399,16 @@ async function cronResolverAtascosTick() {
           continue;
         }
         const ultimoMsg = chat.messages[chat.messages.length - 1];
-        const ultimoTs = ultimoMsg.created_at ? new Date(ultimoMsg.created_at).getTime() : ahora;
+        // Chatwoot devuelve created_at como timestamp UNIX EN SEGUNDOS (no ms)
+        // ej. 1779904080 = 2026-06-09. Hay que multiplicar por 1000.
+        let ultimoTs = ahora;
+        if (ultimoMsg.created_at) {
+          const raw = typeof ultimoMsg.created_at === 'number'
+            ? ultimoMsg.created_at
+            : (parseInt(ultimoMsg.created_at, 10) || Date.parse(ultimoMsg.created_at) / 1000);
+          // Si esta en segundos (< year 2100 in ms = 4102444800000), multiplicar
+          ultimoTs = raw < 1e12 ? raw * 1000 : raw;
+        }
         const diasSinActividad = Math.floor((ahora - ultimoTs) / (24 * 60 * 60 * 1000));
         const ultimoFueDelCliente = ultimoMsg.sender_type === 'Contact';
 
