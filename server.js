@@ -10412,27 +10412,9 @@ async function cronResolverAtascosTick() {
         const diasSinActividad = Math.floor((ahora - ultimoTs) / (24 * 60 * 60 * 1000));
         const ultimoFueDelCliente = ultimoMsg.sender_type === 'Contact';
 
-        // ─── REGLA 1: +14 dias sin actividad → ARCHIVAR ───
-        if (diasSinActividad >= 14) {
-          p.estado = 'archivado';
-          p.archivadoEn = new Date().toISOString();
-          p.archivadoMotivo = `Sin actividad en Chatwoot ${diasSinActividad} dias`;
-          p.ultimoMovimiento = new Date().toISOString();
-          p.historial = p.historial || [];
-          p.historial.push({
-            fecha: new Date().toISOString(),
-            por: 'cron-resolver',
-            accion: 'archivar-por-inactividad',
-            nota: `${diasSinActividad} dias sin actividad en Chatwoot`,
-          });
-          state.ultimaAccionPorPedido[p.id] = ahora;
-          archivados++;
-          cambios++;
-          try {
-            await notificarWAVendedora(p.vendedora, `📦 *Pedido archivado por inactividad*\n\nPedido: *${p.equipo}* (#${p.id})\nCliente: ${p.pushNameCliente || p.telefono}\n\nLleva ${diasSinActividad} dias sin movimiento. Si quieres recuperarlo, contacta al cliente y volvelo a abrir.`);
-          } catch {}
-          continue;
-        }
+        // ─── REGLA 1 DESACTIVADA: NO archivar nada automaticamente
+        // (decidido 11-jun-2026: usuario no quiere archivar, quiere solucionar)
+        // Si +14 dias sin actividad, solo registrar pero NO cambiar estado.
 
         // ─── REGLA 2: Gemini detecta APROBACION → AVANZAR ───
         // Solo si pedido tiene diseno (alias o disenoIniciado)
