@@ -4235,6 +4235,25 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // FORZAR RESOLVEDOR DE ATASCOS AHORA (no esperar 30 min)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/forzar-resolver-atascos') {
+    try {
+      try { fs.unlinkSync(RESOLVER_STATE_FILE); } catch {}
+      await cronResolverAtascosTick();
+      // Devolver pedidos por estado actualizado
+      const pedidos = leerPedidos();
+      const porEstado = {};
+      for (const p of pedidos) {
+        porEstado[p.estado] = (porEstado[p.estado] || 0) + 1;
+      }
+      return json(res, 200, { ok: true, porEstado, mensaje: 'ver consola del servidor para detalle' });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR cron de aprobacion Chatwoot AHORA (no esperar 10 min)
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'POST' && req.url === '/api/admin/forzar-cron-aprobacion') {
@@ -10297,6 +10316,150 @@ async function cronAlertaAbandonadosTick() {
 setInterval(cronAlertaAbandonadosTick, 60 * 60 * 1000); // chequea cada hora pero solo corre a las 8 AM
 setTimeout(cronAlertaAbandonadosTick, 2 * 60 * 1000);
 console.log('[cron-abandonados] activado — corre 1 vez al dia (8 AM Bogota)');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON RESOLVEDOR AUTOMATICO DE ATASCOS — corre cada 30 min
+// Para cada pedido en hacer-diseno:
+//   1. Lee Chatwoot del cliente
+//   2. Calcula dias desde ultimo mensaje REAL
+//   3. Clasifica y RESUELVE automatico:
+//      - cliente aprobo → avanza pedido
+//      - +14 dias sin actividad → archiva
+//      - cliente pidio cambios y vendedora no respondio +24h → WA empujon
+//      - pago sin diseno +3 dias → WA empujon vendedora-disenadora
+// ═══════════════════════════════════════════════════════════════════
+let _cronResolverEnCurso = false;
+const RESOLVER_STATE_FILE = path.join(__dirname, 'data', 'cron-resolver-state.json');
+function _leerResolverState() {
+  try { return JSON.parse(fs.readFileSync(RESOLVER_STATE_FILE, 'utf8')); }
+  catch { return { ultimaAccionPorPedido: {} }; }
+}
+function _guardarResolverState(s) {
+  fs.mkdirSync(path.dirname(RESOLVER_STATE_FILE), { recursive: true });
+  fs.writeFileSync(RESOLVER_STATE_FILE, JSON.stringify(s, null, 2));
+}
+
+async function cronResolverAtascosTick() {
+  if (_cronResolverEnCurso) return;
+  if (!process.env.CHATWOOT_URL) return;
+  _cronResolverEnCurso = true;
+  try {
+    const state = _leerResolverState();
+    state.ultimaAccionPorPedido = state.ultimaAccionPorPedido || {};
+    const ahora = Date.now();
+    const pedidos = leerPedidos();
+    const enHacerDiseno = pedidos.filter(p => p.estado === 'hacer-diseno' && p.telefono);
+    let cambios = 0;
+    let avanzados = 0;
+    let archivados = 0;
+    let empujonesVend = 0;
+
+    for (const p of enHacerDiseno) {
+      try {
+        // Anti-spam: no tocar el mismo pedido mas de 1 vez cada 4h
+        const ultAccion = state.ultimaAccionPorPedido[p.id] || 0;
+        if ((ahora - ultAccion) < 4 * 60 * 60 * 1000) continue;
+
+        const chat = await obtenerChatwootChatPorTelefono(p.telefono, 30);
+        if (!chat || !chat.messages?.length) {
+          // Sin Chatwoot → no toco (es caso manual)
+          continue;
+        }
+        const ultimoMsg = chat.messages[chat.messages.length - 1];
+        const ultimoTs = ultimoMsg.created_at ? new Date(ultimoMsg.created_at).getTime() : ahora;
+        const diasSinActividad = Math.floor((ahora - ultimoTs) / (24 * 60 * 60 * 1000));
+        const ultimoFueDelCliente = ultimoMsg.sender_type === 'Contact';
+
+        // ─── REGLA 1: +14 dias sin actividad → ARCHIVAR ───
+        if (diasSinActividad >= 14) {
+          p.estado = 'archivado';
+          p.archivadoEn = new Date().toISOString();
+          p.archivadoMotivo = `Sin actividad en Chatwoot ${diasSinActividad} dias`;
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'cron-resolver',
+            accion: 'archivar-por-inactividad',
+            nota: `${diasSinActividad} dias sin actividad en Chatwoot`,
+          });
+          state.ultimaAccionPorPedido[p.id] = ahora;
+          archivados++;
+          cambios++;
+          try {
+            await notificarWAVendedora(p.vendedora, `📦 *Pedido archivado por inactividad*\n\nPedido: *${p.equipo}* (#${p.id})\nCliente: ${p.pushNameCliente || p.telefono}\n\nLleva ${diasSinActividad} dias sin movimiento. Si quieres recuperarlo, contacta al cliente y volvelo a abrir.`);
+          } catch {}
+          continue;
+        }
+
+        // ─── REGLA 2: Gemini detecta APROBACION → AVANZAR ───
+        // Solo si pedido tiene diseno (alias o disenoIniciado)
+        const tieneDiseno = p.disenoIniciado || (Array.isArray(p.archivosAlias) && p.archivosAlias.length > 0) || (p.drive && p.drive.corel);
+        if (tieneDiseno) {
+          const texto = chat.messages.map(m => {
+            const quien = m.sender_type === 'Contact' ? 'Cliente' : 'Vendedora';
+            return `${quien}: ${(m.content || '').slice(0, 400)}`;
+          }).join('\n');
+          const analisis = await analizarChatAprobacionConGemini(texto, p.equipo);
+          if (analisis && analisis.estado === 'aprobado' && (analisis.confianza === 'alta' || analisis.confianza === 'media')) {
+            p.estado = 'confirmado';
+            p.fechaAprobacionCliente = new Date().toISOString();
+            p.aprobacionFuente = 'cron-resolver';
+            p.aprobacionCita = (analisis.cita || '').slice(0, 300);
+            p.ultimoMovimiento = new Date().toISOString();
+            p.historial = p.historial || [];
+            p.historial.push({
+              fecha: new Date().toISOString(),
+              por: 'cron-resolver',
+              accion: 'avanzar-por-aprobacion',
+              nota: `Gemini ${analisis.confianza}. "${(analisis.cita||'').slice(0,150)}"`,
+            });
+            state.ultimaAccionPorPedido[p.id] = ahora;
+            avanzados++;
+            cambios++;
+            try {
+              await notificarWAVendedora(p.vendedora, `✅ *Cliente aprobo el diseno*\n\nPedido: *${p.equipo}* (#${p.id})\n_"${(analisis.cita||'').slice(0,180)}"_\n\nMarcado como *confirmado*. Listo para mandar a calandra.`);
+            } catch {}
+            await new Promise(r => setTimeout(r, 800));
+            continue;
+          }
+          // Cliente pidio cambios + vendedora sin responder +24h
+          if (analisis && analisis.estado === 'cambios' && ultimoFueDelCliente && diasSinActividad >= 1) {
+            try {
+              await notificarWAVendedora(p.vendedora, `🔁 *Cliente pidio cambios y no le has respondido*\n\nPedido: *${p.equipo}* (#${p.id})\nLleva ${diasSinActividad} dia(s) esperando.\nUltimo del cliente: _"${(ultimoMsg.content||'').slice(0,180)}"_\n\n👉 Respondele al cliente.`);
+              empujonesVend++;
+              state.ultimaAccionPorPedido[p.id] = ahora;
+            } catch {}
+          }
+          await new Promise(r => setTimeout(r, 800));
+        }
+
+        // ─── REGLA 3: pago entro pero diseno NO iniciado +3 dias → EMPUJON ───
+        if (!tieneDiseno && p.abonado > 0 && diasSinActividad >= 3) {
+          try {
+            const ab = _formatearMontoCOP(p.abonado);
+            await notificarWAVendedora(p.vendedora, `🎨 *Pedido pagado SIN diseno iniciado*\n\nPedido: *${p.equipo}* (#${p.id})\nCliente: ${p.pushNameCliente || p.telefono}\nAbono: ${ab}\nDias esperando: ${diasSinActividad}\n\n👉 Empezá el diseno YA — el cliente espera hace dias.`);
+            empujonesVend++;
+            state.ultimaAccionPorPedido[p.id] = ahora;
+          } catch {}
+        }
+      } catch (eP) {
+        console.error(`[cron-resolver #${p.id}]`, eP.message);
+      }
+    }
+
+    if (cambios > 0) guardarPedidos(pedidos, leerNextId());
+    _guardarResolverState(state);
+    console.log(`[cron-resolver] revisados=${enHacerDiseno.length} avanzados=${avanzados} archivados=${archivados} empujones=${empujonesVend}`);
+  } catch (e) {
+    console.error('[cron-resolver err]', e.message);
+  } finally {
+    _cronResolverEnCurso = false;
+  }
+}
+setInterval(cronResolverAtascosTick, 30 * 60 * 1000); // cada 30 min
+setTimeout(cronResolverAtascosTick, 4 * 60 * 1000);
+console.log('[cron-resolver] activado — resuelve atascos cada 30 min');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
