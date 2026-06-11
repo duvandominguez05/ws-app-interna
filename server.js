@@ -4115,6 +4115,76 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // DEBUG: ver el chat completo de Chatwoot de un pedido + imagenes
+  // GET /api/admin/ver-chat-pedido?id=2
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/ver-chat-pedido')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      if (!p.telefono) return json(res, 200, { pedido: { id: p.id, equipo: p.equipo, telefono: null }, error: 'pedido sin telefono' });
+
+      const contacto = await buscarContactoChatwoot(p.telefono);
+      if (!contacto?.id) {
+        return json(res, 200, { pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono }, error: 'no encontre contacto en chatwoot' });
+      }
+      const url = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiKey = process.env.CHATWOOT_API_KEY;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      const rConv = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': apiKey },
+        signal: ctrl.signal,
+      }).finally(() => clearTimeout(timer));
+      const dataConv = await rConv.json();
+      const convs = dataConv.payload || [];
+      const conv = convs[0];
+      if (!conv?.id) return json(res, 200, { pedido: { id: p.id, equipo: p.equipo }, contacto: contacto.id, error: 'sin conversacion' });
+
+      // Mensajes completos con attachments
+      const rMsg = await fetch(`${url}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const dataMsg = await rMsg.json();
+      const mensajes = (dataMsg.payload || dataMsg || []).map(m => ({
+        id: m.id,
+        sender_type: m.sender_type || (m.message_type === 0 ? 'Contact' : 'Agent'),
+        message_type: m.message_type, // 0=incoming (cliente), 1=outgoing (vendedora)
+        content: m.content || '',
+        created_at: m.created_at,
+        attachments: (m.attachments || []).map(a => ({
+          id: a.id,
+          file_type: a.file_type,
+          data_url: a.data_url,
+          thumb_url: a.thumb_url,
+        })),
+      }));
+      const conImagenes = mensajes.filter(m => m.attachments.some(a => a.file_type === 'image'));
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono, vendedora: p.vendedora, estado: p.estado },
+        contactoId: contacto.id,
+        convId: conv.id,
+        chatwootUrl: `${url}/app/accounts/${accountId}/conversations/${conv.id}`,
+        totalMensajes: mensajes.length,
+        mensajesConImagen: conImagenes.length,
+        mensajes: mensajes.slice(-30),
+        imagenes: conImagenes.map(m => ({
+          fecha: m.created_at,
+          quien: m.sender_type,
+          texto: m.content,
+          urls: m.attachments.filter(a => a.file_type === 'image').map(a => a.data_url),
+        })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR REPROCESO DEL GRUPO TRABAJO EN FAMILIA (historico hasta N dias)
   // POST /api/admin/forzar-grupo-trabajo?dias=7
   // Re-analiza los ultimos N dias de mensajes y avanza pedidos
