@@ -538,6 +538,57 @@ function validarBeneficiarioWS(destinatarioNombre) {
   return { esParaWS: false, motivo: `destinatario desconocido: "${destinatarioNombre}"` };
 }
 
+// ═════════════════════════════════════════════════════════════════
+// GEMINI — analizar TEXTO de un chat de Chatwoot para detectar si el
+// cliente aprobo el diseno, pidio cambios, o todavia no respondio.
+// Devuelve: { estado: "aprobado" | "cambios" | "pendiente" | "no-detectado",
+//             confianza: "alta" | "media" | "baja",
+//             cita: "fragmento del chat que lo sustenta" }
+// ═════════════════════════════════════════════════════════════════
+async function analizarChatAprobacionConGemini(conversacionTexto, nombreEquipo) {
+  global._geminiUltimoError = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) { global._geminiUltimoError = 'no api key'; return null; }
+    const prompt = `Sos un asistente que analiza chats de WhatsApp entre una vendedora de uniformes deportivos en Colombia y un cliente.\n` +
+      `El pedido en cuestion se llama: "${nombreEquipo || 'sin nombre'}"\n\n` +
+      `Conversacion (mensaje mas reciente al final):\n${conversacionTexto}\n\n` +
+      `Tu tarea: detectar si el cliente YA APROBO el diseno o si pidio cambios.\n\n` +
+      `Reglas:\n` +
+      `- "aprobado": cliente dice claramente que le gusta / acepta / autoriza producir. Ej: "perfecto", "me gusta", "esta bien", "aprobado", "asi quedo bonito", "denle pa adelante", "listo, sigan", "vamos asi", "bacano".\n` +
+      `- "cambios": cliente pide modificar algo. Ej: "podes cambiar X", "no me convence", "cambia el escudo", "ponle otro color", "esta feo el numero".\n` +
+      `- "pendiente": no hay respuesta del cliente todavia sobre el diseno o solo dice "ya vi", "lo estoy viendo", "lo reviso", "espera". Tambien si el ultimo mensaje es de la vendedora preguntando.\n` +
+      `- "no-detectado": el chat no parece tratarse de la aprobacion de un diseno.\n\n` +
+      `Responde SOLO con JSON valido (sin markdown):\n` +
+      `{"estado": "aprobado" | "cambios" | "pendiente" | "no-detectado", "confianza": "alta" | "media" | "baja", "cita": "fragmento exacto del chat que lo sustenta o vacio si no aplica"}\n\n` +
+      `Respuesta:`;
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const body = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0, maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini-chat] HTTP', r.status, errText.slice(0, 200));
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try { return JSON.parse(limpio); }
+    catch { return null; }
+  } catch (e) {
+    console.error('[gemini-chat error]', e.message);
+    return null;
+  }
+}
+
 async function analizarImagenConGemini(base64Img, mimeType) {
   global._geminiUltimoError = null;
   global._geminiUltimaRespuesta = null;
@@ -1140,6 +1191,62 @@ async function buscarContactoChatwoot(telefono) {
 // ═════════════════════════════════════════════════════════════════
 
 const TELEFONO_JEFE = (process.env.WA_DUVAN || process.env.WA_CAMILO || '573124858901').replace(/\D/g, '');
+
+// Lee los ultimos N mensajes de una conversacion de Chatwoot.
+// Devuelve array de { sender_type, content, created_at } ordenado del mas viejo al mas nuevo.
+async function listarMensajesChatwoot(conversationId, limit = 25) {
+  try {
+    const url = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    if (!url || !accountId || !apiKey || !conversationId) return [];
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(`${url}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`, {
+      headers: { 'api_access_token': apiKey },
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!r.ok) return [];
+    const data = await r.json();
+    const payload = data.payload || data || [];
+    // Chatwoot devuelve los mensajes en orden cronologico (viejos primero)
+    return payload.slice(-limit).map(m => ({
+      sender_type: m.sender_type || (m.message_type === 0 ? 'Contact' : 'User'),
+      content: m.content || '',
+      created_at: m.created_at,
+      message_type: m.message_type,
+    })).filter(m => m.content && m.content.trim());
+  } catch (e) {
+    console.error('[chatwoot-msg]', e.message);
+    return [];
+  }
+}
+
+// Para un telefono, busca la conversacion mas reciente de Chatwoot y devuelve {convId, messages}
+async function obtenerChatwootChatPorTelefono(telefono, limitMensajes = 25) {
+  try {
+    const contacto = await buscarContactoChatwoot(telefono);
+    if (!contacto?.id) return null;
+    const url = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const apiKey = process.env.CHATWOOT_API_KEY;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+      headers: { 'api_access_token': apiKey },
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!r.ok) return null;
+    const data = await r.json();
+    const conv = (data.payload || [])[0];
+    if (!conv?.id) return null;
+    const messages = await listarMensajesChatwoot(conv.id, limitMensajes);
+    return { convId: conv.id, messages, contactoId: contacto.id };
+  } catch (e) {
+    console.error('[chatwoot-chat]', e.message);
+    return null;
+  }
+}
 
 // Devuelve URL al chat de Chatwoot del cliente, o null si no se puede construir.
 async function obtenerChatwootConvUrl(telefono) {
@@ -4005,6 +4112,20 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
     });
     return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // FORZAR cron de aprobacion Chatwoot AHORA (no esperar 10 min)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/forzar-cron-aprobacion') {
+    try {
+      // Borrar state para que reprocese todos
+      try { fs.unlinkSync(APROBACION_STATE_FILE); } catch {}
+      await cronDetectarAprobacionChatwootTick();
+      return json(res, 200, { ok: true, mensaje: 'cron ejecutado, ver consola servidor' });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -9830,6 +9951,124 @@ async function cronAlertasCosturaEntregaTick() {
 setInterval(cronAlertasCosturaEntregaTick, 60 * 60 * 1000); // cada hora
 setTimeout(cronAlertasCosturaEntregaTick, 120 * 1000);
 console.log('[cron-alertas-costu-entrega] activado — chequea costureras +48h sin entregar fisicamente');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON DETECTAR APROBACION DEL CLIENTE EN CHATWOOT (Gemini)
+// Cada 10 min, lee chats de pedidos en hacer-diseno con disenoIniciado
+// y le pregunta a Gemini si el cliente aprobo el diseno o pidio cambios.
+// Si aprobado con confianza alta -> avanza pedido a "confirmado" + WA.
+// Si cambios -> alerta a vendedora.
+// ═══════════════════════════════════════════════════════════════════
+let _cronAprobacionEnCurso = false;
+const APROBACION_STATE_FILE = path.join(__dirname, 'data', 'cron-aprobacion-state.json');
+function _leerAprobacionState() {
+  try { return JSON.parse(fs.readFileSync(APROBACION_STATE_FILE, 'utf8')); }
+  catch { return { ultimoChequeoPorPedido: {} }; }
+}
+function _guardarAprobacionState(s) {
+  fs.mkdirSync(path.dirname(APROBACION_STATE_FILE), { recursive: true });
+  fs.writeFileSync(APROBACION_STATE_FILE, JSON.stringify(s, null, 2));
+}
+
+async function cronDetectarAprobacionChatwootTick() {
+  if (_cronAprobacionEnCurso) return;
+  if (!process.env.CHATWOOT_URL || !process.env.GEMINI_API_KEY) return;
+  _cronAprobacionEnCurso = true;
+  try {
+    const state = _leerAprobacionState();
+    const ahora = Date.now();
+    const pedidos = leerPedidos();
+    // Solo pedidos en hacer-diseno con SEÑAL de que ya hubo diseno (drive vinculado o archivosAlias)
+    const candidatos = pedidos.filter(p => {
+      if (p.estado !== 'hacer-diseno') return false;
+      if (!p.telefono) return false;
+      const tieneDiseno = (p.disenoIniciado === true)
+        || (Array.isArray(p.archivosAlias) && p.archivosAlias.length > 0)
+        || (p.drive && p.drive.corel);
+      if (!tieneDiseno) return false;
+      // No chequear el mismo pedido mas de 1 vez por hora
+      const ult = state.ultimoChequeoPorPedido?.[p.id] || 0;
+      return (ahora - ult) > 60 * 60 * 1000;
+    }).slice(0, 5); // procesar max 5 por tick para no saturar Gemini ni Chatwoot
+
+    if (!candidatos.length) {
+      console.log('[cron-aprobacion] sin candidatos');
+      return;
+    }
+
+    let aplicados = 0;
+    for (const p of candidatos) {
+      try {
+        const chat = await obtenerChatwootChatPorTelefono(p.telefono, 30);
+        state.ultimoChequeoPorPedido = state.ultimoChequeoPorPedido || {};
+        state.ultimoChequeoPorPedido[p.id] = ahora;
+        if (!chat || !chat.messages?.length) continue;
+        // Convertir mensajes a texto plano
+        const texto = chat.messages.map(m => {
+          const quien = m.sender_type === 'Contact' ? 'Cliente' : 'Vendedora';
+          return `${quien}: ${m.content.slice(0, 400)}`;
+        }).join('\n');
+        const analisis = await analizarChatAprobacionConGemini(texto, p.equipo);
+        if (!analisis) continue;
+        console.log(`[cron-aprobacion] pedido #${p.id} ${p.equipo}: ${analisis.estado} (${analisis.confianza}) "${(analisis.cita||'').slice(0,80)}"`);
+        if (analisis.estado === 'aprobado' && (analisis.confianza === 'alta' || analisis.confianza === 'media')) {
+          // Avanzar pedido a confirmado
+          p.estado = 'confirmado';
+          p.fechaAprobacionCliente = new Date().toISOString();
+          p.aprobacionFuente = 'gemini-chatwoot';
+          p.aprobacionCita = (analisis.cita || '').slice(0, 300);
+          p.ultimoMovimiento = new Date().toISOString();
+          p.historial = p.historial || [];
+          p.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'gemini-chatwoot',
+            accion: 'cliente-aprobo',
+            nota: `Detectado por Gemini con confianza ${analisis.confianza}. Cita: "${(analisis.cita||'').slice(0,200)}"`,
+          });
+          aplicados++;
+          // WA a vendedora
+          try {
+            const msgV = `✅ *Diseno aprobado por cliente*\n\n` +
+              `Pedido: *${p.equipo}* (#${p.id})\n` +
+              `Cliente: ${p.pushNameCliente || p.telefono}\n\n` +
+              `Detecté en Chatwoot que el cliente aprobó:\n` +
+              `_"${(analisis.cita||'').slice(0,180)}"_\n\n` +
+              `Marqué el pedido como *confirmado*. Listo para mandar a calandra.\n\n` +
+              `Si me equivoqué, escribi *equipo ${p.id} ${p.equipo}* para revertir.`;
+            await notificarWAVendedora(p.vendedora, msgV);
+          } catch (eW) { console.error('[cron-aprobacion wa-vend]', eW.message); }
+        } else if (analisis.estado === 'cambios' && analisis.confianza === 'alta') {
+          // No avanzo el pedido pero alerto si no avise antes
+          if (!p.alertaCambiosClienteEnviada) {
+            p.alertaCambiosClienteEnviada = new Date().toISOString();
+            try {
+              const msgV = `🔁 *Cliente pidio cambios en el diseno*\n\n` +
+                `Pedido: *${p.equipo}* (#${p.id})\n` +
+                `Cliente: ${p.pushNameCliente || p.telefono}\n\n` +
+                `Detecté en Chatwoot:\n_"${(analisis.cita||'').slice(0,180)}"_`;
+              await notificarWAVendedora(p.vendedora, msgV);
+            } catch (eW) { console.error('[cron-aprobacion wa-camb]', eW.message); }
+          }
+        }
+        // pequeño delay entre llamadas Gemini para evitar throttling
+        await new Promise(r => setTimeout(r, 800));
+      } catch (eP) {
+        console.error(`[cron-aprobacion] error pedido #${p.id}:`, eP.message);
+      }
+    }
+    if (aplicados > 0) guardarPedidos(pedidos, leerNextId());
+    _guardarAprobacionState(state);
+    console.log(`[cron-aprobacion] ${candidatos.length} revisados, ${aplicados} avanzaron a confirmado`);
+  } catch (e) {
+    console.error('[cron-aprobacion error]', e.message);
+  } finally {
+    _cronAprobacionEnCurso = false;
+  }
+}
+// Cada 10 minutos (primer tick a los 3 min de arranque)
+setInterval(cronDetectarAprobacionChatwootTick, 10 * 60 * 1000);
+setTimeout(cronDetectarAprobacionChatwootTick, 3 * 60 * 1000);
+console.log('[cron-aprobacion] activado — Gemini + Chatwoot cada 10 min');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
