@@ -690,6 +690,129 @@ function _anadirPagoAPedido(p, pago) {
   return true;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PRIMER PAGO PENDIENTE — Detector que crea pedidos AUTO cuando llega
+// un comprobante de un cliente que NO tiene pedido activo.
+// La vendedora puede responder con "equipo NOMBRE" para crear el pedido.
+// ═══════════════════════════════════════════════════════════════════
+const PRIMER_PAGOS_FILE = path.join(__dirname, 'data', 'primer-pagos-pendientes.json');
+
+function _leerPrimerPagos() {
+  try { return JSON.parse(fs.readFileSync(PRIMER_PAGOS_FILE, 'utf8')); }
+  catch { return []; }
+}
+function _guardarPrimerPagos(arr) {
+  fs.mkdirSync(path.dirname(PRIMER_PAGOS_FILE), { recursive: true });
+  fs.writeFileSync(PRIMER_PAGOS_FILE, JSON.stringify(arr, null, 2));
+}
+
+// Guarda un primer pago "huerfano" esperando que la vendedora le ponga nombre.
+// Limpia primer-pagos viejos (>48h) y duplicados (mismo telefono+monto en <2h).
+function guardarPrimerPagoPendiente({ telefono, vendedora, monto, banco, fecha, nombreCliente, comprobante_id }) {
+  if (!telefono || !monto || !vendedora) return null;
+  let pagos = _leerPrimerPagos();
+  const ahora = Date.now();
+  // Limpiar viejos (>48h)
+  pagos = pagos.filter(p => (ahora - new Date(p.creadoEn).getTime()) < 48 * 60 * 60 * 1000);
+  // No duplicar (mismo tel+monto en <2h)
+  const tel = String(telefono).replace(/\D/g, '');
+  const dup = pagos.find(p =>
+    String(p.telefono).replace(/\D/g, '') === tel
+    && Math.abs(p.monto - monto) < monto * 0.05
+    && (ahora - new Date(p.creadoEn).getTime()) < 2 * 60 * 60 * 1000
+  );
+  if (dup) return dup;
+  const nuevo = {
+    id: 'pp_' + ahora.toString(36) + Math.random().toString(36).slice(2, 6),
+    telefono: tel,
+    vendedora,
+    monto,
+    banco: banco || null,
+    fecha: fecha || new Date().toISOString(),
+    nombreCliente: nombreCliente || null,
+    comprobante_id: comprobante_id || null,
+    creadoEn: new Date().toISOString(),
+    estado: 'esperando-equipo',
+  };
+  pagos.push(nuevo);
+  _guardarPrimerPagos(pagos);
+  return nuevo;
+}
+
+// Devuelve el primer-pago-pendiente mas reciente de una vendedora que sigue
+// esperando respuesta de equipo. Si hay varios, devuelve el ultimo.
+function primerPagoPendienteParaVendedora(vendedora) {
+  const pagos = _leerPrimerPagos();
+  const ahora = Date.now();
+  const pendientes = pagos
+    .filter(p => p.vendedora === vendedora && p.estado === 'esperando-equipo')
+    .filter(p => (ahora - new Date(p.creadoEn).getTime()) < 48 * 60 * 60 * 1000)
+    .sort((a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime());
+  return pendientes[0] || null;
+}
+
+function marcarPrimerPagoAtendido(id, pedidoCreadoId) {
+  const pagos = _leerPrimerPagos();
+  const idx = pagos.findIndex(p => p.id === id);
+  if (idx < 0) return false;
+  pagos[idx].estado = 'atendido';
+  pagos[idx].pedidoCreadoId = pedidoCreadoId;
+  pagos[idx].atendidoEn = new Date().toISOString();
+  _guardarPrimerPagos(pagos);
+  return true;
+}
+
+// Crea un pedido nuevo a partir de un primer-pago pendiente + nombre del equipo
+// que respondio la vendedora. Suma el monto al abonado del pedido recien creado.
+function crearPedidoDesdePrimerPago(pendiente, nombreEquipo) {
+  if (!pendiente || !nombreEquipo) return null;
+  const pedidos = leerPedidos();
+  const nextId = leerNextId();
+  const ahora = new Date().toISOString();
+  const pedidoNuevo = {
+    id: nextId,
+    equipo: nombreEquipo.trim(),
+    telefono: pendiente.telefono,
+    vendedora: pendiente.vendedora,
+    tipoBandeja: 'pedido',
+    estado: 'hacer-diseno',
+    creadoEn: new Date().toLocaleDateString('es-CO'),
+    fechaVenta: ahora,
+    items: [],
+    fechaEntrega: '',
+    notas: `Creado automaticamente por primer pago de $${pendiente.monto} ${pendiente.banco || ''}`,
+    arreglo: null,
+    origenBot: false,
+    origenComprobante: true,
+    pushNameCliente: pendiente.nombreCliente,
+    abonado: 0, // se llena por _anadirPagoAPedido
+    pagos: [],
+    ultimoMovimiento: ahora,
+    historial: [{
+      fecha: ahora,
+      por: 'primer-pago-auto',
+      accion: 'crear-pedido',
+      nota: `Pedido nacido de comprobante sin pedido. Vendedora ${pendiente.vendedora} respondio "equipo ${nombreEquipo}".`,
+    }],
+  };
+  pedidos.push(pedidoNuevo);
+  // Asignar disenadora segun vendedora
+  if (typeof asignarDisenadora === 'function') {
+    try { pedidoNuevo.disenadorAsignado = asignarDisenadora(pedidoNuevo.vendedora); } catch {}
+  }
+  // Sumar el pago al abonado
+  _anadirPagoAPedido(pedidoNuevo, {
+    monto: pendiente.monto,
+    banco: pendiente.banco,
+    fecha: pendiente.fecha,
+    comprobante_id: pendiente.comprobante_id,
+    origen: 'comprobante',
+  });
+  guardarPedidos(pedidos, nextId + 1);
+  marcarPrimerPagoAtendido(pendiente.id, pedidoNuevo.id);
+  return pedidoNuevo;
+}
+
 // Intenta vincular comprobante recien detectado a pedido(s) y sumar al abonado.
 // Si pedidoId es conocido → directo. Si no, busca por telefono entre activos.
 function vincularComprobanteAPedido({ pedidoId, telefono, monto, banco, fecha, comprobante_id }) {
@@ -1185,6 +1308,70 @@ async function responderJefe(texto) {
 //   "<n> si <vend> <monto>" → crea pedido con vendedora y monto corregido
 //   "<n> no"           → descartar (no es venta)
 // Devuelve { ok, mensajeRespuesta }
+// Procesa "equipo NOMBRE" sin numero, cuando viene de vendedora respondiendo
+// a la pregunta automatica de PRIMER PAGO. Crea el pedido, vincula el
+// comprobante, y avisa por WA al jefe + a la vendedora.
+async function procesarRespuestaPrimerPago(texto, instancia) {
+  const m = String(texto).trim().match(/^(?:equipo|nombre|eq)\s+(.+)$/i);
+  if (!m) return { ok: false, motivo: 'sin-match' };
+  const nombreEquipo = m[1].trim();
+  if (!nombreEquipo || nombreEquipo.length < 2) {
+    return { ok: false, motivo: 'nombre-muy-corto' };
+  }
+  const vendedora = INSTANCIA_A_VENDEDORA[instancia] || INSTANCIA_A_VENDEDORA[String(instancia).toLowerCase().replace(/[\s_]+/g, '-')];
+  if (!vendedora) return { ok: false, motivo: 'instancia-desconocida' };
+
+  // Buscar primer-pago-pendiente mas reciente de esta vendedora
+  const pendiente = primerPagoPendienteParaVendedora(vendedora);
+  if (!pendiente) {
+    // No hay primer-pago pendiente — quizas se le paso el tiempo (>48h) o no llego comprobante
+    try {
+      await notificarWAVendedora(vendedora, `❓ Recibi "equipo ${nombreEquipo}" pero no tengo ningun pago pendiente esperando nombre.\n\nSi quieres corregir el nombre de un pedido existente usa: *equipo NUMERO_PEDIDO ${nombreEquipo}*`);
+    } catch {}
+    return { ok: false, motivo: 'sin-primer-pago-pendiente' };
+  }
+
+  // Crear el pedido
+  let pedidoNuevo;
+  try {
+    pedidoNuevo = crearPedidoDesdePrimerPago(pendiente, nombreEquipo);
+  } catch (e) {
+    console.error('[primer-pago] error creando pedido:', e.message);
+    try {
+      await notificarWAVendedora(vendedora, `⚠️ Error creando pedido: ${e.message}\n\nAvisale a Camilo.`);
+    } catch {}
+    return { ok: false, motivo: 'error-crear', error: e.message };
+  }
+
+  console.log(`[primer-pago] pedido #${pedidoNuevo.id} CREADO de comprobante (vend=${vendedora} cliente=${pendiente.nombreCliente||pendiente.telefono} monto=${pendiente.monto})`);
+
+  // Avisar a la vendedora con OK
+  try {
+    const montoFmt = _formatearMontoCOP(pendiente.monto);
+    const msgVend = `✅ *Pedido creado* (#${pedidoNuevo.id})\n\n` +
+      `Equipo: *${nombreEquipo}*\n` +
+      `Cliente: ${pendiente.nombreCliente || pendiente.telefono}\n` +
+      `Abono inicial: ${montoFmt} ✅\n\n` +
+      `📋 Ya quedo en bandeja de Oscar/disenadora.\n` +
+      `📌 Falta: poner el TOTAL en el pedido (factura) para que cuando complete el pago lo detecte solo.`;
+    await notificarWAVendedora(vendedora, msgVend);
+  } catch (e) { console.error('[primer-pago wa-vend]', e.message); }
+
+  // Avisar a Camilo
+  try {
+    const montoFmt = _formatearMontoCOP(pendiente.monto);
+    const msgJefe = `🆕 *Pedido nacio por primer pago*\n\n` +
+      `Pedido: *${nombreEquipo}* (#${pedidoNuevo.id})\n` +
+      `Vendedora: ${vendedora}\n` +
+      `Cliente: ${pendiente.nombreCliente || pendiente.telefono}\n` +
+      `Abono inicial: ${montoFmt}\n` +
+      `Banco: ${pendiente.banco || 'desconocido'}`;
+    await notificarWAPersona('camilo', msgJefe);
+  } catch (e) { console.error('[primer-pago wa-jefe]', e.message); }
+
+  return { ok: true, pedidoId: pedidoNuevo.id };
+}
+
 async function procesarRespuestaJefe(texto) {
   const norm = String(texto || '').trim().toLowerCase();
   if (!norm) return { ok: false };
@@ -3821,6 +4008,24 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // PRIMER PAGOS PENDIENTES (debugging y panel de control)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/admin/primer-pagos-pendientes') {
+    try {
+      const pagos = _leerPrimerPagos();
+      const ahora = Date.now();
+      return json(res, 200, {
+        pendientes: pagos.filter(p => p.estado === 'esperando-equipo'),
+        atendidos: pagos.filter(p => p.estado === 'atendido').slice(-20),
+        total: pagos.length,
+        ahora: new Date(ahora).toISOString(),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // DIAGNOSTICO MATCHER DRIVE: muestra archivos del Drive corel y por que
   // cada uno SI/NO se vinculo con un pedido
   // ═══════════════════════════════════════════════════════════════════
@@ -6342,16 +6547,37 @@ setInterval(cargar, 15000);
                         console.log(`[pago] no vinculado: ${resVinc.motivo}`);
 
                         // ─── CASO A: pago sin pedido activo (motivo = sin-pedido) ───
-                        // WA a la vendedora avisando: si es venta nueva, pasa el sticker.
+                        // Guardar como "primer pago pendiente" + WA a vendedora con OPCIONES:
+                        //   Opcion 1: responder "equipo NOMBRE_DEL_EQUIPO" → crea pedido auto
+                        //   Opcion 2: mandar el sticker como siempre (flujo viejo)
                         if (resVinc.motivo === 'sin-pedido' && analisis.monto) {
                           try {
+                            const pendienteCreado = guardarPrimerPagoPendiente({
+                              telefono: telefonoCliente,
+                              vendedora,
+                              monto: analisis.monto,
+                              banco: analisis.banco,
+                              fecha: new Date().toISOString(),
+                              nombreCliente: nombreCliente || null,
+                              comprobante_id: registro.cid || (eventData.key && eventData.key.id),
+                            });
                             const montoSinPedFmt = _formatearMontoCOP(analisis.monto);
-                            const msgSinPed = `⚠️ *Pago sin pedido activo*\n\n` +
-                              `Llegó ${montoSinPedFmt} de ${nombreCliente || telefonoCliente}\n` +
+                            const msgSinPed = `💸 *Pago detectado SIN pedido*\n\n` +
+                              `${nombreCliente || telefonoCliente} pagó ${montoSinPedFmt}\n` +
                               `📱 ${telefonoCliente}\n\n` +
-                              `No hay pedido activo de este cliente.\n` +
-                              `👉 Si es venta NUEVA, mándale el sticker 💰 para registrarla.`;
+                              `*¿Cómo registrar este pedido?*\n` +
+                              `━━━━━━━━━━━━━━━━━━━━\n` +
+                              `🆕 *Opcion automatica (mas rapida):*\n` +
+                              `Responde con el texto:\n` +
+                              `*equipo NOMBRE_DEL_EQUIPO*\n` +
+                              `(Ej: "equipo Leones FC")\n` +
+                              `Yo creo el pedido y vinculo este pago automatico.\n\n` +
+                              `📌 *O sino:*\n` +
+                              `Mándale el sticker 💰 al cliente como siempre.`;
                             await notificarWAVendedora(vendedora, msgSinPed);
+                            if (pendienteCreado) {
+                              console.log(`[primer-pago] pendiente guardado id=${pendienteCreado.id} vend=${vendedora} tel=${telefonoCliente} monto=${analisis.monto}`);
+                            }
                           } catch (eSP) { console.error('[pago wa-sin-pedido]', eSP.message); }
                         }
                       }
@@ -6495,16 +6721,23 @@ setInterval(cargar, 15000);
             const dstJid = eventData.key?.remoteJid || '';
             const dstNum = dstJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
             const jefeNum = (process.env.WA_DUVAN || process.env.WA_CAMILO || '573124858901').replace(/\D/g, '');
-            // Vendedora -> jefe: fromMe=true, instancia vendedora, destino=jefe
             const esVendAlJefe = fromMe && instanciasVend.has(inst) && dstNum === jefeNum;
             if (esVendAlJefe) {
               const texto = (eventData.message?.conversation
                 || eventData.message?.extendedTextMessage?.text
                 || '').trim();
+              // CASO A: "equipo 12 NOMBRE" → correccion normal (delegamos al jefe)
               if (/^(equipo|nombre|eq)\s+\d+\s+\S/i.test(texto)) {
                 (async () => {
                   try { await procesarRespuestaJefe(texto); }
                   catch (e) { console.error('[vend-cmd equipo err]', e.message); }
+                })();
+              }
+              // CASO B: "equipo NOMBRE" (SIN numero) → PRIMER PAGO de cliente nuevo
+              else if (/^(equipo|nombre|eq)\s+[A-Za-zÑñÁÉÍÓÚáéíóú0-9]/i.test(texto)) {
+                (async () => {
+                  try { await procesarRespuestaPrimerPago(texto, inst); }
+                  catch (e) { console.error('[vend-cmd primer-pago err]', e.message); }
                 })();
               }
             }

@@ -24,7 +24,7 @@ const os = require('os');
 const readline = require('readline');
 const { exec } = require('child_process');
 
-const VERSION = '3.0.0';
+const VERSION = '3.2.0';
 const SERVER_URL = process.env.WS_VIGILANTE_URL || 'https://ws-app-interna-production.up.railway.app';
 const ENDPOINT = '/api/agente-evento';
 const ENDPOINT_ACTIVIDAD = '/api/agente-actividad';
@@ -107,15 +107,42 @@ function log(...args) {
 // ───────────────────────────────────────────────────────────────────
 function leerConfig() {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  } catch {
+    let raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    // Sacar BOM si vino del Bloc de notas
+    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    const cfg = JSON.parse(raw);
+    // Validar estructura minima
+    if (!cfg || !cfg.persona || !cfg.carpetas) return null;
+    // Validar que al menos una carpeta exista y este en Drive
+    const carpetas = Object.values(cfg.carpetas).filter(Boolean);
+    const algunaDriveValida = carpetas.some(r => esRutaDriveValida(r));
+    if (!algunaDriveValida) {
+      log('config existe pero NINGUNA carpeta apunta a Drive — regenerando');
+      return null;
+    }
+    return cfg;
+  } catch (e) {
+    log('config invalido o corrupto:', e.message);
     return null;
   }
 }
 
+function esRutaDriveValida(ruta) {
+  if (!ruta) return false;
+  // Una ruta valida de Drive contiene "Mi unidad" o "My Drive" o esta en G:/H:/I:/J: (unidades virtuales Drive)
+  const r = String(ruta).toLowerCase();
+  if (/mi\s*unidad|my\s*drive|googledrive|google\s*drive/i.test(r)) return true;
+  // Letras tipicas de Drive Stream: G, H, I, J, K
+  if (/^[ghijk]:[\\/]/i.test(r)) return true;
+  // C:\ProgramData o C:\Program Files o C:\Windows = NO valida
+  if (/^c:[\\/](programdata|program\s+files|program\s+files\s*\(x86\)|windows|users)[\\/]/i.test(r)) return false;
+  return false;
+}
+
 function guardarConfig(cfg) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  // UTF-8 sin BOM
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), { encoding: 'utf8' });
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -127,20 +154,19 @@ function buscarCarpetasDrive() {
   const encontradas = {};
   const candidatos = [];
 
-  // Windows: probar unidades de letra
+  // Windows: SOLO buscar en raices Drive verificadas, NUNCA en C:\ entero
   if (process.platform === 'win32') {
-    for (const letra of 'CDEFGHIJKLM') {
+    // Letras tipicas donde Drive Stream se monta: G, H, I, J, K (NO C ni D)
+    for (const letra of 'GHIJK') {
       candidatos.push(`${letra}:\\Mi unidad`);
       candidatos.push(`${letra}:\\My Drive`);
-      candidatos.push(`${letra}:\\`);
     }
-    // Tambien dentro de %USERPROFILE%
+    // Tambien dentro de %USERPROFILE% pero solo carpetas Drive
     const userProfile = process.env.USERPROFILE || os.homedir();
     candidatos.push(path.join(userProfile, 'Google Drive', 'Mi unidad'));
     candidatos.push(path.join(userProfile, 'Mi unidad'));
     candidatos.push(path.join(userProfile, 'GoogleDrive'));
   } else {
-    // Mac/Linux fallback
     candidatos.push(path.join(os.homedir(), 'Google Drive', 'Mi unidad'));
     candidatos.push(path.join(os.homedir(), 'Library', 'CloudStorage'));
   }
@@ -148,9 +174,16 @@ function buscarCarpetasDrive() {
   for (const base of candidatos) {
     if (!fs.existsSync(base)) continue;
     try {
-      buscarRecursivo(base, encontradas, 4); // profundidad max 4 niveles
+      buscarRecursivo(base, encontradas, 4);
     } catch {}
     if (Object.keys(encontradas).length === CARPETAS_OBJETIVO.length) break;
+  }
+
+  // Filtro final: descartar rutas que NO son Drive (por si entra algun falso positivo)
+  for (const k of Object.keys(encontradas)) {
+    if (!esRutaDriveValida(encontradas[k])) {
+      delete encontradas[k];
+    }
   }
 
   return encontradas;
@@ -734,20 +767,43 @@ function iniciarCapturaSnapshot(cfg) {
 
 // ───────────────────────────────────────────────────────────────────
 // AUTO-START EN WINDOWS
-// Crea una entrada en Run del registro para que arranque al iniciar sesion.
+// 1. Entrada en Run del registro (arranca al iniciar sesion)
+// 2. Tarea programada WATCHDOG cada 5 min (si murio, lo resucita)
 // ───────────────────────────────────────────────────────────────────
 function configurarAutoStart() {
   if (process.platform !== 'win32') return;
+  const exePath = process.execPath;
+  if (!exePath.toLowerCase().endsWith('.exe')) return;
   try {
     const { execSync } = require('child_process');
-    const exePath = process.execPath;
-    // Solo si esta empaquetado como .exe (no en modo dev)
-    if (!exePath.toLowerCase().endsWith('.exe')) return;
-    const cmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WSVigilante" /t REG_SZ /d "\\"${exePath}\\"" /f`;
-    execSync(cmd, { stdio: 'ignore' });
+    // 1. Registry Run (al iniciar sesion Windows)
+    const cmdReg = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "WSVigilante" /t REG_SZ /d "\\"${exePath}\\"" /f`;
+    execSync(cmdReg, { stdio: 'ignore' });
     log('auto-start configurado en registry');
   } catch (e) {
     log('error configurando auto-start:', e.message);
+  }
+  // 2. Watchdog scheduled task — cada 5 min revive el proceso si murio
+  // schtasks /TR tiene limite 261 chars, asi que usamos un .bat auxiliar
+  try {
+    const { execSync } = require('child_process');
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    const batPath = path.join(CONFIG_DIR, 'watchdog.bat');
+    // .bat verifica si el proceso esta corriendo, si no, lo lanza oculto
+    const batContent = '@echo off\r\n' +
+      'tasklist /FI "IMAGENAME eq ws-vigilante.exe" /NH 2>NUL | findstr /I "ws-vigilante.exe" >NUL\r\n' +
+      'if errorlevel 1 (\r\n' +
+      `  start "" "${exePath}"\r\n` +
+      ')\r\n';
+    fs.writeFileSync(batPath, batContent);
+    // Borrar tarea vieja
+    try { execSync('schtasks /Delete /TN "WSVigilanteWatchdog" /F', { stdio: 'ignore' }); } catch {}
+    // Crear tarea programada cada 5 minutos, indefinidamente
+    const cmdSch = `schtasks /Create /TN "WSVigilanteWatchdog" /TR "\\"${batPath}\\"" /SC MINUTE /MO 5 /F`;
+    execSync(cmdSch, { stdio: 'ignore' });
+    log(`watchdog configurado: ${batPath} cada 5 min`);
+  } catch (e) {
+    log('error configurando watchdog:', e.message);
   }
 }
 
@@ -836,8 +892,11 @@ function iniciarVigilancia(cfg) {
     let cfg = leerConfig();
     if (!cfg) {
       cfg = await setupInicial();
-      configurarAutoStart();
     }
+    // SIEMPRE asegurar auto-start + watchdog (no solo en setup inicial)
+    // Esto garantiza que si actualizamos el .exe a una version con watchdog
+    // nuevo, queda configurado al arrancar sin reinstalar.
+    configurarAutoStart();
     iniciarVigilancia(cfg);
     iniciarCapturaSnapshot(cfg);
   } catch (e) {
