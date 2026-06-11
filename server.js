@@ -555,9 +555,9 @@ async function analizarChatAprobacionConGemini(conversacionTexto, nombreEquipo) 
       `Conversacion (mensaje mas reciente al final):\n${conversacionTexto}\n\n` +
       `Tu tarea: detectar si el cliente YA APROBO el diseno o si pidio cambios.\n\n` +
       `Reglas:\n` +
-      `- "aprobado": cliente dice claramente que le gusta / acepta / autoriza producir. Ej: "perfecto", "me gusta", "esta bien", "aprobado", "asi quedo bonito", "denle pa adelante", "listo, sigan", "vamos asi", "bacano".\n` +
-      `- "cambios": cliente pide modificar algo. Ej: "podes cambiar X", "no me convence", "cambia el escudo", "ponle otro color", "esta feo el numero".\n` +
-      `- "pendiente": no hay respuesta del cliente todavia sobre el diseno o solo dice "ya vi", "lo estoy viendo", "lo reviso", "espera". Tambien si el ultimo mensaje es de la vendedora preguntando.\n` +
+      `- "aprobado": cliente dice claramente que le gusta / acepta / autoriza producir. Tambien aceptaciones cortas como "ok", "vale", "si", "dale", "perfecto", "listo", "esta bien", "me gusta", "asi quedo bonito", "denle pa adelante", "vamos asi", "bacano", "sigan", "produzcan", "pueden hacer asi", "asi mismo", "todo bien". Si el cliente responde "ok"/"vale" DESPUES de que la vendedora le mostro una imagen de diseno, ESO ES APROBACION.\n` +
+      `- "cambios": cliente pide modificar algo. Ej: "podes cambiar X", "no me convence", "cambia el escudo", "ponle otro color", "esta feo el numero", "me gusta mas el anterior", "muy oscuro", "agrega/quita".\n` +
+      `- "pendiente": cliente todavia esta consultando, no decide. Ej: "lo estoy viendo", "lo reviso", "espera", "consulto con mi gente", "lo pienso", "te aviso". Tambien si el ultimo mensaje es de la vendedora SIN respuesta del cliente.\n` +
       `- "no-detectado": el chat no parece tratarse de la aprobacion de un diseno.\n\n` +
       `Responde SOLO con JSON valido (sin markdown):\n` +
       `{"estado": "aprobado" | "cambios" | "pendiente" | "no-detectado", "confianza": "alta" | "media" | "baja", "cita": "fragmento exacto del chat que lo sustenta o vacio si no aplica"}\n\n` +
@@ -4112,6 +4112,28 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
     });
     return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // VER PEDIDOS ABANDONADOS +7 DIAS (sin enviar WA, solo lista)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/admin/pedidos-abandonados') {
+    try {
+      const pedidos = leerPedidos();
+      const ahora = Date.now();
+      const _7DIAS = 7 * 24 * 60 * 60 * 1000;
+      const lista = pedidos.filter(p => {
+        if (p.estado !== 'hacer-diseno') return false;
+        const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0).getTime();
+        if (!ult) return false;
+        return (ahora - ult) > _7DIAS;
+      }).map(p => {
+        const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0);
+        const dias = Math.round((ahora - ult.getTime()) / (24 * 60 * 60 * 1000));
+        return { id: p.id, equipo: p.equipo, vendedora: p.vendedora, dias, abonado: p.abonado, ultimoMovimiento: p.ultimoMovimiento };
+      }).sort((a, b) => b.dias - a.dias);
+      return json(res, 200, { total: lista.length, pedidos: lista });
+    } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -10202,6 +10224,79 @@ async function cronDetectarAprobacionChatwootTick() {
 setInterval(cronDetectarAprobacionChatwootTick, 10 * 60 * 1000);
 setTimeout(cronDetectarAprobacionChatwootTick, 3 * 60 * 1000);
 console.log('[cron-aprobacion] activado — Gemini + Chatwoot cada 10 min');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON ALERTA: pedidos en hacer-diseno SIN movimiento +7 dias
+// 1 vez por dia (8 AM Bogota), avisa a vendedora "tu pedido X lleva
+// abandonado X dias, contactá al cliente o archivalo"
+// ═══════════════════════════════════════════════════════════════════
+const ABANDONADOS_STATE_FILE = path.join(__dirname, 'data', 'alertas-abandonados-enviadas.json');
+function _leerAbandonadosState() {
+  try { return JSON.parse(fs.readFileSync(ABANDONADOS_STATE_FILE, 'utf8')); }
+  catch { return {}; }
+}
+function _guardarAbandonadosState(s) {
+  fs.mkdirSync(path.dirname(ABANDONADOS_STATE_FILE), { recursive: true });
+  fs.writeFileSync(ABANDONADOS_STATE_FILE, JSON.stringify(s, null, 2));
+}
+
+async function cronAlertaAbandonadosTick() {
+  const horaBogota = new Date().toLocaleTimeString('es-CO', { hour12: false, timeZone: 'America/Bogota' });
+  const hora = parseInt(horaBogota.slice(0,2), 10);
+  // Solo correr entre 8 AM y 9 AM (1 vez al dia)
+  if (hora !== 8) return;
+  const hoy = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+  const state = _leerAbandonadosState();
+  if (state.fechaUltimoRun === hoy) return; // ya corrimos hoy
+
+  try {
+    const pedidos = leerPedidos();
+    const ahora = Date.now();
+    const _7DIAS = 7 * 24 * 60 * 60 * 1000;
+    const candidatos = pedidos.filter(p => {
+      if (p.estado !== 'hacer-diseno') return false;
+      const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0).getTime();
+      if (!ult) return false;
+      return (ahora - ult) > _7DIAS;
+    });
+
+    if (candidatos.length === 0) {
+      state.fechaUltimoRun = hoy;
+      _guardarAbandonadosState(state);
+      console.log('[cron-abandonados] sin pedidos abandonados');
+      return;
+    }
+
+    // Agrupar por vendedora
+    const porVend = {};
+    for (const p of candidatos) {
+      const v = p.vendedora || 'sin-vendedora';
+      if (!porVend[v]) porVend[v] = [];
+      porVend[v].push(p);
+    }
+
+    for (const [vend, peds] of Object.entries(porVend)) {
+      const lineas = peds.slice(0, 10).map(p => {
+        const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0);
+        const dias = Math.round((ahora - ult.getTime()) / (24 * 60 * 60 * 1000));
+        return `• #${p.id} ${p.equipo || p.pushNameCliente || p.telefono} (${dias}d sin mov)`;
+      }).join('\n');
+      const msg = `⏰ *Pedidos abandonados +7 dias*\n\n${lineas}\n\n👉 Contacta al cliente para cerrar o archivalo si ya no quieren.`;
+      try {
+        await notificarWAVendedora(vend, msg);
+      } catch (e) { console.error(`[cron-abandonados WA-${vend}]`, e.message); }
+    }
+    state.fechaUltimoRun = hoy;
+    state.ultimoConteo = candidatos.length;
+    _guardarAbandonadosState(state);
+    console.log(`[cron-abandonados] ${candidatos.length} pedidos abandonados notificados a ${Object.keys(porVend).length} vendedoras`);
+  } catch (e) {
+    console.error('[cron-abandonados err]', e.message);
+  }
+}
+setInterval(cronAlertaAbandonadosTick, 60 * 60 * 1000); // chequea cada hora pero solo corre a las 8 AM
+setTimeout(cronAlertaAbandonadosTick, 2 * 60 * 1000);
+console.log('[cron-abandonados] activado — corre 1 vez al dia (8 AM Bogota)');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
