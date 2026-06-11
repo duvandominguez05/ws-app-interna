@@ -10272,10 +10272,10 @@ async function cronDetectarAprobacionChatwootTick() {
     _cronAprobacionEnCurso = false;
   }
 }
-// Cada 10 minutos (primer tick a los 3 min de arranque)
-setInterval(cronDetectarAprobacionChatwootTick, 10 * 60 * 1000);
-setTimeout(cronDetectarAprobacionChatwootTick, 3 * 60 * 1000);
-console.log('[cron-aprobacion] activado — Gemini + Chatwoot cada 10 min');
+// DESACTIVADO 11-jun-2026 - se reactiva cuando confirmemos cero spam
+// setInterval(cronDetectarAprobacionChatwootTick, 10 * 60 * 1000);
+// setTimeout(cronDetectarAprobacionChatwootTick, 3 * 60 * 1000);
+console.log('[cron-aprobacion] DESACTIVADO temporalmente — solo via POST /api/admin/forzar-cron-aprobacion');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON ALERTA: pedidos en hacer-diseno SIN movimiento +7 dias
@@ -10466,9 +10466,10 @@ async function cronResolverAtascosTick() {
     _cronResolverEnCurso = false;
   }
 }
-setInterval(cronResolverAtascosTick, 30 * 60 * 1000); // cada 30 min
-setTimeout(cronResolverAtascosTick, 4 * 60 * 1000);
-console.log('[cron-resolver] activado — resuelve atascos cada 30 min');
+// DESACTIVADO 11-jun-2026 - causaba spam y archivado por error
+// setInterval(cronResolverAtascosTick, 30 * 60 * 1000);
+// setTimeout(cronResolverAtascosTick, 4 * 60 * 1000);
+console.log('[cron-resolver] DESACTIVADO temporalmente — solo via POST /api/admin/forzar-resolver-atascos');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Gmail/WeTransfer — cada 5 minutos sincroniza correos WT con pedidos
