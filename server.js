@@ -4918,14 +4918,16 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
 
         // Descargar los top 2 en paralelo
         const dls = await Promise.all(top.map(s => driveSync.descargarArchivoBase64(s.archivo.id).catch(e => null)));
+        const tamanosOmitidos = [];
         for (let i = 0; i < dls.length; i++) {
           const dl = dls[i]; const s = top[i];
           if (dl && dl.base64) {
             const kb = Math.round(dl.base64.length / 1024);
-            if (kb > 3000) continue; // saltar PDFs >3MB
+            if (kb > 15000) { tamanosOmitidos.push({ nombre: s.archivo.name, kb }); continue; }
             pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: s.archivo.name, kb, score: s.score });
           }
         }
+        busquedaDetalles.tamanosOmitidos = tamanosOmitidos;
       } catch (eDrive) {
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo },
