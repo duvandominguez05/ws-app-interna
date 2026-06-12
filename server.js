@@ -1038,6 +1038,41 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Clasifica una imagen como: diseno-uniforme | comprobante-pago | lista-tallas | otro
+// Usado para descartar comprobantes/listas antes de extraer texto del diseno.
+async function clasificarImagenConGemini(imgBase64, imgMime) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const prompt = `Clasifica esta imagen en una de estas categorias:\n` +
+      `- "diseno-uniforme": render o mockup de uniforme deportivo (camisa, chaqueta, pantaloneta, conjunto). Suele ser una imagen 3D del producto.\n` +
+      `- "comprobante-pago": captura de DaviPlata, Nequi, Bancolombia, transferencia, recibo de pago, "Venta confirmada", "Transaccion exitosa".\n` +
+      `- "lista-tallas": foto de papel o captura con nombres y tallas escritas (a mano o digital).\n` +
+      `- "foto-prenda-real": foto real de la prenda fisica (no render).\n` +
+      `- "otro": cualquier otra cosa.\n\n` +
+      `Responde SOLO JSON: {"tipo": "uno de los anteriores", "confianza": "alta"|"media"|"baja"}`;
+    const body = {
+      contents: [{ parts: [
+        { text: prompt },
+        { inline_data: { mime_type: imgMime || 'image/jpeg', data: imgBase64 } },
+      ] }],
+      generationConfig: { temperature: 0, maxOutputTokens: 100, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try { return JSON.parse(limpio); } catch { return null; }
+  } catch (e) {
+    console.error('[clasificar-img]', e.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Extrae el TEXTO VISIBLE en una imagen de diseño (lema del equipo,
 // nombre del club, frase principal). Sirve para buscar PDFs en Drive
 // porque el nombre del pedido en la app a veces NO coincide con el
@@ -4816,35 +4851,37 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         } catch (e) { console.error('[comparar pag]', e.message); break; }
       }
 
-      // Buscar la ULTIMA imagen del chat — primero de la vendedora (msg_type=1),
-      // si no hay → del cliente (msg_type=0) como fallback.
+      // Buscar TODAS las imagenes del chat (de la vendedora primero).
+      // Clasificar cada una con Gemini → solo usar la que sea DISEÑO de uniforme.
       let imgChatBase64 = null, imgChatMime = null, imgChatFecha = null, imgChatQuien = null;
-      const buscarImg = async (filtroQuien) => {
-        for (let i = todosMensajes.length - 1; i >= 0; i--) {
-          const m = todosMensajes[i];
-          if (filtroQuien === 'vendedora' && m.message_type !== 1) continue;
-          if (filtroQuien === 'cliente' && m.message_type !== 0) continue;
-          const imgAtt = (m.attachments || []).find(a => a.file_type === 'image');
-          if (imgAtt) {
-            const dl = await descargarAttachmentChatwootBase64(imgAtt.data_url);
-            if (dl) {
-              return {
-                base64: dl.base64, mime: dl.mime,
-                fecha: m.created_at ? new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : null,
-                quien: filtroQuien,
-              };
-            }
-          }
+      const imagenesProbadas = [];
+      const todasLasImgs = [];
+      // Recolectar todas las imagenes (vendedora primero, luego cliente)
+      for (let i = todosMensajes.length - 1; i >= 0; i--) {
+        const m = todosMensajes[i];
+        const quien = m.message_type === 1 ? 'vendedora' : 'cliente';
+        const imgAtt = (m.attachments || []).find(a => a.file_type === 'image');
+        if (imgAtt) todasLasImgs.push({ msg: m, attachment: imgAtt, quien });
+      }
+      // Ordenar: vendedora primero, despues cliente. Dentro de cada grupo, de mas reciente a mas viejo.
+      todasLasImgs.sort((a, b) => {
+        if (a.quien !== b.quien) return a.quien === 'vendedora' ? -1 : 1;
+        return (b.msg.created_at || 0) - (a.msg.created_at || 0);
+      });
+      // Probar cada imagen hasta encontrar un DISEÑO (max 6 intentos para no gastar mucho)
+      for (const cand of todasLasImgs.slice(0, 6)) {
+        const dl = await descargarAttachmentChatwootBase64(cand.attachment.data_url);
+        if (!dl) continue;
+        const clasif = await clasificarImagenConGemini(dl.base64, dl.mime);
+        const fecha = cand.msg.created_at ? new Date(cand.msg.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : null;
+        imagenesProbadas.push({ fecha, quien: cand.quien, clasificacion: clasif?.tipo, confianza: clasif?.confianza });
+        if (clasif?.tipo === 'diseno-uniforme') {
+          imgChatBase64 = dl.base64;
+          imgChatMime = dl.mime;
+          imgChatFecha = fecha;
+          imgChatQuien = cand.quien;
+          break;
         }
-        return null;
-      };
-      let found = await buscarImg('vendedora');
-      if (!found) found = await buscarImg('cliente');
-      if (found) {
-        imgChatBase64 = found.base64;
-        imgChatMime = found.mime;
-        imgChatFecha = found.fecha;
-        imgChatQuien = found.quien;
       }
 
       if (!imgChatBase64) {
@@ -4854,12 +4891,13 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         const attsTipos = todosMensajes.flatMap(m => (m.attachments || []).map(a => a.file_type));
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
-          error: 'sin imagen en el chat (rango analizado)',
+          error: 'ninguna imagen del chat es un diseño de uniforme (solo comprobantes/listas/otros)',
           debug: {
             mensajesAnalizados: todosMensajes.length,
             lotesObtenidos,
             rangoFechas: { desde: minFecha, hasta: maxFecha },
             tiposAttachments: attsTipos,
+            imagenesProbadas,
           },
         });
       }
@@ -4962,6 +5000,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
         imagenChatFecha: imgChatFecha,
         imagenChatQuien: imgChatQuien,
+        imagenesProbadas,
         textoDiseno,
         busqueda: busquedaDetalles,
         pdfsCandidatos: pdfsCandidatos.map(x => ({ nombre: x.nombre, kb: x.kb, score: x.score })),
