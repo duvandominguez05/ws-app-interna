@@ -5037,10 +5037,11 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
 
       const queries = [];
       const baseFrom = 'from:noreply@wetransfer.com';
-      if (textoExtra) queries.push(`${baseFrom} "${textoExtra}" newer_than:${dias}d`);
-      if (equipoLimpio) queries.push(`${baseFrom} "${equipoLimpio}" newer_than:${dias}d`);
+      // SIN comillas → Gmail tokeniza mejor (subjects WeTransfer tienen "_NNN" pegado)
+      if (textoExtra) queries.push(`${baseFrom} ${textoExtra} newer_than:${dias}d`);
+      if (equipoLimpio) queries.push(`${baseFrom} ${equipoLimpio} newer_than:${dias}d`);
       if (palabras.length >= 2) {
-        queries.push(`${baseFrom} ${palabras.map(p => `"${p}"`).join(' ')} newer_than:${dias}d`);
+        queries.push(`${baseFrom} ${palabras.join(' ')} newer_than:${dias}d`);
       }
 
       const resultados = [];
