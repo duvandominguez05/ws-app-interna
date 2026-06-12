@@ -5038,11 +5038,26 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const queries = [];
       const baseFrom = 'from:noreply@wetransfer.com';
       // SIN comillas → Gmail tokeniza mejor (subjects WeTransfer tienen "_NNN" pegado)
-      if (textoExtra) queries.push(`${baseFrom} ${textoExtra} newer_than:${dias}d`);
-      if (equipoLimpio) queries.push(`${baseFrom} ${equipoLimpio} newer_than:${dias}d`);
-      if (palabras.length >= 2) {
-        queries.push(`${baseFrom} ${palabras.join(' ')} newer_than:${dias}d`);
-      }
+      // Probamos 2 estrategias: (1) palabras claves rare-words del texto del diseno
+      //                        (2) sin filtro from (busca en TODO Gmail)
+      const buildFromTexto = (texto) => {
+        if (!texto) return [];
+        const limpio = texto.toLowerCase().replace(/[^\w\sñáéíóú]/g, ' ').trim();
+        const STOPW = new Set(['por','un','una','de','del','y','o','en','con','para','el','la','los','las','san']);
+        STOPW.delete('san'); // san sí queda — es distintivo
+        const palabrasRicas = limpio.split(/\s+/).filter(t => t.length >= 4 && !STOPW.has(t));
+        // top 2-3 palabras únicas y largas
+        const top = [...new Set(palabrasRicas)].sort((a,b) => b.length - a.length).slice(0, 3);
+        if (top.length === 0) return [];
+        return [
+          `${baseFrom} ${top.join(' ')} newer_than:${dias}d`,
+          `${top.join(' ')} newer_than:${dias}d`, // sin from (mas amplio)
+        ];
+      };
+      if (textoExtra) queries.push(...buildFromTexto(textoExtra));
+      if (equipoLimpio) queries.push(...buildFromTexto(equipoLimpio));
+      // Tambien query basico sin texto rico
+      if (textoExtra) queries.push(`${baseFrom} ${textoExtra.toLowerCase()} newer_than:${dias}d`);
 
       const resultados = [];
       const vistos = new Set();
