@@ -4789,31 +4789,30 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const dataConv = await rConv.json();
       const conv = (dataConv.payload || [])[0];
       if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
-      // Traer hasta 2 lotes (2 llamadas max). Suficiente para alcanzar 50 mensajes.
+      // Paginar HACIA ATRAS hasta 5 lotes (~100 mensajes) buscando imagen.
       let todosMensajes = [];
-      try {
-        const ctrl1 = new AbortController(); const t1 = setTimeout(() => ctrl1.abort(), 8000);
-        const rMsg = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`, {
-          headers: { 'api_access_token': apiCw }, signal: ctrl1.signal,
-        }).finally(() => clearTimeout(t1));
-        const dataMsg = await rMsg.json();
-        todosMensajes = dataMsg.payload || dataMsg || [];
-      } catch (e) { console.error('[comparar msgs1]', e.message); }
-      // Si la primera llamada no trae imagenes, intentar una pagina mas atras
-      const tieneImagen = todosMensajes.some(m => (m.attachments || []).some(a => a.file_type === 'image'));
-      if (!tieneImagen && todosMensajes.length > 0) {
-        const primerId = todosMensajes[0]?.id;
-        if (primerId) {
-          try {
-            const ctrl2 = new AbortController(); const t2 = setTimeout(() => ctrl2.abort(), 8000);
-            const rMsg2 = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${primerId}`, {
-              headers: { 'api_access_token': apiCw }, signal: ctrl2.signal,
-            }).finally(() => clearTimeout(t2));
-            const dataMsg2 = await rMsg2.json();
-            const lote2 = dataMsg2.payload || dataMsg2 || [];
-            todosMensajes = [...lote2, ...todosMensajes];
-          } catch (e) { console.error('[comparar msgs2]', e.message); }
-        }
+      let ultimoIdLoteAnterior = null;
+      let lotesObtenidos = 0;
+      for (let pag = 0; pag < 5; pag++) {
+        const urlPag = ultimoIdLoteAnterior
+          ? `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${ultimoIdLoteAnterior}`
+          : `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`;
+        try {
+          const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+          const rM = await fetch(urlPag, { headers: { 'api_access_token': apiCw }, signal: ctrl.signal }).finally(() => clearTimeout(t));
+          if (!rM.ok) break;
+          const dM = await rM.json();
+          const lote = dM.payload || dM || [];
+          if (lote.length === 0) break;
+          lotesObtenidos++;
+          todosMensajes = [...lote, ...todosMensajes];
+          // Si ya hay imagen, frenar
+          if (lote.some(m => (m.attachments || []).some(a => a.file_type === 'image'))) break;
+          // Si la API NO soporta before, el lote sera identico y entraremos en loop — detectar:
+          if (lote[0]?.id && lote[0].id === ultimoIdLoteAnterior) break;
+          ultimoIdLoteAnterior = lote[0]?.id;
+          if (!ultimoIdLoteAnterior) break;
+        } catch (e) { console.error('[comparar pag]', e.message); break; }
       }
 
       // Buscar la ULTIMA imagen del chat — primero de la vendedora (msg_type=1),
@@ -4848,9 +4847,19 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
 
       if (!imgChatBase64) {
+        const fechas = todosMensajes.map(m => m.created_at).filter(Boolean);
+        const minFecha = fechas.length ? new Date(Math.min(...fechas)*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null;
+        const maxFecha = fechas.length ? new Date(Math.max(...fechas)*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null;
+        const attsTipos = todosMensajes.flatMap(m => (m.attachments || []).map(a => a.file_type));
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
-          error: 'sin imagen alguna en el chat (no se puede comparar)',
+          error: 'sin imagen en el chat (rango analizado)',
+          debug: {
+            mensajesAnalizados: todosMensajes.length,
+            lotesObtenidos,
+            rangoFechas: { desde: minFecha, hasta: maxFecha },
+            tiposAttachments: attsTipos,
+          },
         });
       }
 
