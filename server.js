@@ -740,17 +740,20 @@ async function analizarChatMultimediaConGemini(mensajes, nombreEquipo) {
       `1) Resume en 3-5 lineas que pasa en este chat (texto + audios + imagenes).\n` +
       `2) Detecta cuantos PEDIDOS distintos hay en esta conversacion (pedido original + adiciones / nuevos).\n` +
       `3) Determina el estado REAL del PEDIDO ACTUAL: "${nombreEquipo || 'sin nombre'}".\n\n` +
+      `IMPORTANTE — ENTREGADO en W&S:\n` +
+      `  Cliente raramente dice "ya me llego". La entrega se cierra cuando vendedora muestra DATOS DEL ENVIO (conductor/placa/InDrive/RappiPay/foto del paquete) + cliente acusa recibo de los datos ("listo", "gracias", "dale"). Eso es ENTREGADO.\n\n` +
       `Estados posibles:\n` +
-      `  - "aprobado-listo-calandra": diseno aprobado por silencio o por dar tallas/info logistica/pedir mas.\n` +
+      `  - "aprobado-listo-calandra": diseno aprobado, listo para pasar a produccion (calandra/costura).\n` +
       `  - "en-correcciones": cliente pidio cambios y vendedora no ha respondido con nueva imagen.\n` +
       `  - "esperando-respuesta-cliente": vendedora mando la ultima imagen y cliente no respondio aun.\n` +
-      `  - "entregado": cliente ya recibio las prendas y agradecio fisicamente recibirlas.\n` +
+      `  - "listo-para-entregar": produccion terminada pero AUN NO HAY DATOS DE ENVIO en el chat.\n` +
+      `  - "entregado": ya hay datos del envio (conductor/placa/foto) + cliente acuso recibo. ESTO ES ENTREGADO aunque no diga "ya me llego".\n` +
       `  - "sin-imagen-aun": no se ha mandado ningun diseno aun (chat inicial).\n` +
       `  - "no-aplica": no es chat de aprobacion de diseno.\n\n` +
       `Responde SOLO JSON valido (sin markdown):\n` +
       `{"resumen": "texto corto del chat",\n` +
       ` "pedidosDetectados": numero,\n` +
-      ` "estadoReal": "aprobado-listo-calandra"|"en-correcciones"|"esperando-respuesta-cliente"|"entregado"|"sin-imagen-aun"|"no-aplica",\n` +
+      ` "estadoReal": "aprobado-listo-calandra"|"en-correcciones"|"esperando-respuesta-cliente"|"listo-para-entregar"|"entregado"|"sin-imagen-aun"|"no-aplica",\n` +
       ` "confianza": "alta"|"media"|"baja",\n` +
       ` "cita": "frase exacta del cliente (o transcripcion de audio) que sustenta el estado",\n` +
       ` "audiosResumen": "que dicen los audios brevemente",\n` +
@@ -850,7 +853,8 @@ async function analizarChatConClaude(mensajesEnriquecidos, datosPedido, analisis
       `4. Adicion a pedido: agregar 1-2 prendas al mismo pedido (ej: "agrega a Bryan talla M"). NO es pedido nuevo.\n` +
       `5. Pedido NUEVO: listado completo de varias prendas + abono separado. Si lo detectas, marcalo aparte.\n` +
       `6. Si vendedora dice "listo para enviar" / "ya esta hecho" / "lo recoges manana" → produccion ya termino.\n` +
-      `7. Si cliente dice "ya me llegaron" / "muchas gracias por las prendas" → entregado.\n\n` +
+      `7. ENTREGADO en W&S = vendedora muestra DATOS DEL ENVIO (conductor/placa/foto InDrive/RappiPay) + cliente ACUSA RECIBO de los datos (ej: "listo", "gracias", "dale") + hay PAGO. EL CLIENTE RARAMENTE DICE "ya me llego" — la entrega se da por hecha cuando hay despacho + acuse. NO esperes confirmacion explicita de recepcion fisica.\n` +
+      `8. "listo-para-entregar" solo aplica si la vendedora dice que esta listo PERO aun no despacho con conductor/empresa de envio.\n\n` +
       `═══ ESTADOS POSIBLES PARA EL PEDIDO ACTUAL ═══\n` +
       `- "diseno-pendiente": vendedora aun no ha mostrado diseno\n` +
       `- "esperando-respuesta-cliente": vendedora mando diseno pero cliente no respondio aun\n` +
