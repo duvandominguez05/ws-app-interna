@@ -816,6 +816,145 @@ async function analizarChatMultimediaConGemini(mensajes, nombreEquipo) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// VEREDICTO FINAL con Claude Sonnet — separa pedidos mezclados y razona
+// mejor que Gemini en chats complejos.
+// Recibe: mensajesEnriquecidos (con base64), datosPedido, analisisGemini
+// Devuelve: {estadoVeredicto, confianza, razonamiento, pedidoActualResumen, hayPedidoAdicional, ...}
+async function analizarChatConClaude(mensajesEnriquecidos, datosPedido, analisisGemini) {
+  global._claudeUltimoError = null;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { global._claudeUltimoError = 'no api key'; return null; }
+    const modelo = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+
+    const preambleTexto = `Sos analista senior de W&S Enterprise (uniformes deportivos, Colombia).\n` +
+      `Tu trabajo: determinar el estado REAL del PEDIDO ESPECIFICO que te indico, sin confundirte con otros pedidos del mismo chat.\n\n` +
+      `═══ PEDIDO A EVALUAR ═══\n` +
+      `ID interno: ${datosPedido.id}\n` +
+      `Equipo/Nombre: "${datosPedido.equipo}"\n` +
+      `Vendedora: ${datosPedido.vendedora}\n` +
+      `Estado actual en la app: ${datosPedido.estado}\n` +
+      `Abonado registrado: $${datosPedido.abonado || 0}\n\n` +
+      `═══ ANALISIS PREVIO DE GEMINI (puede tener errores, vos validas) ═══\n` +
+      `Resumen: ${analisisGemini?.resumen || 'sin resumen'}\n` +
+      `Pedidos detectados: ${analisisGemini?.pedidosDetectados || '?'}\n` +
+      `Estado sugerido: ${analisisGemini?.estadoReal || '?'}\n` +
+      `Confianza: ${analisisGemini?.confianza || '?'}\n` +
+      `Audios resumen: ${analisisGemini?.audiosResumen || 'sin audios'}\n` +
+      `Imagenes resumen: ${analisisGemini?.imagenesResumen || 'sin imagenes'}\n\n` +
+      `═══ REGLAS CLAVE (W&S) ═══\n` +
+      `1. El cliente NUNCA dice "aprobado" explicito. Aprobacion = dejar de pedir cambios + dar tallas/listado/abono / decir "perfecto" / pedir mas cosas / preguntar por envio.\n` +
+      `2. En el mismo chat pueden haber VARIOS pedidos (original + adiciones + nuevos). NO mezcles estados entre ellos.\n` +
+      `3. Pedido ORIGINAL: el que ya esta en la app con el nombre "${datosPedido.equipo}". Es el que tenes que evaluar.\n` +
+      `4. Adicion a pedido: agregar 1-2 prendas al mismo pedido (ej: "agrega a Bryan talla M"). NO es pedido nuevo.\n` +
+      `5. Pedido NUEVO: listado completo de varias prendas + abono separado. Si lo detectas, marcalo aparte.\n` +
+      `6. Si vendedora dice "listo para enviar" / "ya esta hecho" / "lo recoges manana" → produccion ya termino.\n` +
+      `7. Si cliente dice "ya me llegaron" / "muchas gracias por las prendas" → entregado.\n\n` +
+      `═══ ESTADOS POSIBLES PARA EL PEDIDO ACTUAL ═══\n` +
+      `- "diseno-pendiente": vendedora aun no ha mostrado diseno\n` +
+      `- "esperando-respuesta-cliente": vendedora mando diseno pero cliente no respondio aun\n` +
+      `- "en-correcciones": cliente pidio cambios al diseno y vendedora no respondio con nueva imagen\n` +
+      `- "aprobado-pendiente-produccion": diseno aprobado, falta hacer calandra/costura\n` +
+      `- "produccion-en-curso": esta en calandra o costura\n` +
+      `- "listo-para-entregar": produccion terminada, falta entrega fisica\n` +
+      `- "entregado": cliente recibio\n` +
+      `- "no-aplica": chat no trata del pedido (ej: solo consulta general)\n\n` +
+      `═══ TU TAREA ═══\n` +
+      `Lee el chat completo (texto + imagenes). Responde SOLO JSON valido:\n` +
+      `{\n` +
+      `  "estadoVeredicto": "uno de los estados de arriba",\n` +
+      `  "confianza": "alta"|"media"|"baja",\n` +
+      `  "razonamiento": "2-3 lineas explicando como llegaste al estado, citando frases del chat",\n` +
+      `  "citaClave": "frase exacta del cliente o vendedora que lo sustenta",\n` +
+      `  "geminiEstuvoMal": true|false,\n` +
+      `  "comentarioGemini": "si estuvo mal, en que se equivoco — vacio si bien",\n` +
+      `  "hayPedidoAdicional": true|false,\n` +
+      `  "pedidoAdicionalResumen": "si hay otro pedido en el chat, describelo brevemente — vacio si no",\n` +
+      `  "abonoNuevoDetectado": numero_o_0,\n` +
+      `  "accionRecomendada": "que deberia hacer la app (ej: mover a listo-para-entregar, crear pedido nuevo de 11 camisas, etc)"\n` +
+      `}\n\n` +
+      `═══════════════════════════════════════════════════════════════\n` +
+      `CHAT (mas viejo arriba):\n`;
+
+    const content = [{ type: 'text', text: preambleTexto }];
+    let imgsUsadas = 0;
+    const MAX_IMG_CLAUDE = 8;
+    let idxMsg = 0;
+    for (const m of mensajesEnriquecidos) {
+      idxMsg++;
+      let cabecera = `\n[msg ${idxMsg} | ${m.quien} | ${m.fecha || ''}]`;
+      if (m.texto) cabecera += ` ${m.texto.slice(0, 500)}`;
+      // Si hay audio, agregar el resumen de gemini como pista (Claude no acepta audio nativo)
+      const audios = (m.attachments || []).filter(a => a.kind === 'audio');
+      if (audios.length > 0) {
+        cabecera += ` [AUDIO de ${m.quien} — ver "audiosResumen" arriba para contenido]`;
+      }
+      content.push({ type: 'text', text: cabecera });
+      for (const a of (m.attachments || [])) {
+        if (a.kind === 'image' && imgsUsadas < MAX_IMG_CLAUDE && a.base64) {
+          // Claude vision: mime types image/jpeg, image/png, image/gif, image/webp
+          const mt = (a.mime || 'image/jpeg').toLowerCase();
+          if (mt.startsWith('image/')) {
+            content.push({
+              type: 'image',
+              source: { type: 'base64', media_type: mt, data: a.base64 }
+            });
+            imgsUsadas++;
+          }
+        }
+      }
+    }
+    content.push({ type: 'text', text: `\n═══════════════════════════════════════════════════════════════\nResponde SOLO JSON valido (sin markdown):` });
+
+    const body = {
+      model: modelo,
+      max_tokens: 1500,
+      messages: [{ role: 'user', content }],
+    };
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer));
+
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[claude] HTTP', r.status, errText.slice(0, 300));
+      global._claudeUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.content?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      const parsed = JSON.parse(limpio);
+      parsed._meta = {
+        modelo,
+        imagenesUsadas: imgsUsadas,
+        mensajesAnalizados: idxMsg,
+        usage: data.usage || null,
+      };
+      return parsed;
+    } catch {
+      global._claudeUltimoError = `parse error: ${limpio.slice(0, 300)}`;
+      return { _raw: limpio.slice(0, 2000), _meta: { modelo, imagenesUsadas: imgsUsadas } };
+    }
+  } catch (e) {
+    console.error('[claude error]', e.message);
+    global._claudeUltimoError = `exception: ${e.message}`;
+    return null;
+  }
+}
+
 
 // Descarga la imagen base64 desde Evolution API.
 async function descargarImagenEvolution(instance, messageKey) {
@@ -4438,7 +4577,30 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         });
       }
 
-      const analisis = await analizarChatMultimediaConGemini(mensajesEnriquecidos, p.equipo);
+      const analisisGemini = await analizarChatMultimediaConGemini(mensajesEnriquecidos, p.equipo);
+
+      // ESCALADO A CLAUDE SONNET cuando:
+      // - Gemini detecto >= 2 pedidos en el chat, O
+      // - Gemini con confianza media/baja, O
+      // - parametro ?forzar=claude en la URL
+      const forzarClaude = u.searchParams.get('forzar') === 'claude';
+      const pedidosDetectados = parseInt(analisisGemini?.pedidosDetectados || 0, 10);
+      const confianzaGemini = (analisisGemini?.confianza || '').toLowerCase();
+      const necesitaEscalado = forzarClaude
+        || pedidosDetectados >= 2
+        || confianzaGemini === 'media'
+        || confianzaGemini === 'baja';
+
+      let veredictoClaude = null;
+      let motivoEscalado = null;
+      if (necesitaEscalado && process.env.ANTHROPIC_API_KEY) {
+        motivoEscalado = forzarClaude ? 'forzado por parametro'
+          : pedidosDetectados >= 2 ? `multiples pedidos detectados (${pedidosDetectados})`
+          : `confianza Gemini ${confianzaGemini}`;
+        veredictoClaude = await analizarChatConClaude(mensajesEnriquecidos, {
+          id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0,
+        }, analisisGemini);
+      }
 
       // Resumen rapido para el usuario (sin base64 ruidoso)
       const mensajesResumen = mensajesEnriquecidos.map(m => ({
@@ -4452,9 +4614,13 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
         chatwootUrl: `${url}/app/accounts/${accountId}/conversations/${conv.id}`,
         descargadas: { imagenes: imgsTotal, audios: audsTotal, mensajesAnalizados: mensajesEnriquecidos.length },
-        analisis,
+        analisisGemini,
+        escalado: { necesario: necesitaEscalado, motivo: motivoEscalado },
+        veredictoClaude,
+        veredictoFinal: veredictoClaude?.estadoVeredicto || analisisGemini?.estadoReal || 'desconocido',
         cronologia: mensajesResumen,
         errorGemini: global._geminiUltimoError || null,
+        errorClaude: global._claudeUltimoError || null,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
