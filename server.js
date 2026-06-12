@@ -4975,37 +4975,44 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // VERIFICAR si se envio a calandra por Gmail.
+  // VERIFICAR si se envio a calandra usando WeTransfer (rastreado via Gmail).
   // GET /api/admin/verificar-envio-calandra?id=X
-  // Busca emails ENVIADOS (label SENT) con el texto del diseno o nombre del pedido.
-  // Si encuentra → confirmar que paso a "enviado-calandra".
+  //
+  // Flujo real W&S:
+  //   1) Disenador sube PDF a WeTransfer
+  //   2) WeTransfer lo envia a sublimarte.alqueria@gmail.com (calandra)
+  //   3) Llega email de noreply@wetransfer.com a Camilo:
+  //      - "X.pdf enviado correctamente a sublimarte.alqueria@gmail.com" → ENVIADO
+  //      - "sublimarte.alqueria@gmail.com descargo X.pdf" → DESCARGADO (= en proceso)
   // ═══════════════════════════════════════════════════════════════════
   if (req.method === 'GET' && req.url.startsWith('/api/admin/verificar-envio-calandra')) {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const id = parseInt(u.searchParams.get('id'), 10);
-      const dias = parseInt(u.searchParams.get('dias') || '30', 10);
+      const dias = parseInt(u.searchParams.get('dias') || '60', 10);
       const textoExtra = u.searchParams.get('texto') || '';
       const peds = leerPedidos();
       const p = peds.find(x => x.id === id);
       if (!p) return json(res, 404, { error: 'pedido no existe' });
 
-      // Construir queries: el equipo + texto extra si lo dan
-      const queries = [];
+      // Construir queries WeTransfer:
+      // Buscar emails de noreply@wetransfer.com que mencionen el equipo / texto del diseno
       const equipoLimpio = (p.equipo || '').toLowerCase().replace(/[^\w\sñáéíóú]/g, ' ').trim();
-      if (equipoLimpio) queries.push(`"${equipoLimpio}" newer_than:${dias}d`);
-      if (textoExtra) queries.push(`"${textoExtra}" newer_than:${dias}d`);
-      // Tambien buscamos por palabras del equipo (no en frase exacta)
       const palabras = equipoLimpio.split(/\s+/).filter(t => t.length >= 4);
+
+      const queries = [];
+      const baseFrom = 'from:noreply@wetransfer.com';
+      if (textoExtra) queries.push(`${baseFrom} "${textoExtra}" newer_than:${dias}d`);
+      if (equipoLimpio) queries.push(`${baseFrom} "${equipoLimpio}" newer_than:${dias}d`);
       if (palabras.length >= 2) {
-        queries.push(`(${palabras.map(p => `"${p}"`).join(' ')}) newer_than:${dias}d`);
+        queries.push(`${baseFrom} ${palabras.map(p => `"${p}"`).join(' ')} newer_than:${dias}d`);
       }
 
       const resultados = [];
       const vistos = new Set();
       for (const q of queries) {
         try {
-          const emails = await gmailWT.buscarEmails(q, 10);
+          const emails = await gmailWT.buscarEmails(q, 20);
           for (const e of emails) {
             if (vistos.has(e.id)) continue;
             vistos.add(e.id);
@@ -5014,29 +5021,59 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         } catch (eEm) { console.error('[verif gmail]', eEm.message); }
       }
 
-      // Filtrar enviados (label SENT) vs recibidos
-      const enviados = resultados.filter(e => (e.labelIds || []).includes('SENT'));
-      const recibidos = resultados.filter(e => !(e.labelIds || []).includes('SENT'));
+      // Clasificar emails: enviado vs descargado vs otro
+      const eventos = resultados.map(e => {
+        const snip = (e.snippet || '').toLowerCase();
+        const subj = (e.subject || '').toLowerCase();
+        const full = subj + ' ' + snip;
+        let tipo = 'otro';
+        // Extraer destinatario del cuerpo (formato WeTransfer)
+        let destinatario = null;
+        const matchEnvio = full.match(/enviado correctamente a ([\w.\-+@]+)/i);
+        const matchDescarga = full.match(/([\w.\-+@]+) descargo/i) || full.match(/([\w.\-+@]+) descargó/i);
+        if (matchEnvio) { tipo = 'envio-confirmado'; destinatario = matchEnvio[1]; }
+        else if (matchDescarga) { tipo = 'descargado'; destinatario = matchDescarga[1]; }
+        else if (full.includes('caduca')) tipo = 'aviso-caducidad';
+        else if (full.includes('expir')) tipo = 'aviso-caducidad';
+        return { ...e, tipo, destinatario };
+      });
 
-      // Heuristica: si hay al menos 1 email ENVIADO con el texto del equipo → se mando a calandra
-      const seEnvio = enviados.length > 0;
-      const destinosUnicos = [...new Set(enviados.map(e => e.to).filter(Boolean))];
+      const enviosConfirmados = eventos.filter(e => e.tipo === 'envio-confirmado');
+      const descargados = eventos.filter(e => e.tipo === 'descargado');
+      const otros = eventos.filter(e => e.tipo === 'otro' || e.tipo === 'aviso-caducidad');
+
+      // Veredicto
+      let estado = 'sin-evidencia';
+      let confianza = 'sin-evidencia';
+      let detalle = 'no hay emails WeTransfer con el texto del equipo';
+      if (descargados.length > 0) {
+        estado = 'descargado-por-calandra'; // calandra YA lo bajo: esta en proceso
+        confianza = 'alta';
+        const dest = [...new Set(descargados.map(d => d.destinatario).filter(Boolean))];
+        detalle = `Calandra (${dest.join(', ')}) ya descargo el PDF. Esta en proceso de impresion.`;
+      } else if (enviosConfirmados.length > 0) {
+        estado = 'enviado-a-calandra'; // ya esta camino a calandra
+        confianza = 'alta';
+        const dest = [...new Set(enviosConfirmados.map(d => d.destinatario).filter(Boolean))];
+        detalle = `WeTransfer envio el PDF a ${dest.join(', ')}. Aun no se confirma descarga.`;
+      }
 
       return json(res, 200, {
         pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
         queries,
         totalEncontrados: resultados.length,
-        enviadosCount: enviados.length,
-        recibidosCount: recibidos.length,
-        destinosUnicos,
-        enviados: enviados.map(e => ({ subject: e.subject, to: e.to, date: e.date, snippet: (e.snippet||'').slice(0,150) })),
-        recibidos: recibidos.map(e => ({ subject: e.subject, from: e.from, date: e.date, snippet: (e.snippet||'').slice(0,150) })),
+        eventos: {
+          enviosConfirmados: enviosConfirmados.map(e => ({ subject: e.subject, date: e.date, destinatario: e.destinatario })),
+          descargados: descargados.map(e => ({ subject: e.subject, date: e.date, destinatario: e.destinatario })),
+          otros: otros.map(e => ({ subject: e.subject, date: e.date })),
+        },
         veredicto: {
-          seEnvioACalandra: seEnvio,
-          confianza: seEnvio ? (destinosUnicos.length === 1 ? 'alta' : 'media') : 'sin-evidencia',
-          razonamiento: seEnvio
-            ? `${enviados.length} email(s) ENVIADO(s) con el texto del equipo. Destino(s): ${destinosUnicos.join(', ')}.`
-            : 'No se encontraron emails enviados con texto del equipo. Aun no se envio a calandra (o el email tiene otro texto).',
+          estadoCalandra: estado,
+          confianza,
+          razonamiento: detalle,
+          sugerencia: estado === 'descargado-por-calandra' ? 'mover a llego-impresion cuando vuelva el pedido'
+                    : estado === 'enviado-a-calandra' ? 'app puede pasar a enviado-calandra'
+                    : 'esperar / no hacer nada',
         },
       });
     } catch (e) {
