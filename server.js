@@ -4974,6 +4974,41 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
+  // DEBUG: que cuenta Gmail esta conectada + ultimas conversaciones WeTransfer
+  if (req.method === 'GET' && req.url === '/api/admin/gmail-debug') {
+    try {
+      // Pedir profile a Gmail API
+      const tokens = gmailWT._leerTokens();
+      const tok = tokens?.access_token;
+      let profile = null, error = null;
+      if (tok) {
+        try {
+          const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+            headers: { Authorization: `Bearer ${tok}` },
+          });
+          profile = await r.json();
+        } catch (e) { error = e.message; }
+      }
+      // Buscar ultimos 5 emails de WeTransfer (sin texto)
+      const emails = await gmailWT.buscarEmails('from:noreply@wetransfer.com newer_than:60d', 10);
+      // Si nada, probar amplio
+      const ampleEmails = emails.length === 0
+        ? await gmailWT.buscarEmails('from:wetransfer newer_than:60d', 10)
+        : [];
+      return json(res, 200, {
+        cuentaConectada: profile?.emailAddress || 'NO_PROFILE',
+        totalMessagesEnInbox: profile?.messagesTotal,
+        scopes: tokens?.scope || 'sin-scope-info',
+        tokenExpiraEn: tokens?.expires_at ? new Date(tokens.expires_at).toLocaleString('es-CO') : '?',
+        wetransferUltimos: emails.map(e => ({ subject: e.subject?.slice(0,80), from: e.from?.slice(0,50), date: e.date })),
+        fallbackAmpleo: ampleEmails.map(e => ({ subject: e.subject?.slice(0,80), from: e.from?.slice(0,50), date: e.date })),
+        error,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // VERIFICAR si se envio a calandra usando WeTransfer (rastreado via Gmail).
   // GET /api/admin/verificar-envio-calandra?id=X
