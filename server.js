@@ -4795,27 +4795,41 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const dataMsg = await rMsg.json();
       const todosMensajes = dataMsg.payload || dataMsg || [];
 
-      // Buscar la ULTIMA imagen que mando la vendedora (message_type=1)
-      let imgChatBase64 = null, imgChatMime = null, imgChatFecha = null;
-      for (let i = todosMensajes.length - 1; i >= 0; i--) {
-        const m = todosMensajes[i];
-        if (m.message_type !== 1) continue; // solo vendedora
-        const imgAtt = (m.attachments || []).find(a => a.file_type === 'image');
-        if (imgAtt) {
-          const dl = await descargarAttachmentChatwootBase64(imgAtt.data_url);
-          if (dl) {
-            imgChatBase64 = dl.base64;
-            imgChatMime = dl.mime;
-            imgChatFecha = m.created_at ? new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : null;
-            break;
+      // Buscar la ULTIMA imagen del chat — primero de la vendedora (msg_type=1),
+      // si no hay → del cliente (msg_type=0) como fallback.
+      let imgChatBase64 = null, imgChatMime = null, imgChatFecha = null, imgChatQuien = null;
+      const buscarImg = async (filtroQuien) => {
+        for (let i = todosMensajes.length - 1; i >= 0; i--) {
+          const m = todosMensajes[i];
+          if (filtroQuien === 'vendedora' && m.message_type !== 1) continue;
+          if (filtroQuien === 'cliente' && m.message_type !== 0) continue;
+          const imgAtt = (m.attachments || []).find(a => a.file_type === 'image');
+          if (imgAtt) {
+            const dl = await descargarAttachmentChatwootBase64(imgAtt.data_url);
+            if (dl) {
+              return {
+                base64: dl.base64, mime: dl.mime,
+                fecha: m.created_at ? new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : null,
+                quien: filtroQuien,
+              };
+            }
           }
         }
+        return null;
+      };
+      let found = await buscarImg('vendedora');
+      if (!found) found = await buscarImg('cliente');
+      if (found) {
+        imgChatBase64 = found.base64;
+        imgChatMime = found.mime;
+        imgChatFecha = found.fecha;
+        imgChatQuien = found.quien;
       }
 
       if (!imgChatBase64) {
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
-          error: 'sin imagen de la vendedora en el chat (no se puede comparar)',
+          error: 'sin imagen alguna en el chat (no se puede comparar)',
         });
       }
 
@@ -4911,6 +4925,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       return json(res, 200, {
         pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
         imagenChatFecha: imgChatFecha,
+        imagenChatQuien: imgChatQuien,
         textoDiseno,
         busqueda: busquedaDetalles,
         pdfsCandidatos: pdfsCandidatos.map(x => ({ nombre: x.nombre, kb: x.kb, score: x.score })),
