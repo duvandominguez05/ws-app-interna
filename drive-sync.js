@@ -283,6 +283,45 @@ async function hacerArchivoPublico(fileId) {
   return await r.json();
 }
 
+// ── Descargar el THUMBNAIL de un archivo Drive (PDF, imagen, etc) ──────
+// Drive genera automáticamente miniaturas. Devolvemos la imagen en base64.
+// Para PDFs grandes esto evita descargar el archivo entero.
+// thumbnailLink viene en la metadata; si no la tenés, podemos generarla.
+async function descargarThumbnailBase64(fileId, sizePx = 1000) {
+  const tokens = gmailWT._leerTokens();
+  if (!tokens || !tokens.refresh_token) throw new Error('Drive sin OAuth');
+  // Drive API expone el thumbnail via /files/{id}?fields=thumbnailLink
+  const metaUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,thumbnailLink,mimeType,size`;
+  const metaR = await fetch(metaUrl, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+  let meta;
+  if (metaR.status === 401) {
+    const { google } = await _refrescarToken();
+    const r2 = await fetch(metaUrl, { headers: { Authorization: `Bearer ${google}` } });
+    meta = await r2.json();
+  } else {
+    meta = await metaR.json();
+  }
+  if (!meta.thumbnailLink) {
+    return { base64: null, mime: null, size: 0, name: meta.name, error: 'sin thumbnail' };
+  }
+  // El thumbnailLink incluye un parámetro =s220 por defecto. Cambiamos a s1000 para mejor resolución.
+  const thumbUrl = meta.thumbnailLink.replace(/=s\d+/, `=s${sizePx}`);
+  const tokenActual = gmailWT._leerTokens().access_token;
+  const dlR = await fetch(thumbUrl, { headers: { Authorization: `Bearer ${tokenActual}` } });
+  if (!dlR.ok) {
+    if (dlR.status === 401) {
+      const { google } = await _refrescarToken();
+      const r2 = await fetch(thumbUrl, { headers: { Authorization: `Bearer ${google}` } });
+      if (!r2.ok) throw new Error('thumbnail fail: ' + r2.status);
+      const buf = await r2.arrayBuffer();
+      return { base64: Buffer.from(buf).toString('base64'), mime: r2.headers.get('content-type') || 'image/jpeg', name: meta.name, sourceSize: meta.size };
+    }
+    throw new Error('thumbnail fail: ' + dlR.status);
+  }
+  const buf = await dlR.arrayBuffer();
+  return { base64: Buffer.from(buf).toString('base64'), mime: dlR.headers.get('content-type') || 'image/jpeg', name: meta.name, sourceSize: meta.size };
+}
+
 // ── Descargar contenido de un archivo de Drive como base64 ─────────────
 // Devuelve { base64, mime, size, name }
 async function descargarArchivoBase64(fileId) {
@@ -323,6 +362,7 @@ module.exports = {
   subirArchivo,
   hacerArchivoPublico,
   descargarArchivoBase64,
+  descargarThumbnailBase64,
   FOLDER_COREL,
   FOLDER_PDFRIP,
   FOLDER_FACTURAS,

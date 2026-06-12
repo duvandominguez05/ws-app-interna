@@ -977,19 +977,20 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
     const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
 
-    const preamble = `Sos analista visual de W&S Enterprise. Te paso DOS recursos:\n` +
+    const preamble = `Sos analista visual de W&S Enterprise. Te paso varias imagenes:\n` +
       `1) IMAGEN del diseno que la vendedora le envio al cliente para aprobacion (de Chatwoot).\n` +
-      `2) UNO O VARIOS PDFs RIP que estan en Drive (carpeta PDF_RIP — son los archivos listos para imprimir).\n\n` +
+      `2) THUMBNAILS (vista previa) de archivos PDF RIP que estan en Drive (carpeta PDF_RIP, listos para imprimir).\n\n` +
       `Pedido a evaluar: "${nombreEquipo || 'sin nombre'}".\n\n` +
-      `Tu tarea: para CADA PDF, decime si visualmente es el MISMO diseno que la imagen aprobada.\n` +
-      `Compara: colores, escudo/logo, tipografia, distribucion, frase/texto, numeros, prenda (camisa/chaqueta/pantaloneta).\n` +
-      `Si hay match al menos en 70% de los elementos → coincide.\n\n` +
+      `Tu tarea: para CADA thumbnail, decime si visualmente es el MISMO diseno que la imagen aprobada del chat.\n` +
+      `Compara: colores, escudo/logo, tipografia, distribucion, frase/texto, numeros, prenda.\n` +
+      `Los thumbnails de PDF a veces muestran la prenda plana extendida (vista impresion) — la imagen del chat suele ser un render 3D del uniforme puesto. Aun asi tenes que reconocer si es el MISMO diseno.\n` +
+      `Si hay match al menos en 70% de elementos clave → coincide.\n\n` +
       `Responde SOLO JSON (sin markdown):\n` +
       `{\n` +
-      `  "coincide": true|false,  // hay al menos un pdf que coincide\n` +
+      `  "coincide": true|false,\n` +
       `  "confianza": "alta"|"media"|"baja",\n` +
       `  "pdfElegido": "nombre del pdf que coincide o vacio",\n` +
-      `  "razonamiento": "1-2 lineas explicando que elementos coinciden o no",\n` +
+      `  "razonamiento": "1-2 lineas explicando elementos compartidos",\n` +
       `  "scoresPorPdf": [{"nombre": "...", "coincide": true|false, "porQue": "..."}]\n` +
       `}\n\n` +
       `═══════════════════════════════════════════════════════════════\n` +
@@ -997,12 +998,12 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
 
     const parts = [{ text: preamble }];
     parts.push({ inline_data: { mime_type: imgChat.mime || 'image/jpeg', data: imgChat.base64 } });
-    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nPDFs RIP de Drive a comparar:\n` });
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nTHUMBNAILS de PDFs RIP en Drive:\n` });
     let idxPdf = 0;
-    for (const pdf of pdfsCandidatos.slice(0, 4)) { // max 4 PDFs por costo/peso
+    for (const pdf of pdfsCandidatos.slice(0, 4)) {
       idxPdf++;
-      parts.push({ text: `\n[PDF ${idxPdf}] nombre: "${pdf.nombre}"` });
-      parts.push({ inline_data: { mime_type: pdf.mime || 'application/pdf', data: pdf.base64 } });
+      parts.push({ text: `\n[Thumbnail ${idxPdf}] nombre del PDF: "${pdf.nombre}"` });
+      parts.push({ inline_data: { mime_type: pdf.mime || 'image/jpeg', data: pdf.base64 } });
     }
     parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
 
@@ -4912,22 +4913,24 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           .sort((a, b) => b.score - a.score)
           .slice(0, 4);
 
-        // Limitar a top 2 para velocidad
-        const top = scoreados.slice(0, 2);
+        // Limitar a top 3 para velocidad
+        const top = scoreados.slice(0, 3);
         busquedaDetalles.pdfsMatcheados = top.map(s => ({ nombre: s.archivo.name, score: s.score, tokensHit: s.tokensHit }));
 
-        // Descargar los top 2 en paralelo
-        const dls = await Promise.all(top.map(s => driveSync.descargarArchivoBase64(s.archivo.id).catch(e => null)));
-        const tamanosOmitidos = [];
-        for (let i = 0; i < dls.length; i++) {
-          const dl = dls[i]; const s = top[i];
-          if (dl && dl.base64) {
-            const kb = Math.round(dl.base64.length / 1024);
-            if (kb > 15000) { tamanosOmitidos.push({ nombre: s.archivo.name, kb }); continue; }
-            pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: s.archivo.name, kb, score: s.score });
+        // Descargar los THUMBNAILS (no los PDFs completos — son muy grandes ~1GB)
+        // Los thumbnails son imagenes JPG de ~50-200KB que Drive genera automatico.
+        const thumbs = await Promise.all(top.map(s => driveSync.descargarThumbnailBase64(s.archivo.id, 1000).catch(e => ({ error: e.message }))));
+        const sinThumbnail = [];
+        for (let i = 0; i < thumbs.length; i++) {
+          const th = thumbs[i]; const s = top[i];
+          if (th && th.base64) {
+            const kb = Math.round(th.base64.length / 1024);
+            pdfsCandidatos.push({ base64: th.base64, mime: th.mime || 'image/jpeg', nombre: s.archivo.name, kb, score: s.score, esThumbnail: true });
+          } else {
+            sinThumbnail.push({ nombre: s.archivo.name, error: th?.error || 'sin thumb' });
           }
         }
-        busquedaDetalles.tamanosOmitidos = tamanosOmitidos;
+        busquedaDetalles.sinThumbnail = sinThumbnail;
       } catch (eDrive) {
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo },
