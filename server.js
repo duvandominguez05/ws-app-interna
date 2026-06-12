@@ -5129,17 +5129,22 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         } catch (eEm) { console.error('[verif gmail]', eEm.message); }
       }
 
-      // POST-FILTRO: Gmail dio matches por una sola palabra, ahora exigimos
-      // que el subject/snippet contenga al menos 2 palabras ricas distintas del texto del diseno.
-      const todasLasRicas = new Set([...palabrasRicasTexto, ...palabrasRicasEquipo]);
+      // POST-FILTRO: ya filtramos por from:noreply@wetransfer.com → asume todos validos.
+      // Solo confirmamos que tenga al menos 1 palabra rica del texto del diseno
+      // (incluyendo palabras cortas como FUT, TB que son distintivas).
+      const todasLasRicasFlex = new Set([
+        ...palabrasRicasTexto,
+        ...palabrasRicasEquipo,
+        // Tambien incluir palabras cortas distintivas (>=3 chars, no stopwords)
+        ...((textoExtra+' '+equipoLimpio).toLowerCase().replace(/[^\w\sñáéíóú]/g,' ').split(/\s+/)
+          .filter(t => t.length >= 3 && !['por','un','el','la','de','del','los','las','con','para','que'].includes(t))),
+      ]);
       const resultadosFiltrados = resultados.filter(e => {
         const haystack = ((e.subject || '') + ' ' + (e.snippet || '')).toLowerCase();
-        // Contar cuantas palabras ricas aparecen
-        let hits = 0;
-        for (const w of todasLasRicas) {
-          if (haystack.includes(w)) hits++;
+        for (const w of todasLasRicasFlex) {
+          if (haystack.includes(w)) return true;
         }
-        return hits >= 2 || todasLasRicas.size <= 1; // si solo hay 1 palabra rica, no exigimos 2
+        return false;
       });
 
       // Clasificar emails: enviado vs descargado vs otro
