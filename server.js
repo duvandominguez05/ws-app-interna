@@ -4974,6 +4974,22 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
+  // DEBUG: ejecutar cualquier query Gmail
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/gmail-query')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const q = u.searchParams.get('q') || 'from:noreply@wetransfer.com newer_than:7d';
+      const emails = await gmailWT.buscarEmails(q, 20);
+      return json(res, 200, {
+        query: q,
+        total: emails.length,
+        emails: emails.map(e => ({ subject: e.subject?.slice(0,120), from: e.from, date: e.date })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // DEBUG: que cuenta Gmail esta conectada + ultimas conversaciones WeTransfer
   if (req.method === 'GET' && req.url === '/api/admin/gmail-debug') {
     try {
