@@ -5053,27 +5053,29 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
 
       const queries = [];
       const baseFrom = 'from:noreply@wetransfer.com';
-      // SIN comillas → Gmail tokeniza mejor (subjects WeTransfer tienen "_NNN" pegado)
-      // Probamos 2 estrategias: (1) palabras claves rare-words del texto del diseno
-      //                        (2) sin filtro from (busca en TODO Gmail)
-      const buildFromTexto = (texto) => {
+      // Gmail tokeniza "martin_852" como una palabra → no podemos pedir "san martin" + "bello" juntos.
+      // Estrategia: buscar UNA palabra distintiva (la mas larga/rica) y FILTRAR despues.
+      const extraerPalabrasRicas = (texto) => {
         if (!texto) return [];
         const limpio = texto.toLowerCase().replace(/[^\w\sñáéíóú]/g, ' ').trim();
-        const STOPW = new Set(['por','un','una','de','del','y','o','en','con','para','el','la','los','las','san']);
-        STOPW.delete('san'); // san sí queda — es distintivo
-        const palabrasRicas = limpio.split(/\s+/).filter(t => t.length >= 4 && !STOPW.has(t));
-        // top 2-3 palabras únicas y largas
-        const top = [...new Set(palabrasRicas)].sort((a,b) => b.length - a.length).slice(0, 3);
-        if (top.length === 0) return [];
-        return [
-          `${baseFrom} ${top.join(' ')} newer_than:${dias}d`,
-          `${top.join(' ')} newer_than:${dias}d`, // sin from (mas amplio)
-        ];
+        const STOPW = new Set(['por','un','una','de','del','y','o','en','con','para','el','la','los','las','san','los','las','que','del','con']);
+        return [...new Set(
+          limpio.split(/\s+/).filter(t => t.length >= 4 && !STOPW.has(t))
+        )].sort((a,b) => b.length - a.length);
       };
-      if (textoExtra) queries.push(...buildFromTexto(textoExtra));
-      if (equipoLimpio) queries.push(...buildFromTexto(equipoLimpio));
-      // Tambien query basico sin texto rico
-      if (textoExtra) queries.push(`${baseFrom} ${textoExtra.toLowerCase()} newer_than:${dias}d`);
+      const palabrasRicasTexto = extraerPalabrasRicas(textoExtra);
+      const palabrasRicasEquipo = extraerPalabrasRicas(equipoLimpio);
+      // Una query por palabra rica (max 3)
+      const palabrasUsadas = [...new Set([...palabrasRicasTexto, ...palabrasRicasEquipo])].slice(0, 3);
+      for (const w of palabrasUsadas) {
+        queries.push(`${baseFrom} ${w} newer_than:${dias}d`);
+      }
+      // Fallback amplio
+      if (palabrasUsadas.length === 0 && equipoLimpio) {
+        queries.push(`${baseFrom} ${equipoLimpio} newer_than:${dias}d`);
+      }
+      // Para filtrar despues necesitamos saber el texto original
+      const textoCompleto = (textoExtra + ' ' + equipoLimpio).toLowerCase();
 
       const resultados = [];
       const vistos = new Set();
@@ -5088,8 +5090,21 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         } catch (eEm) { console.error('[verif gmail]', eEm.message); }
       }
 
+      // POST-FILTRO: Gmail dio matches por una sola palabra, ahora exigimos
+      // que el subject/snippet contenga al menos 2 palabras ricas distintas del texto del diseno.
+      const todasLasRicas = new Set([...palabrasRicasTexto, ...palabrasRicasEquipo]);
+      const resultadosFiltrados = resultados.filter(e => {
+        const haystack = ((e.subject || '') + ' ' + (e.snippet || '')).toLowerCase();
+        // Contar cuantas palabras ricas aparecen
+        let hits = 0;
+        for (const w of todasLasRicas) {
+          if (haystack.includes(w)) hits++;
+        }
+        return hits >= 2 || todasLasRicas.size <= 1; // si solo hay 1 palabra rica, no exigimos 2
+      });
+
       // Clasificar emails: enviado vs descargado vs otro
-      const eventos = resultados.map(e => {
+      const eventos = resultadosFiltrados.map(e => {
         const snip = (e.snippet || '').toLowerCase();
         const subj = (e.subject || '').toLowerCase();
         const full = subj + ' ' + snip;
