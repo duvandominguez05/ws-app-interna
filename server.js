@@ -4789,21 +4789,31 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const dataConv = await rConv.json();
       const conv = (dataConv.payload || [])[0];
       if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
-      // Traer hasta 4 paginas de mensajes (Chatwoot pagina ~25 por defecto).
-      // Asi alcanzamos imagenes de hasta ~10 dias atras.
-      const todosMensajes = [];
-      let before = null;
-      for (let pag = 0; pag < 5; pag++) {
-        const urlMsg = before
-          ? `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${before}`
-          : `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`;
-        const rMsg = await fetch(urlMsg, { headers: { 'api_access_token': apiCw } });
+      // Traer hasta 2 lotes (2 llamadas max). Suficiente para alcanzar 50 mensajes.
+      let todosMensajes = [];
+      try {
+        const ctrl1 = new AbortController(); const t1 = setTimeout(() => ctrl1.abort(), 8000);
+        const rMsg = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`, {
+          headers: { 'api_access_token': apiCw }, signal: ctrl1.signal,
+        }).finally(() => clearTimeout(t1));
         const dataMsg = await rMsg.json();
-        const lote = dataMsg.payload || dataMsg || [];
-        if (lote.length === 0) break;
-        todosMensajes.unshift(...lote); // prepend (mas viejos primero)
-        before = lote[0]?.id;
-        if (!before) break;
+        todosMensajes = dataMsg.payload || dataMsg || [];
+      } catch (e) { console.error('[comparar msgs1]', e.message); }
+      // Si la primera llamada no trae imagenes, intentar una pagina mas atras
+      const tieneImagen = todosMensajes.some(m => (m.attachments || []).some(a => a.file_type === 'image'));
+      if (!tieneImagen && todosMensajes.length > 0) {
+        const primerId = todosMensajes[0]?.id;
+        if (primerId) {
+          try {
+            const ctrl2 = new AbortController(); const t2 = setTimeout(() => ctrl2.abort(), 8000);
+            const rMsg2 = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${primerId}`, {
+              headers: { 'api_access_token': apiCw }, signal: ctrl2.signal,
+            }).finally(() => clearTimeout(t2));
+            const dataMsg2 = await rMsg2.json();
+            const lote2 = dataMsg2.payload || dataMsg2 || [];
+            todosMensajes = [...lote2, ...todosMensajes];
+          } catch (e) { console.error('[comparar msgs2]', e.message); }
+        }
       }
 
       // Buscar la ULTIMA imagen del chat — primero de la vendedora (msg_type=1),
@@ -4893,18 +4903,19 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           .sort((a, b) => b.score - a.score)
           .slice(0, 4);
 
-        busquedaDetalles.pdfsMatcheados = scoreados.map(s => ({ nombre: s.archivo.name, score: s.score, tokensHit: s.tokensHit }));
+        // Limitar a top 2 para velocidad
+        const top = scoreados.slice(0, 2);
+        busquedaDetalles.pdfsMatcheados = top.map(s => ({ nombre: s.archivo.name, score: s.score, tokensHit: s.tokensHit }));
 
-        // Descargar los top 4
-        for (const s of scoreados) {
-          try {
-            const dl = await driveSync.descargarArchivoBase64(s.archivo.id);
-            if (dl && dl.base64) {
-              const kb = Math.round(dl.base64.length / 1024);
-              if (kb > 5000) continue; // saltar PDFs >5MB
-              pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: s.archivo.name, kb, score: s.score });
-            }
-          } catch (e) { console.error('[comparar dl pdf]', e.message); }
+        // Descargar los top 2 en paralelo
+        const dls = await Promise.all(top.map(s => driveSync.descargarArchivoBase64(s.archivo.id).catch(e => null)));
+        for (let i = 0; i < dls.length; i++) {
+          const dl = dls[i]; const s = top[i];
+          if (dl && dl.base64) {
+            const kb = Math.round(dl.base64.length / 1024);
+            if (kb > 3000) continue; // saltar PDFs >3MB
+            pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: s.archivo.name, kb, score: s.score });
+          }
         }
       } catch (eDrive) {
         return json(res, 200, {
