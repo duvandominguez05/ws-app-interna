@@ -4975,6 +4975,76 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // VERIFICAR si se envio a calandra por Gmail.
+  // GET /api/admin/verificar-envio-calandra?id=X
+  // Busca emails ENVIADOS (label SENT) con el texto del diseno o nombre del pedido.
+  // Si encuentra → confirmar que paso a "enviado-calandra".
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/verificar-envio-calandra')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const dias = parseInt(u.searchParams.get('dias') || '30', 10);
+      const textoExtra = u.searchParams.get('texto') || '';
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+
+      // Construir queries: el equipo + texto extra si lo dan
+      const queries = [];
+      const equipoLimpio = (p.equipo || '').toLowerCase().replace(/[^\w\sñáéíóú]/g, ' ').trim();
+      if (equipoLimpio) queries.push(`"${equipoLimpio}" newer_than:${dias}d`);
+      if (textoExtra) queries.push(`"${textoExtra}" newer_than:${dias}d`);
+      // Tambien buscamos por palabras del equipo (no en frase exacta)
+      const palabras = equipoLimpio.split(/\s+/).filter(t => t.length >= 4);
+      if (palabras.length >= 2) {
+        queries.push(`(${palabras.map(p => `"${p}"`).join(' ')}) newer_than:${dias}d`);
+      }
+
+      const resultados = [];
+      const vistos = new Set();
+      for (const q of queries) {
+        try {
+          const emails = await gmailWT.buscarEmails(q, 10);
+          for (const e of emails) {
+            if (vistos.has(e.id)) continue;
+            vistos.add(e.id);
+            resultados.push({ ...e, queryUsado: q });
+          }
+        } catch (eEm) { console.error('[verif gmail]', eEm.message); }
+      }
+
+      // Filtrar enviados (label SENT) vs recibidos
+      const enviados = resultados.filter(e => (e.labelIds || []).includes('SENT'));
+      const recibidos = resultados.filter(e => !(e.labelIds || []).includes('SENT'));
+
+      // Heuristica: si hay al menos 1 email ENVIADO con el texto del equipo → se mando a calandra
+      const seEnvio = enviados.length > 0;
+      const destinosUnicos = [...new Set(enviados.map(e => e.to).filter(Boolean))];
+
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
+        queries,
+        totalEncontrados: resultados.length,
+        enviadosCount: enviados.length,
+        recibidosCount: recibidos.length,
+        destinosUnicos,
+        enviados: enviados.map(e => ({ subject: e.subject, to: e.to, date: e.date, snippet: (e.snippet||'').slice(0,150) })),
+        recibidos: recibidos.map(e => ({ subject: e.subject, from: e.from, date: e.date, snippet: (e.snippet||'').slice(0,150) })),
+        veredicto: {
+          seEnvioACalandra: seEnvio,
+          confianza: seEnvio ? (destinosUnicos.length === 1 ? 'alta' : 'media') : 'sin-evidencia',
+          razonamiento: seEnvio
+            ? `${enviados.length} email(s) ENVIADO(s) con el texto del equipo. Destino(s): ${destinosUnicos.join(', ')}.`
+            : 'No se encontraron emails enviados con texto del equipo. Aun no se envio a calandra (o el email tiene otro texto).',
+        },
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // FORZAR REPROCESO DEL GRUPO TRABAJO EN FAMILIA (historico hasta N dias)
   // POST /api/admin/forzar-grupo-trabajo?dias=7
   // Re-analiza los ultimos N dias de mensajes y avanza pedidos

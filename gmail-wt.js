@@ -530,6 +530,41 @@ function vincularHuerfano(msgId, pedidoId, pedidos) {
   return { wetransfer: wt, pedido: p };
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Buscar emails (ENVIADOS o RECIBIDOS) con un texto especifico.
+// Util para confirmar que un PDF se envio a calandra por gmail.
+// query: cualquier Gmail search query (ej: 'subject:"POR UN BELLO SAN MARTIN" newer_than:30d')
+// Devuelve: [{id, threadId, snippet, from, to, subject, date}]
+async function buscarEmails(query, maxResults = 20) {
+  try {
+    const q = encodeURIComponent(query);
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${maxResults}`;
+    const data = await gmailFetch(url);
+    const ids = data.messages || [];
+    const detalles = [];
+    for (const m of ids.slice(0, maxResults)) {
+      try {
+        const msg = await obtenerMensaje(m.id);
+        const payload = msg.payload || {};
+        detalles.push({
+          id: msg.id,
+          threadId: msg.threadId,
+          snippet: msg.snippet,
+          labelIds: msg.labelIds || [],
+          from: _headerValor(payload, 'From'),
+          to: _headerValor(payload, 'To'),
+          subject: _headerValor(payload, 'Subject'),
+          date: _headerValor(payload, 'Date'),
+        });
+      } catch (e) { console.error('[gmail-buscar msg]', e.message); }
+    }
+    return detalles;
+  } catch (e) {
+    console.error('[gmail-buscar]', e.message);
+    return [];
+  }
+}
+
 module.exports = {
   estaConectado,
   getAuthUrl,
@@ -540,6 +575,7 @@ module.exports = {
   sincronizarConPedidos,
   leerHuerfanos,
   vincularHuerfano,
+  buscarEmails,
   // Exports para testing/debug
   _leerTokens,
   _leerState,
