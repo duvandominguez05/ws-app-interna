@@ -4789,11 +4789,22 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const dataConv = await rConv.json();
       const conv = (dataConv.payload || [])[0];
       if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
-      const rMsg = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`, {
-        headers: { 'api_access_token': apiCw },
-      });
-      const dataMsg = await rMsg.json();
-      const todosMensajes = dataMsg.payload || dataMsg || [];
+      // Traer hasta 4 paginas de mensajes (Chatwoot pagina ~25 por defecto).
+      // Asi alcanzamos imagenes de hasta ~10 dias atras.
+      const todosMensajes = [];
+      let before = null;
+      for (let pag = 0; pag < 5; pag++) {
+        const urlMsg = before
+          ? `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${before}`
+          : `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`;
+        const rMsg = await fetch(urlMsg, { headers: { 'api_access_token': apiCw } });
+        const dataMsg = await rMsg.json();
+        const lote = dataMsg.payload || dataMsg || [];
+        if (lote.length === 0) break;
+        todosMensajes.unshift(...lote); // prepend (mas viejos primero)
+        before = lote[0]?.id;
+        if (!before) break;
+      }
 
       // Buscar la ULTIMA imagen del chat — primero de la vendedora (msg_type=1),
       // si no hay → del cliente (msg_type=0) como fallback.
