@@ -290,36 +290,47 @@ async function hacerArchivoPublico(fileId) {
 async function descargarThumbnailBase64(fileId, sizePx = 1000) {
   const tokens = gmailWT._leerTokens();
   if (!tokens || !tokens.refresh_token) throw new Error('Drive sin OAuth');
-  // Drive API expone el thumbnail via /files/{id}?fields=thumbnailLink
-  const metaUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,thumbnailLink,mimeType,size`;
-  const metaR = await fetch(metaUrl, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-  let meta;
-  if (metaR.status === 401) {
-    const { google } = await _refrescarToken();
-    const r2 = await fetch(metaUrl, { headers: { Authorization: `Bearer ${google}` } });
-    meta = await r2.json();
-  } else {
-    meta = await metaR.json();
-  }
-  if (!meta.thumbnailLink) {
-    return { base64: null, mime: null, size: 0, name: meta.name, error: 'sin thumbnail' };
-  }
-  // El thumbnailLink incluye un parámetro =s220 por defecto. Cambiamos a s1000 para mejor resolución.
-  const thumbUrl = meta.thumbnailLink.replace(/=s\d+/, `=s${sizePx}`);
-  const tokenActual = gmailWT._leerTokens().access_token;
-  const dlR = await fetch(thumbUrl, { headers: { Authorization: `Bearer ${tokenActual}` } });
-  if (!dlR.ok) {
-    if (dlR.status === 401) {
+
+  // Helper para hacer fetch refrescando token si hace falta
+  const fetchConRefresh = async (url, isBinary) => {
+    let tok = gmailWT._leerTokens().access_token;
+    let r = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    if (r.status === 401) {
       const { google } = await _refrescarToken();
-      const r2 = await fetch(thumbUrl, { headers: { Authorization: `Bearer ${google}` } });
-      if (!r2.ok) throw new Error('thumbnail fail: ' + r2.status);
-      const buf = await r2.arrayBuffer();
-      return { base64: Buffer.from(buf).toString('base64'), mime: r2.headers.get('content-type') || 'image/jpeg', name: meta.name, sourceSize: meta.size };
+      r = await fetch(url, { headers: { Authorization: `Bearer ${google}` } });
     }
-    throw new Error('thumbnail fail: ' + dlR.status);
+    return r;
+  };
+
+  // 1) Intentar URL directa de thumbnail (funciona para casi todo)
+  const directUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w${sizePx}`;
+  let dlR = await fetchConRefresh(directUrl);
+  if (dlR.ok) {
+    const ct = dlR.headers.get('content-type') || '';
+    // Verificar que es realmente una imagen (no HTML de error)
+    if (ct.startsWith('image/')) {
+      const buf = await dlR.arrayBuffer();
+      return { base64: Buffer.from(buf).toString('base64'), mime: ct, name: null, sourceSize: null };
+    }
   }
-  const buf = await dlR.arrayBuffer();
-  return { base64: Buffer.from(buf).toString('base64'), mime: dlR.headers.get('content-type') || 'image/jpeg', name: meta.name, sourceSize: meta.size };
+
+  // 2) Fallback: metadata + thumbnailLink
+  const metaR = await fetchConRefresh(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,thumbnailLink,mimeType,size`);
+  let meta = {};
+  try { meta = await metaR.json(); } catch {}
+  if (meta.thumbnailLink) {
+    const thumbUrl = meta.thumbnailLink.replace(/=s\d+/, `=s${sizePx}`);
+    const r2 = await fetchConRefresh(thumbUrl);
+    if (r2.ok) {
+      const ct2 = r2.headers.get('content-type') || 'image/jpeg';
+      if (ct2.startsWith('image/')) {
+        const buf = await r2.arrayBuffer();
+        return { base64: Buffer.from(buf).toString('base64'), mime: ct2, name: meta.name, sourceSize: meta.size };
+      }
+    }
+  }
+
+  return { base64: null, mime: null, size: 0, name: meta.name || null, error: 'sin thumbnail disponible' };
 }
 
 // ── Descargar contenido de un archivo de Drive como base64 ─────────────
