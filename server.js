@@ -1036,6 +1036,61 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Extrae el TEXTO VISIBLE en una imagen de diseño (lema del equipo,
+// nombre del club, frase principal). Sirve para buscar PDFs en Drive
+// porque el nombre del pedido en la app a veces NO coincide con el
+// texto que sale en el diseño impreso.
+// Ej: pedido "wigo" pero el diseño dice "POR UN BELLO SAN MARTIN" →
+// buscar PDFs con "por un bello san martin" en el nombre.
+async function extraerTextoDeDisenoConGemini(imgBase64, imgMime) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const prompt = `Esta imagen es el diseno de un uniforme deportivo (camisa/chaqueta/pantaloneta) de W&S Enterprise.\n\n` +
+      `Extrae el TEXTO PRINCIPAL visible en el diseno (nombre del club, lema, frase, ciudad, sponsor — NO el logo de W&S ni placeholders como NOMBRE/10).\n` +
+      `Tambien identifica colores principales del uniforme y tipo de prenda.\n\n` +
+      `Responde SOLO JSON valido (sin markdown):\n` +
+      `{\n` +
+      `  "textoPrincipal": "frase exacta que aparece en el diseno (ej: 'POR UN BELLO SAN MARTIN')",\n` +
+      `  "textoSecundario": "otro texto si lo hay",\n` +
+      `  "palabrasClaveBusqueda": ["palabra1", "palabra2", "palabra3"],  // palabras que servirian para buscar el PDF en Drive (sin stopwords como POR, UN, DE)\n` +
+      `  "colores": ["color1", "color2"],\n` +
+      `  "tipoPrenda": "camisa-futbol|baloncesto|chaqueta|pantaloneta|conjunto|otro",\n` +
+      `  "hayEscudo": true|false\n` +
+      `}\n\nRespuesta:`;
+    const body = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: imgMime || 'image/jpeg', data: imgBase64 } },
+        ]
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[extraer-texto] HTTP', r.status, errText.slice(0, 200));
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try { return JSON.parse(limpio); }
+    catch { return { _raw: limpio.slice(0, 500) }; }
+  } catch (e) {
+    console.error('[extraer-texto error]', e.message);
+    return null;
+  }
+}
+
 
 // Descarga la imagen base64 desde Evolution API.
 async function descargarImagenEvolution(instance, messageKey) {
@@ -4764,31 +4819,65 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         });
       }
 
-      // 2) Listar PDFs RIP en Drive y filtrar los que matchean por nombre con el equipo
+      // 2) Extraer texto/elementos del DISEÑO con Gemini Vision
+      // (el nombre del pedido en la app suele NO coincidir con el texto del diseño,
+      //  ej: pedido "wigo" pero diseño dice "POR UN BELLO SAN MARTIN")
+      const textoDiseno = await extraerTextoDeDisenoConGemini(imgChatBase64, imgChatMime);
+
+      // 3) Listar PDFs RIP en Drive y buscar por: TEXTO del diseño + nombre del pedido (fallback)
       let pdfsCandidatos = [];
+      let busquedaDetalles = { textoDiseno, tokensBuscados: [], pdfsMatcheados: [] };
       try {
         const archivos = await driveSync.listarArchivos(driveSync.FOLDER_PDFRIP, 200);
         const pdfs = archivos.filter(a => /\.pdf$/i.test(a.name));
-        // Matchear: nombre del PDF contiene tokens del equipo
-        const equipoLower = (p.equipo || '').toLowerCase();
-        // Tokens significativos (palabras > 3 chars, sin emojis)
-        const tokens = equipoLower
-          .replace(/[^\w\sñáéíóú]/g, ' ')
-          .split(/\s+/)
-          .filter(t => t.length >= 3);
-        const candidatos = pdfs.filter(a => {
-          const nameLow = a.name.toLowerCase();
-          return tokens.some(t => nameLow.includes(t));
-        }).slice(0, 4);
 
-        // Descargar hasta 4 PDFs candidatos
-        for (const c of candidatos) {
+        // Construir tokens de busqueda:
+        // - desde textoPrincipal del diseno (PRIMARIO)
+        // - desde palabrasClaveBusqueda (PRIMARIO)
+        // - desde p.equipo (FALLBACK)
+        const tokens = new Set();
+        const STOPW = new Set(['por','el','la','los','las','un','una','de','del','y','o','en','con','para','san']);
+        // Wait — "san" NO debe ser stopword si forma parte de "san martin". Lo manejamos como conjunto:
+        STOPW.delete('san');
+        const addTokens = (texto) => {
+          if (!texto) return;
+          texto.toLowerCase()
+            .replace(/[^\w\sñáéíóú]/g, ' ')
+            .split(/\s+/)
+            .filter(t => t.length >= 3 && !STOPW.has(t))
+            .forEach(t => tokens.add(t));
+        };
+        if (textoDiseno) {
+          addTokens(textoDiseno.textoPrincipal);
+          addTokens(textoDiseno.textoSecundario);
+          (textoDiseno.palabrasClaveBusqueda || []).forEach(p => addTokens(p));
+        }
+        addTokens(p.equipo); // fallback
+        busquedaDetalles.tokensBuscados = Array.from(tokens);
+
+        // Scorear cada PDF: cuántos tokens del diseño aparecen en el nombre
+        const scoreados = pdfs.map(a => {
+          const nameLow = a.name.toLowerCase();
+          let score = 0;
+          const tokensHit = [];
+          for (const t of tokens) {
+            if (nameLow.includes(t)) { score++; tokensHit.push(t); }
+          }
+          return { archivo: a, score, tokensHit };
+        }).filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 4);
+
+        busquedaDetalles.pdfsMatcheados = scoreados.map(s => ({ nombre: s.archivo.name, score: s.score, tokensHit: s.tokensHit }));
+
+        // Descargar los top 4
+        for (const s of scoreados) {
           try {
-            const dl = await driveSync.descargarArchivoBase64(c.id);
+            const dl = await driveSync.descargarArchivoBase64(s.archivo.id);
             if (dl && dl.base64) {
               const kb = Math.round(dl.base64.length / 1024);
-              if (kb > 5000) continue; // saltar PDFs >5MB para no saturar Gemini
-              pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: c.name, kb });
+              if (kb > 5000) continue; // saltar PDFs >5MB
+              pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: s.archivo.name, kb, score: s.score });
             }
           } catch (e) { console.error('[comparar dl pdf]', e.message); }
         }
@@ -4796,6 +4885,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo },
           imagenChatFecha: imgChatFecha,
+          textoDiseno,
           error: 'no se pudo acceder a Drive: ' + eDrive.message,
         });
       }
@@ -4804,12 +4894,14 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         return json(res, 200, {
           pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
           imagenChatFecha: imgChatFecha,
+          textoDiseno,
+          busqueda: busquedaDetalles,
           pdfsCandidatos: 0,
-          veredicto: { coincide: false, razonamiento: 'no hay PDFs en Drive cuyo nombre matchee con el equipo' },
+          veredicto: { coincide: false, razonamiento: 'no hay PDFs en Drive cuyo nombre matchee con el texto del diseño ni el nombre del pedido' },
         });
       }
 
-      // 3) Comparar con Gemini Vision
+      // 4) Comparar visualmente imagen Chat vs PDFs candidatos con Gemini Vision
       const veredicto = await compararDisenosConGemini(
         { base64: imgChatBase64, mime: imgChatMime },
         pdfsCandidatos,
@@ -4819,9 +4911,11 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       return json(res, 200, {
         pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
         imagenChatFecha: imgChatFecha,
-        pdfsCandidatos: pdfsCandidatos.map(x => ({ nombre: x.nombre, kb: x.kb })),
+        textoDiseno,
+        busqueda: busquedaDetalles,
+        pdfsCandidatos: pdfsCandidatos.map(x => ({ nombre: x.nombre, kb: x.kb, score: x.score })),
         veredicto,
-        siCoincide: 'el pedido ya esta en produccion (PDF rip existe) — se puede confirmar',
+        siCoincide: 'el pedido ya esta en produccion (PDF rip existe) — confirmar',
         siNoCoincide: 'el cliente aprobo pero todavia no se ripeo en Drive',
       });
     } catch (e) {
