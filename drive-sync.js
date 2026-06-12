@@ -283,6 +283,38 @@ async function hacerArchivoPublico(fileId) {
   return await r.json();
 }
 
+// ── Descargar contenido de un archivo de Drive como base64 ─────────────
+// Devuelve { base64, mime, size, name }
+async function descargarArchivoBase64(fileId) {
+  const tokens = gmailWT._leerTokens();
+  if (!tokens || !tokens.refresh_token) throw new Error('Drive sin OAuth');
+  // metadata para mime y nombre
+  const metaUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType,size`;
+  const metaR = await fetch(metaUrl, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+  let meta;
+  if (metaR.status === 401) {
+    const { google } = await _refrescarToken();
+    const r2 = await fetch(metaUrl, { headers: { Authorization: `Bearer ${google}` } });
+    meta = await r2.json();
+  } else {
+    meta = await metaR.json();
+  }
+  // descarga
+  const dlUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const tokenActual = gmailWT._leerTokens().access_token;
+  const dlR = await fetch(dlUrl, { headers: { Authorization: `Bearer ${tokenActual}` } });
+  if (dlR.status === 401) {
+    const { google } = await _refrescarToken();
+    const r2 = await fetch(dlUrl, { headers: { Authorization: `Bearer ${google}` } });
+    if (!r2.ok) throw new Error('download fail: ' + r2.status);
+    const buf = await r2.arrayBuffer();
+    return { base64: Buffer.from(buf).toString('base64'), mime: meta.mimeType, size: meta.size, name: meta.name };
+  }
+  if (!dlR.ok) throw new Error('download fail: ' + dlR.status);
+  const buf = await dlR.arrayBuffer();
+  return { base64: Buffer.from(buf).toString('base64'), mime: meta.mimeType, size: meta.size, name: meta.name };
+}
+
 module.exports = {
   sincronizarConPedidos,
   listarArchivos,
@@ -290,6 +322,7 @@ module.exports = {
   procesarPdfRip,
   subirArchivo,
   hacerArchivoPublico,
+  descargarArchivoBase64,
   FOLDER_COREL,
   FOLDER_PDFRIP,
   FOLDER_FACTURAS,

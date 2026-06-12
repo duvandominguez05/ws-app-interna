@@ -959,6 +959,83 @@ async function analizarChatConClaude(mensajesEnriquecidos, datosPedido, analisis
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// COMPARACION VISUAL: ¿es el mismo diseño la imagen aprobada por el
+// cliente en Chatwoot vs los PDFs RIP en Drive?
+// Si SI → el pedido ya esta en produccion (alguien hizo el rip).
+// Si NO → el cliente aprobo pero todavia no se ripeo.
+//
+// Recibe: { imagenChatBase64, imagenChatMime, pdfsCandidatos: [{base64,mime,nombre}] }
+// Devuelve: { coincide, confianza, razonamiento, pdfElegido, todosScores: [...] }
+async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    if (!imgChat || !imgChat.base64) return { coincide: false, error: 'sin imagen chat' };
+    if (!pdfsCandidatos || pdfsCandidatos.length === 0) return { coincide: false, error: 'sin pdfs en Drive' };
+
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+
+    const preamble = `Sos analista visual de W&S Enterprise. Te paso DOS recursos:\n` +
+      `1) IMAGEN del diseno que la vendedora le envio al cliente para aprobacion (de Chatwoot).\n` +
+      `2) UNO O VARIOS PDFs RIP que estan en Drive (carpeta PDF_RIP — son los archivos listos para imprimir).\n\n` +
+      `Pedido a evaluar: "${nombreEquipo || 'sin nombre'}".\n\n` +
+      `Tu tarea: para CADA PDF, decime si visualmente es el MISMO diseno que la imagen aprobada.\n` +
+      `Compara: colores, escudo/logo, tipografia, distribucion, frase/texto, numeros, prenda (camisa/chaqueta/pantaloneta).\n` +
+      `Si hay match al menos en 70% de los elementos → coincide.\n\n` +
+      `Responde SOLO JSON (sin markdown):\n` +
+      `{\n` +
+      `  "coincide": true|false,  // hay al menos un pdf que coincide\n` +
+      `  "confianza": "alta"|"media"|"baja",\n` +
+      `  "pdfElegido": "nombre del pdf que coincide o vacio",\n` +
+      `  "razonamiento": "1-2 lineas explicando que elementos coinciden o no",\n` +
+      `  "scoresPorPdf": [{"nombre": "...", "coincide": true|false, "porQue": "..."}]\n` +
+      `}\n\n` +
+      `═══════════════════════════════════════════════════════════════\n` +
+      `IMAGEN APROBADA POR CLIENTE (Chatwoot):\n`;
+
+    const parts = [{ text: preamble }];
+    parts.push({ inline_data: { mime_type: imgChat.mime || 'image/jpeg', data: imgChat.base64 } });
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nPDFs RIP de Drive a comparar:\n` });
+    let idxPdf = 0;
+    for (const pdf of pdfsCandidatos.slice(0, 4)) { // max 4 PDFs por costo/peso
+      idxPdf++;
+      parts.push({ text: `\n[PDF ${idxPdf}] nombre: "${pdf.nombre}"` });
+      parts.push({ inline_data: { mime_type: pdf.mime || 'application/pdf', data: pdf.base64 } });
+    }
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
+
+    const body = {
+      contents: [{ parts }],
+      generationConfig: { temperature: 0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini-comparar] HTTP', r.status, errText.slice(0, 200));
+      return { coincide: false, error: `HTTP ${r.status}: ${errText.slice(0, 200)}` };
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      const parsed = JSON.parse(limpio);
+      parsed._meta = { pdfsComparados: idxPdf };
+      return parsed;
+    } catch {
+      return { coincide: false, _raw: limpio.slice(0, 1000), error: 'parse error' };
+    }
+  } catch (e) {
+    console.error('[gemini-comparar error]', e.message);
+    return { coincide: false, error: e.message };
+  }
+}
+
 
 // Descarga la imagen base64 desde Evolution API.
 async function descargarImagenEvolution(instance, messageKey) {
@@ -4625,6 +4702,127 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         cronologia: mensajesResumen,
         errorGemini: global._geminiUltimoError || null,
         errorClaude: global._claudeUltimoError || null,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // COMPARACION VISUAL: imagen aprobada en Chatwoot vs PDFs RIP en Drive
+  // GET /api/admin/comparar-aprobacion-vs-pdf?id=X
+  // Confirma DOBLE si el pedido esta realmente en produccion.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/comparar-aprobacion-vs-pdf')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      if (!p.telefono) return json(res, 200, { error: 'pedido sin telefono' });
+
+      // 1) Traer ultima imagen aprobada de Chatwoot (la ultima imagen que mando la VENDEDORA al cliente)
+      const contacto = await buscarContactoChatwoot(p.telefono);
+      if (!contacto?.id) return json(res, 200, { error: 'sin contacto chatwoot' });
+      const urlCw = process.env.CHATWOOT_URL;
+      const accId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiCw = process.env.CHATWOOT_API_KEY;
+      const rConv = await fetch(`${urlCw}/api/v1/accounts/${accId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': apiCw },
+      });
+      const dataConv = await rConv.json();
+      const conv = (dataConv.payload || [])[0];
+      if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
+      const rMsg = await fetch(`${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`, {
+        headers: { 'api_access_token': apiCw },
+      });
+      const dataMsg = await rMsg.json();
+      const todosMensajes = dataMsg.payload || dataMsg || [];
+
+      // Buscar la ULTIMA imagen que mando la vendedora (message_type=1)
+      let imgChatBase64 = null, imgChatMime = null, imgChatFecha = null;
+      for (let i = todosMensajes.length - 1; i >= 0; i--) {
+        const m = todosMensajes[i];
+        if (m.message_type !== 1) continue; // solo vendedora
+        const imgAtt = (m.attachments || []).find(a => a.file_type === 'image');
+        if (imgAtt) {
+          const dl = await descargarAttachmentChatwootBase64(imgAtt.data_url);
+          if (dl) {
+            imgChatBase64 = dl.base64;
+            imgChatMime = dl.mime;
+            imgChatFecha = m.created_at ? new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : null;
+            break;
+          }
+        }
+      }
+
+      if (!imgChatBase64) {
+        return json(res, 200, {
+          pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
+          error: 'sin imagen de la vendedora en el chat (no se puede comparar)',
+        });
+      }
+
+      // 2) Listar PDFs RIP en Drive y filtrar los que matchean por nombre con el equipo
+      let pdfsCandidatos = [];
+      try {
+        const archivos = await driveSync.listarArchivos(driveSync.FOLDER_PDFRIP, 200);
+        const pdfs = archivos.filter(a => /\.pdf$/i.test(a.name));
+        // Matchear: nombre del PDF contiene tokens del equipo
+        const equipoLower = (p.equipo || '').toLowerCase();
+        // Tokens significativos (palabras > 3 chars, sin emojis)
+        const tokens = equipoLower
+          .replace(/[^\w\sñáéíóú]/g, ' ')
+          .split(/\s+/)
+          .filter(t => t.length >= 3);
+        const candidatos = pdfs.filter(a => {
+          const nameLow = a.name.toLowerCase();
+          return tokens.some(t => nameLow.includes(t));
+        }).slice(0, 4);
+
+        // Descargar hasta 4 PDFs candidatos
+        for (const c of candidatos) {
+          try {
+            const dl = await driveSync.descargarArchivoBase64(c.id);
+            if (dl && dl.base64) {
+              const kb = Math.round(dl.base64.length / 1024);
+              if (kb > 5000) continue; // saltar PDFs >5MB para no saturar Gemini
+              pdfsCandidatos.push({ base64: dl.base64, mime: dl.mime || 'application/pdf', nombre: c.name, kb });
+            }
+          } catch (e) { console.error('[comparar dl pdf]', e.message); }
+        }
+      } catch (eDrive) {
+        return json(res, 200, {
+          pedido: { id: p.id, equipo: p.equipo },
+          imagenChatFecha: imgChatFecha,
+          error: 'no se pudo acceder a Drive: ' + eDrive.message,
+        });
+      }
+
+      if (pdfsCandidatos.length === 0) {
+        return json(res, 200, {
+          pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado },
+          imagenChatFecha: imgChatFecha,
+          pdfsCandidatos: 0,
+          veredicto: { coincide: false, razonamiento: 'no hay PDFs en Drive cuyo nombre matchee con el equipo' },
+        });
+      }
+
+      // 3) Comparar con Gemini Vision
+      const veredicto = await compararDisenosConGemini(
+        { base64: imgChatBase64, mime: imgChatMime },
+        pdfsCandidatos,
+        p.equipo,
+      );
+
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, estado: p.estado, abonado: p.abonado || 0 },
+        imagenChatFecha: imgChatFecha,
+        pdfsCandidatos: pdfsCandidatos.map(x => ({ nombre: x.nombre, kb: x.kb })),
+        veredicto,
+        siCoincide: 'el pedido ya esta en produccion (PDF rip existe) — se puede confirmar',
+        siNoCoincide: 'el cliente aprobo pero todavia no se ripeo en Drive',
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
