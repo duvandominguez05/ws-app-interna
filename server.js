@@ -5013,6 +5013,50 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
+  // ── CRON SILENCIOSO: probar / on / off / status / saldo ───────────
+  if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-probar') {
+    try {
+      const r = await ejecutarCronSilencioso(true);
+      return json(res, 200, r);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-on') {
+    const cfg = _leerConfigCron();
+    cfg.activo = true;
+    cfg.ultimaModificacion = new Date().toISOString();
+    _guardarConfigCron(cfg);
+    return json(res, 200, { ok: true, activo: true, mensaje: 'Cron silencioso ACTIVO. Correrá a las 10 PM Bogotá cada día.' });
+  }
+  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-off') {
+    const cfg = _leerConfigCron();
+    cfg.activo = false;
+    cfg.ultimaModificacion = new Date().toISOString();
+    _guardarConfigCron(cfg);
+    return json(res, 200, { ok: true, activo: false, mensaje: 'Cron silencioso DESACTIVADO.' });
+  }
+  if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-status') {
+    const cfg = _leerConfigCron();
+    const gasto = _leerGasto();
+    let hist = [];
+    try { hist = JSON.parse(fs.readFileSync(CRON_SILENCIOSO_HISTORIAL_FILE, 'utf8')); } catch {}
+    return json(res, 200, {
+      activo: cfg.activo,
+      ultimaModificacion: cfg.ultimaModificacion,
+      gastoMesActual: _gastoMesActual(),
+      gastoDiaActual: _gastoDiaActual(),
+      limiteMensual: LIMITE_MES_USD,
+      limiteDiario: LIMITE_DIA_USD,
+      gastoTotal: gasto,
+      historial: hist.slice(0, 50),
+    });
+  }
+  if (req.method === 'GET' && req.url === '/api/admin/saldo-claude') {
+    const s = await verificarSaldoClaude();
+    return json(res, 200, s);
+  }
+
   // DEBUG: ejecutar cualquier query Gmail
   if (req.method === 'GET' && req.url.startsWith('/api/admin/gmail-query')) {
     try {
@@ -10452,6 +10496,411 @@ setInterval(cron8pmTick, 60 * 1000);
 // Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
 setTimeout(cron8pmTick, 30 * 1000);
 console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON SILENCIOSO 10 PM Bogotá — revisa TODOS los pedidos activos y los
+// avanza segun: chat (Gemini+Claude) + PDF Drive + WeTransfer.
+// CERO WhatsApps a vendedoras. Solo cambia estados.
+// Notifica al jefe SOLO 1 vez al día (resumen) y si saldo bajo.
+//
+// Endpoints control:
+//   GET /api/admin/cron-silencioso-probar  → corre 1 vez sin mover
+//   POST /api/admin/cron-silencioso-on     → activa
+//   POST /api/admin/cron-silencioso-off    → desactiva
+//   GET /api/admin/cron-silencioso-status  → estado + gasto + historial
+// ═══════════════════════════════════════════════════════════════════
+const CRON_SILENCIOSO_CONFIG_FILE = path.join(__dirname, 'data', 'cron_silencioso_config.json');
+const CRON_SILENCIOSO_HISTORIAL_FILE = path.join(__dirname, 'data', 'cron_silencioso_historial.json');
+const CRON_SILENCIOSO_GASTO_FILE = path.join(__dirname, 'data', 'cron_silencioso_gasto.json');
+const CRON_SILENCIOSO_ULTIMO_FILE = path.join(__dirname, 'data', 'cron_silencioso_ultimo.json');
+
+// Costos aprox por llamada (USD)
+const COSTO_GEMINI_FLASH = 0.002; // analizar chat + clasificar img + comparar PDFs ~$0.002
+const COSTO_CLAUDE_SONNET = 0.018; // ~$0.018 por chat
+const LIMITE_MES_USD = 3.00; // freno duro
+const LIMITE_DIA_USD = 0.50; // freno duro
+const AVISO_PORCENTAJE = 0.8; // 80% del limite mensual → notificacion
+
+function _leerConfigCron() {
+  try { return JSON.parse(fs.readFileSync(CRON_SILENCIOSO_CONFIG_FILE, 'utf8')); }
+  catch { return { activo: false, ultimaModificacion: null }; }
+}
+function _guardarConfigCron(cfg) {
+  try { fs.mkdirSync(path.dirname(CRON_SILENCIOSO_CONFIG_FILE), { recursive: true }); } catch {}
+  fs.writeFileSync(CRON_SILENCIOSO_CONFIG_FILE, JSON.stringify(cfg, null, 2));
+}
+function _leerGasto() {
+  try { return JSON.parse(fs.readFileSync(CRON_SILENCIOSO_GASTO_FILE, 'utf8')); }
+  catch { return { mes: {}, dia: {}, avisado80: false, ultimaApiError: null }; }
+}
+function _guardarGasto(g) {
+  try { fs.mkdirSync(path.dirname(CRON_SILENCIOSO_GASTO_FILE), { recursive: true }); } catch {}
+  fs.writeFileSync(CRON_SILENCIOSO_GASTO_FILE, JSON.stringify(g, null, 2));
+}
+function _registrarGasto(usd) {
+  const g = _leerGasto();
+  const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+  const mesActual = hoyBogota.slice(0, 7) || hoyBogota.split('/').slice(1).join('-');
+  // Formato mes: YYYY-MM o DD/MM/YYYY → tomar mes
+  const fecha = new Date();
+  const mesKey = `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`;
+  g.mes[mesKey] = (g.mes[mesKey] || 0) + usd;
+  g.dia[hoyBogota] = (g.dia[hoyBogota] || 0) + usd;
+  _guardarGasto(g);
+  return g;
+}
+function _gastoMesActual() {
+  const g = _leerGasto();
+  const fecha = new Date();
+  const mesKey = `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}`;
+  return g.mes[mesKey] || 0;
+}
+function _gastoDiaActual() {
+  const g = _leerGasto();
+  const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+  return g.dia[hoyBogota] || 0;
+}
+function _agregarHistorial(entrada) {
+  let hist = [];
+  try { hist = JSON.parse(fs.readFileSync(CRON_SILENCIOSO_HISTORIAL_FILE, 'utf8')); } catch {}
+  hist.unshift({ ts: new Date().toISOString(), ...entrada });
+  hist = hist.slice(0, 500); // max 500
+  try { fs.mkdirSync(path.dirname(CRON_SILENCIOSO_HISTORIAL_FILE), { recursive: true }); } catch {}
+  fs.writeFileSync(CRON_SILENCIOSO_HISTORIAL_FILE, JSON.stringify(hist, null, 2));
+}
+function _yaCorrioHoy() {
+  try {
+    if (!fs.existsSync(CRON_SILENCIOSO_ULTIMO_FILE)) return false;
+    const ult = JSON.parse(fs.readFileSync(CRON_SILENCIOSO_ULTIMO_FILE, 'utf8'));
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    return ult.fecha === hoyBogota;
+  } catch { return false; }
+}
+function _marcarCorrioHoy(resumen) {
+  try {
+    fs.mkdirSync(path.dirname(CRON_SILENCIOSO_ULTIMO_FILE), { recursive: true });
+    const hoyBogota = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    fs.writeFileSync(CRON_SILENCIOSO_ULTIMO_FILE, JSON.stringify({ fecha: hoyBogota, ts: Date.now(), resumen }));
+  } catch (e) { console.error('[cron-silencioso] marcar:', e.message); }
+}
+
+// Lista de clientes catalogo / mayoristas (saltar)
+const CLIENTES_CATALOGO_PATRONES = [
+  /mayorista/i,
+  /catalogo/i,
+  /almacen/i,
+];
+function esClienteCatalogo(equipo) {
+  return CLIENTES_CATALOGO_PATRONES.some(rx => rx.test(equipo || ''));
+}
+
+// Determina el siguiente estado dado el analisis chat + PDF + WeTransfer
+function decidirSiguienteEstado(pedido, analisisChat, comparacionPdf, wetransfer) {
+  // Reglas en orden:
+  // 1. Si calandra descargó PDF → enviado-calandra (alta confianza)
+  if (wetransfer?.estadoCalandra === 'descargado-por-calandra') {
+    return { estado: 'enviado-calandra', confianza: 'alta', razon: 'WeTransfer descargado por calandra' };
+  }
+  if (wetransfer?.estadoCalandra === 'enviado-a-calandra') {
+    return { estado: 'enviado-calandra', confianza: 'alta', razon: 'WeTransfer enviado a sublimarte' };
+  }
+  // 2. Si chat dice entregado (Claude/Gemini) con alta confianza
+  const chatEstado = analisisChat?.veredictoClaude?.estadoVeredicto || analisisChat?.analisisGemini?.estadoReal;
+  const chatConf = analisisChat?.veredictoClaude?.confianza || analisisChat?.analisisGemini?.confianza;
+  if (chatEstado === 'entregado' && chatConf === 'alta') {
+    return { estado: 'enviado-final', confianza: 'alta', razon: 'Chat indica entregado' };
+  }
+  // 3. Si PDF rip existe en Drive con match visual → confirmado
+  if (comparacionPdf?.veredicto?.coincide === true && comparacionPdf?.veredicto?.confianza === 'alta') {
+    return { estado: 'confirmado', confianza: 'alta', razon: `PDF rip ${comparacionPdf.veredicto.pdfElegido} match` };
+  }
+  // 4. Si chat dice listo-para-entregar con alta confianza
+  if (chatEstado === 'listo-para-entregar' && chatConf === 'alta') {
+    return { estado: 'listo', confianza: 'alta', razon: 'Chat indica produccion terminada' };
+  }
+  // 5. Si chat dice aprobado-listo-calandra con alta confianza + hay imagen del diseño
+  if (chatEstado === 'aprobado-listo-calandra' && chatConf === 'alta' && comparacionPdf?.imagenChatQuien === 'vendedora') {
+    return { estado: 'confirmado', confianza: 'alta', razon: 'Cliente aprobo diseno (vendedora envio imagen)' };
+  }
+  // 6. Si chat dice en-correcciones → mantener en hacer-diseno
+  if (chatEstado === 'en-correcciones') {
+    return { estado: pedido.estado, confianza: 'alta', razon: 'cliente pidio cambios → no mover' };
+  }
+  // Sin certeza
+  return null;
+}
+
+async function ejecutarCronSilencioso(modoPrueba = false) {
+  const resultado = {
+    inicio: new Date().toISOString(),
+    procesados: 0,
+    saltados: 0,
+    movidos: [],
+    sinCambios: [],
+    dudosos: [],
+    errores: [],
+    costoEstimado: 0,
+    modoPrueba,
+  };
+
+  // Verificar frenos
+  if (!modoPrueba) {
+    const gastoMes = _gastoMesActual();
+    const gastoDia = _gastoDiaActual();
+    if (gastoMes >= LIMITE_MES_USD) {
+      resultado.errores.push(`freno: gasto del mes \$${gastoMes.toFixed(2)} >= \$${LIMITE_MES_USD}`);
+      return resultado;
+    }
+    if (gastoDia >= LIMITE_DIA_USD) {
+      resultado.errores.push(`freno: gasto del dia \$${gastoDia.toFixed(2)} >= \$${LIMITE_DIA_USD}`);
+      return resultado;
+    }
+  }
+
+  const pedidos = leerPedidos();
+  // Solo procesar pedidos ACTIVOS (no enviado-final, archivado, cancelado, bandeja)
+  const ACTIVOS = ['hacer-diseno', 'confirmado', 'enviado-calandra', 'llego-impresion', 'corte', 'costura', 'en-satelite', 'calidad', 'listo'];
+  const candidatos = pedidos.filter(p => ACTIVOS.includes(p.estado) && p.telefono);
+
+  for (const p of candidatos) {
+    resultado.procesados++;
+    // Saltar clientes catalogo
+    if (esClienteCatalogo(p.equipo)) {
+      resultado.saltados++;
+      resultado.sinCambios.push({ id: p.id, equipo: p.equipo, razon: 'cliente catalogo' });
+      continue;
+    }
+    // Saltar pedidos > 30 dias sin abono (probable consulta abandonada)
+    if (p.creadoEn) {
+      const dias = (Date.now() - new Date(p.creadoEn).getTime()) / 86400000;
+      if (dias > 30 && (p.abonado || 0) === 0) {
+        resultado.saltados++;
+        resultado.sinCambios.push({ id: p.id, equipo: p.equipo, razon: '>30d sin abono' });
+        continue;
+      }
+    }
+
+    try {
+      // 1. Analizar chat
+      const analisisChat = await (async () => {
+        try {
+          // Inline: usar helper que ya tenemos
+          // Para simplificar, no usamos fetch interno — reproducimos la lógica clave aquí
+          // Pero como el codigo del endpoint usa muchas funciones, vamos a llamarlo via fetch local
+          const r = await fetch(`http://localhost:${PORT || process.env.PORT || 8080}/api/admin/analizar-chat-completo?id=${p.id}&limit=40`);
+          if (!r.ok) return null;
+          return await r.json();
+        } catch (e) { return null; }
+      })();
+      const usoClaude = !!analisisChat?.veredictoClaude;
+      resultado.costoEstimado += COSTO_GEMINI_FLASH + (usoClaude ? COSTO_CLAUDE_SONNET : 0);
+
+      // 2. Comparar PDF (solo si chat sugiere algo)
+      let comparacionPdf = null;
+      const chatEstado = analisisChat?.veredictoClaude?.estadoVeredicto || analisisChat?.analisisGemini?.estadoReal;
+      if (chatEstado && chatEstado !== 'en-correcciones' && chatEstado !== 'sin-imagen-aun') {
+        try {
+          const r = await fetch(`http://localhost:${PORT || process.env.PORT || 8080}/api/admin/comparar-aprobacion-vs-pdf?id=${p.id}`);
+          if (r.ok) comparacionPdf = await r.json();
+        } catch {}
+        resultado.costoEstimado += COSTO_GEMINI_FLASH;
+      }
+
+      // 3. Verificar WeTransfer si tenemos texto del diseño
+      let wetransfer = null;
+      const textoDis = comparacionPdf?.textoDiseno?.textoPrincipal;
+      if (textoDis) {
+        try {
+          const r = await fetch(`http://localhost:${PORT || process.env.PORT || 8080}/api/admin/verificar-envio-calandra?id=${p.id}&texto=${encodeURIComponent(textoDis)}&dias=60`);
+          if (r.ok) wetransfer = (await r.json()).veredicto;
+        } catch {}
+      }
+
+      // 4. Decidir
+      const decision = decidirSiguienteEstado(p, analisisChat, comparacionPdf, wetransfer);
+
+      if (!decision || decision.confianza !== 'alta') {
+        resultado.dudosos.push({
+          id: p.id, equipo: p.equipo,
+          chat: chatEstado, chatConf: analisisChat?.analisisGemini?.confianza,
+          pdf: comparacionPdf?.veredicto?.coincide, wt: wetransfer?.estadoCalandra,
+          razon: 'confianza no alta o sin decision',
+        });
+        continue;
+      }
+      if (decision.estado === p.estado) {
+        resultado.sinCambios.push({ id: p.id, equipo: p.equipo, razon: decision.razon });
+        continue;
+      }
+
+      // 5. Mover (solo si NO es modo prueba)
+      if (!modoPrueba) {
+        try {
+          const r = await fetch(`http://localhost:${PORT || process.env.PORT || 8080}/api/pedidos/${p.id}/avanzar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: decision.estado }),
+          });
+          if (!r.ok) throw new Error('avanzar HTTP ' + r.status);
+          _agregarHistorial({
+            pedidoId: p.id, equipo: p.equipo,
+            de: p.estado, a: decision.estado,
+            razon: decision.razon,
+            confianza: decision.confianza,
+          });
+        } catch (e) {
+          resultado.errores.push({ id: p.id, error: e.message });
+          continue;
+        }
+      }
+      resultado.movidos.push({
+        id: p.id, equipo: p.equipo,
+        de: p.estado, a: decision.estado,
+        razon: decision.razon,
+      });
+
+    } catch (e) {
+      resultado.errores.push({ id: p.id, error: e.message });
+    }
+  }
+
+  // Registrar gasto (solo si no es modo prueba)
+  if (!modoPrueba && resultado.costoEstimado > 0) {
+    _registrarGasto(resultado.costoEstimado);
+  }
+  resultado.fin = new Date().toISOString();
+  resultado.gastoMesAcumulado = _gastoMesActual();
+  resultado.gastoDiaActual = _gastoDiaActual();
+  return resultado;
+}
+
+async function cronSilenciosoTick() {
+  try {
+    const cfg = _leerConfigCron();
+    if (!cfg.activo) return;
+    const hora = _huelaPMBogota();
+    if (hora !== 22) return; // 10 PM
+    if (_yaCorrioHoy()) return;
+    console.log('[cron-silencioso] disparando ejecucion 10 PM...');
+    const resultado = await ejecutarCronSilencioso(false);
+    _marcarCorrioHoy({
+      procesados: resultado.procesados,
+      movidos: resultado.movidos.length,
+      dudosos: resultado.dudosos.length,
+      gastoEstimado: resultado.costoEstimado,
+    });
+
+    // Notificacion al jefe (1 sola, soloJefe)
+    const lineas = [];
+    lineas.push(`🤖 *Cron silencioso* — ${new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}`);
+    lineas.push(`Procesados: ${resultado.procesados} | Movidos: ${resultado.movidos.length} | Dudosos: ${resultado.dudosos.length}`);
+    if (resultado.movidos.length) {
+      lineas.push('');
+      lineas.push('*Movidos:*');
+      resultado.movidos.slice(0, 10).forEach(m => lineas.push(`• #${m.id} ${m.equipo}: ${m.de} → ${m.a}`));
+    }
+    lineas.push('');
+    lineas.push(`💰 Gasto día: \$${resultado.gastoDiaActual.toFixed(3)} | mes: \$${resultado.gastoMesAcumulado.toFixed(3)} / \$${LIMITE_MES_USD}`);
+
+    // Aviso 80% del presupuesto mensual
+    const g = _leerGasto();
+    if (resultado.gastoMesAcumulado >= LIMITE_MES_USD * AVISO_PORCENTAJE && !g.avisado80) {
+      lineas.push('');
+      lineas.push(`⚠️ *Atención*: gasto del mes llegó al ${Math.round(AVISO_PORCENTAJE*100)}% (\$${resultado.gastoMesAcumulado.toFixed(2)}/\$${LIMITE_MES_USD}). El cron se apagará solo al pasarse del límite.`);
+      g.avisado80 = true; _guardarGasto(g);
+    }
+    if (resultado.gastoMesAcumulado >= LIMITE_MES_USD) {
+      lineas.push('');
+      lineas.push(`🛑 *FRENO*: pasaste el límite mensual. Cron PAUSADO automático. Reactivar en /api/admin/cron-silencioso-on cuando quieras.`);
+      cfg.activo = false; _guardarConfigCron(cfg);
+    }
+
+    try {
+      if (typeof notificarJefes === 'function') {
+        await notificarJefes(lineas.join('\n'), { soloJefe: true, dedupeKey: `cron-silencioso-${new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota'})}` });
+      }
+    } catch (eN) { console.error('[cron-silencioso notif]', eN.message); }
+  } catch (e) {
+    console.error('[cron-silencioso error]', e.message);
+  }
+}
+// Tick cada minuto buscando la hora 10 PM
+setInterval(cronSilenciosoTick, 60 * 1000);
+console.log('[cron-silencioso] tick instalado — disparara a las 22 (10 PM) Bogota si esta activado');
+
+// ═══════════════════════════════════════════════════════════════════
+// CHECK SALDO CLAUDE — Anthropic NO da saldo via API, pero podemos:
+//   1) Hacer una llamada minima (~$0.00002) y ver si responde
+//   2) Si error 400 con "credit balance too low" → saldo agotado
+//   3) Notificar al jefe si esta agotado
+// Endpoint: GET /api/admin/saldo-claude
+// ═══════════════════════════════════════════════════════════════════
+async function verificarSaldoClaude() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, error: 'sin API key configurada' };
+  try {
+    const body = {
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
+      max_tokens: 5,
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      return { ok: true, saldoActivo: true, modeloOk: data.model, mensaje: 'API responde. No hay forma de saber saldo exacto via API — solo en console.anthropic.com/settings/billing.' };
+    }
+    const errText = await r.text();
+    const lowBalance = /credit balance.*too low/i.test(errText);
+    return {
+      ok: false,
+      saldoActivo: !lowBalance,
+      httpStatus: r.status,
+      error: errText.slice(0, 300),
+      saldoAgotado: lowBalance,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Tick cada hora chequea saldo. Si esta agotado y no se notifico aun → notifica 1 vez.
+async function tickSaldoClaude() {
+  try {
+    const status = await verificarSaldoClaude();
+    const g = _leerGasto();
+    if (status.saldoAgotado) {
+      if (!g.notificadoSaldoAgotado) {
+        try {
+          if (typeof notificarJefes === 'function') {
+            await notificarJefes(
+              `🚨 *Créditos Claude AGOTADOS*\n\nLa API de Anthropic rechazó la llamada por saldo bajo.\n\n` +
+              `→ Recargar en console.anthropic.com/settings/billing\n` +
+              `→ El cron silencioso seguirá funcionando con Gemini solo (sin escalado a Claude) mientras tanto.`,
+              { soloJefe: true, dedupeKey: `claude-saldo-agotado-${new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota'})}` }
+            );
+          }
+        } catch {}
+        g.notificadoSaldoAgotado = true;
+        _guardarGasto(g);
+      }
+    } else if (status.saldoActivo) {
+      if (g.notificadoSaldoAgotado) {
+        // Se recargó: limpiar flag
+        g.notificadoSaldoAgotado = false;
+        _guardarGasto(g);
+      }
+    }
+  } catch (e) { console.error('[tick-saldo]', e.message); }
+}
+// Cada 6 horas
+setInterval(tickSaldoClaude, 6 * 60 * 60 * 1000);
+// Primer chequeo 2 min despues de arrancar
+setTimeout(tickSaldoClaude, 2 * 60 * 1000);
+console.log('[saldo-claude] tick instalado — chequea cada 6 hs');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON 7 PM — snapshot de "Ventas por confirmar" al jefe (panel WA)
