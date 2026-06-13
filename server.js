@@ -5286,6 +5286,44 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     });
   }
 
+  // DEBUG: listar TODAS las conversaciones de un contacto en Chatwoot
+  // GET /api/admin/debug-conversaciones?id=X
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-conversaciones')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      const contacto = await buscarContactoChatwoot(p.telefono);
+      if (!contacto?.id) return json(res, 200, { error: 'sin contacto' });
+      const url = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiKey = process.env.CHATWOOT_API_KEY;
+      const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const data = await r.json();
+      const convs = data.payload || [];
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono },
+        contactoId: contacto.id,
+        totalConversaciones: convs.length,
+        conversaciones: convs.map(c => ({
+          id: c.id,
+          status: c.status,
+          inbox_id: c.inbox_id,
+          labels: c.labels || [],
+          last_activity_at: c.last_activity_at ? new Date(c.last_activity_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+          created_at: c.created_at ? new Date(c.created_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+          assignee_id: c.meta?.assignee?.id || null,
+          team_id: c.team_id,
+          messages_count: c.messages_count || (c.messages||[]).length || 0,
+        })),
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: ejecutar cualquier query Gmail
   if (req.method === 'GET' && req.url.startsWith('/api/admin/gmail-query')) {
     try {
