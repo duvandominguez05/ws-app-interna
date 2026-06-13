@@ -5318,6 +5318,32 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // DEBUG: ver configuracion Chatwoot dentro de Evolution para una instancia
+  // GET /api/admin/debug-evolution-chatwoot?instance=ws-ney
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-chatwoot')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const instance = u.searchParams.get('instance') || 'ws-ney';
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const intentos = {};
+      const endpoints = [
+        `/chatwoot/find/${instance}`,
+        `/chatwoot/findChatwoot/${instance}`,
+        `/integrations/chatwoot/${instance}`,
+        `/instance/fetchInstances?instanceName=${instance}`,
+      ];
+      for (const ep of endpoints) {
+        try {
+          const r = await fetch(`${evoUrl}${ep}`, { headers: { apikey: evoKey } });
+          const raw = await r.text();
+          intentos[ep] = { status: r.status, sample: raw.slice(0, 500) };
+        } catch (e) { intentos[ep] = { error: e.message }; }
+      }
+      return json(res, 200, { instance, intentos });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: ver configuracion de inboxes de Chatwoot
   // GET /api/admin/debug-chatwoot-inboxes
   if (req.method === 'GET' && req.url === '/api/admin/debug-chatwoot-inboxes') {
