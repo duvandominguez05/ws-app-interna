@@ -5013,11 +5013,42 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
-  // ── CRON SILENCIOSO: probar / on / off / status / saldo ───────────
+  // ── CRON SILENCIOSO: probar / ejecutar-ahora / on / off / status / saldo ───────────
   if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-probar') {
     try {
       const r = await ejecutarCronSilencioso(true);
       return json(res, 200, r);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-ejecutar-ahora') {
+    try {
+      // Ejecutar el cron REAL ahora mismo (no esperar a las 10 PM)
+      const resultado = await ejecutarCronSilencioso(false);
+      _marcarCorrioHoy({
+        procesados: resultado.procesados,
+        movidos: resultado.movidos.length,
+        dudosos: resultado.dudosos.length,
+        gastoEstimado: resultado.costoEstimado,
+        ejecucionManual: true,
+      });
+      // Notificacion WA al jefe (igual que el tick automatico)
+      try {
+        if (typeof notificarJefes === 'function' && resultado.movidos.length > 0) {
+          const lineas = [
+            `🤖 *Cron silencioso (manual)* — ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`,
+            `Procesados: ${resultado.procesados} | Movidos: ${resultado.movidos.length} | Dudosos: ${resultado.dudosos.length}`,
+            '',
+            '*Movidos:*',
+            ...resultado.movidos.slice(0, 10).map(m => `• #${m.id} ${m.equipo}: ${m.de} → ${m.a}`),
+            '',
+            `💰 Gasto día: \$${resultado.gastoDiaActual.toFixed(3)} | mes: \$${resultado.gastoMesAcumulado.toFixed(3)} / \$${LIMITE_MES_USD}`,
+          ];
+          await notificarJefes(lineas.join('\n'), { soloJefe: true, dedupeKey: `cron-silencioso-manual-${Date.now()}` });
+        }
+      } catch (eN) { console.error('[cron-manual notif]', eN.message); }
+      return json(res, 200, resultado);
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
