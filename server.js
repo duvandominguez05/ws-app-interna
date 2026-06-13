@@ -7858,19 +7858,11 @@ setInterval(cargar, 15000);
                     `📝 PENDIENTE: factura #${resultadoApi.id} (${vendedora})`;
                   notificarWhatsappTrabajoFamilia(msgWA).catch(()=>{});
 
-                  // WA INDIVIDUAL a la vendedora — recordatorio de factura + nombre equipo
+                  // WA INDIVIDUAL a la vendedora — corto
                   try {
                     const msgVendedora =
-                      `🎉 Venta #${resultadoApi.id} confirmada\n` +
-                      `👤 Cliente: ${nombreCliente}\n` +
-                      `📞 ${telBonito}\n\n` +
-                      `📝 PRÓXIMOS PASOS:\n` +
-                      `1️⃣ Pregúntale al cliente por TEXTO:\n` +
-                      `   "¿Cómo se llama tu equipo?"\n` +
-                      `   (yo leo el chat y extraigo el nombre solo)\n\n` +
-                      `2️⃣ Emite la factura del pedido #${resultadoApi.id} desde la app.\n` +
-                      `   La factura debe ir al chat de ${telBonito}.\n\n` +
-                      `📅 A las 8 PM te aviso si quedan facturas o nombres pendientes.`;
+                      `🎉 Venta #${resultadoApi.id} — ${nombreCliente}\n` +
+                      `👉 Pregunta al cliente el nombre del equipo + emite factura.`;
                     await notificarWAVendedora(vendedora, msgVendedora);
                   } catch (eFact) { console.error('[wa-vendedora venta-confirmada]', eFact.message); }
 
@@ -8191,20 +8183,9 @@ setInterval(cargar, 15000);
                       // Resumen del dia para motivar (este pago YA está contado en sinSticker)
                       const r = resumenDiaVendedora(vendedora);
                       const totalDiaTxt = r.totalMonto > 0 ? _formatearMontoCOP(r.totalMonto) : '$0';
-                      const msg = `💸 *Pago detectado* ${montoTxt}${bancoTxt}\n\n` +
-                        `👤 ${nombreCliente || telefonoCliente}\n` +
-                        `📱 ${telefonoCliente}\n` +
+                      const msg = `💸 Pago ${montoTxt}${bancoTxt} — ${nombreCliente || telefonoCliente}\n` +
                         pedidoTxt +
-                        `\n📊 *TU DIA HASTA AHORA:*\n` +
-                        `✅ ${r.conSticker} con sticker\n` +
-                        `⚠️ ${r.sinSticker} SIN sticker (este incluido)\n` +
-                        `💰 Detectado: ${totalDiaTxt}\n\n` +
-                        `👉 Para oficializar esta venta:\n` +
-                        `1️⃣ Manda el sticker 💰 al chat de *${telefonoCliente}*\n` +
-                        `   ⚠️ Solo a ESE chat — si lo mandas a otro número\n` +
-                        `   o a un grupo, el pedido NO queda conectado.\n` +
-                        `2️⃣ Emite la factura del pedido desde la app.\n\n` +
-                        `📅 A las 8 PM te aviso si quedaron pendientes.`;
+                        `👉 Pasa el sticker 💰 al chat de ${telefonoCliente} para oficializar.`;
                       await notificarWAVendedora(vendedora, msg);
                     } catch (eWa) {
                       console.error('[comprobante wa vendedora]', eWa.message);
@@ -10581,71 +10562,31 @@ async function enviarResumenComprobantes() {
       ...Object.keys(pedidosPorVend),
     ]);
 
-    // ── Mandar WA detallado a cada vendedora ──
+    // ── Mandar WA RESUMEN CORTO a cada vendedora que tuvo actividad ──
     for (const vendedora of vendedorasActivas) {
       const peds = pedidosPorVend[vendedora] || [];
       const compsSin = compSinStickerPorVend[vendedora] || [];
       const dia = resumenDiaVendedora(vendedora);
-
-      let texto = `📊 *${vendedora.toUpperCase()} — Resumen del día*\n`;
-      texto += `─────────────────────────────\n\n`;
-
-      // SECCIÓN 1: Pedidos del día con estado factura
-      if (peds.length) {
-        texto += `📦 *TUS PEDIDOS DEL DÍA:* ${peds.length}\n\n`;
-        peds.forEach(p => {
-          const tieneFact = pedidoTieneFactura(p.id);
-          const factIcono = tieneFact ? '✅' : '❌ PENDIENTE';
-          const equipo = p.equipo || '(sin nombre)';
-          const tel = p.telefono || '?';
-          texto += `  ${tieneFact ? '✅' : '⚠️'} #${p.id} ${equipo}\n`;
-          texto += `     📞 ${tel}\n`;
-          texto += `     sticker ✅   factura ${factIcono}\n\n`;
-        });
-      }
-
-      // SECCIÓN 2: Comprobantes sin sticker
-      if (compsSin.length) {
-        texto += `⚠️ *COMPROBANTES SIN STICKER:* ${compsSin.length}\n\n`;
-        compsSin.forEach(r => {
-          const hora = new Date(r.ts).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit' });
-          const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
-          const banco = r.banco || 'banco';
-          const tel = r.telefono || '?';
-          texto += `  💸 ${monto} a las ${hora} por ${banco}\n`;
-          texto += `     de ${tel}\n`;
-          texto += `     → Pasa el sticker a ESE chat\n\n`;
-        });
-      }
-
-      // SECCIÓN 3: Lista de pendientes consolidada
       const facturasPend = peds.filter(p => !pedidoTieneFactura(p.id));
-      const stickersPend = compsSin;
-      if (facturasPend.length || stickersPend.length) {
-        texto += `─────────────────────────────\n`;
-        texto += `📋 *TUS PENDIENTES PARA MAÑANA:*\n\n`;
-        let n = 1;
-        for (const p of facturasPend) {
-          texto += `${n++}. Emite factura del #${p.id} (${p.equipo || p.telefono})\n`;
-        }
-        for (const r of stickersPend) {
-          const monto = r.monto ? _formatearMontoCOP(r.monto) : '?';
-          texto += `${n++}. Sticker a ${r.telefono} (pago ${monto})\n`;
-        }
-      } else if (peds.length || compsSin.length) {
-        texto += `─────────────────────────────\n`;
-        texto += `🎉 ¡Día completo! Todo con sticker + factura.\n`;
-      } else {
-        // Vendedora SIN actividad hoy — mensaje suave para que sepa
-        // que el sistema sigue vivo y a la espera.
-        texto += `─────────────────────────────\n`;
-        texto += `🌙 Hoy no registramos ventas tuyas.\n\n`;
-        texto += `Si vendiste y no aparece:\n`;
-        texto += `  • Revisá que hayas pasado el sticker 💰 al chat del cliente\n`;
-        texto += `  • Verificá que el cliente haya pagado y mandado comprobante\n`;
+
+      // ANTI-SPAM: si no hubo actividad y no hay pendientes, NO mandar.
+      if (peds.length === 0 && compsSin.length === 0 && facturasPend.length === 0) {
+        console.log(`[resumen-8pm] SALTADO ${vendedora}: sin actividad`);
+        continue;
       }
 
-      texto += `\n💰 Total vendido hoy: ${_formatearMontoCOP(dia.totalMonto)}`;
+      // Resumen ULTRA CORTO — fácil de leer al final del día
+      let texto = `📊 ${vendedora.toUpperCase()} — Resumen del día\n`;
+      texto += `✅ ${peds.length} ventas | 💰 ${_formatearMontoCOP(dia.totalMonto)}\n`;
+      if (compsSin.length) {
+        texto += `⚠️ ${compsSin.length} pago(s) SIN sticker — ponlos\n`;
+      }
+      if (facturasPend.length) {
+        texto += `🧾 ${facturasPend.length} factura(s) pendientes: #${facturasPend.map(p => p.id).join(', #')}\n`;
+      }
+      if (compsSin.length === 0 && facturasPend.length === 0) {
+        texto += `🎉 ¡Día completo!`;
+      }
 
       try { await notificarWAVendedora(vendedora, texto); } catch (e) { console.error('[resumen-8pm wa]', e.message); }
       console.log(`[resumen-8pm] enviado a ${vendedora}: ${peds.length} pedidos / ${compsSin.length} sin sticker`);
@@ -12510,14 +12451,11 @@ async function cronRecordatorioFacturaTick() {
         }
       } catch (eF) { console.error('[cron-fact] leerFacturasPorPedido', eF.message); continue; }
 
-      // Mandar recordatorio a la vendedora
+      // Mandar recordatorio a la vendedora (corto, 1 sola vez)
       try {
         const equipoTxt = p.equipo || p.cliente || `Pedido #${p.id}`;
         const totalTxt = p.total ? ` (${_formatearMontoCOP(p.total)})` : '';
-        const msg = `🧾 *Recordatorio: falta factura*\n\n` +
-          `Hace +24h registramos el pedido *${equipoTxt}*${totalTxt}.\n` +
-          `Aún no tiene factura asociada.\n\n` +
-          `👉 Genera la factura desde la app para que quede oficial.`;
+        const msg = `🧾 Falta factura del pedido *${equipoTxt}*${totalTxt} (+24h sin emitirse).`;
         await notificarWAVendedora(p.vendedora, msg);
         p.recordatorioFacturaEnviado = true;
         p.recordatorioFacturaFecha = new Date().toISOString();
@@ -13053,9 +12991,12 @@ async function cronDetectarAprobacionTick() {
     }
   } catch (e) { console.error('[detectar-aprobacion]', e.message); }
 }
-setInterval(cronDetectarAprobacionTick, 8 * 60 * 60 * 1000); // cada 8h
-setTimeout(cronDetectarAprobacionTick, 12 * 60 * 1000);
-console.log('[detectar-aprobacion] activado — chats clientes cada 8h');
+// ── DESACTIVADO 2026-06-13 — redundante con cron silencioso (que NO manda WA)
+// Antes mandaba WA a vendedora cada 8h con "cliente aprobo" / "cliente pidio cambios" → spam.
+// El cron silencioso (10 PM diario) ya detecta lo mismo y mueve el estado sin notificar a vendedora.
+// setInterval(cronDetectarAprobacionTick, 8 * 60 * 60 * 1000);
+// setTimeout(cronDetectarAprobacionTick, 12 * 60 * 1000);
+console.log('[detectar-aprobacion] DESACTIVADO — reemplazado por cron silencioso 10 PM');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Auto-archivar pedidos abandonados
