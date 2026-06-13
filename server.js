@@ -5286,6 +5286,70 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     });
   }
 
+  // DEBUG: ver mensajes en Evolution directo (no Chatwoot)
+  // GET /api/admin/debug-evolution-msgs?id=X&instance=ws-ney
+  // Devuelve los ultimos mensajes que tiene Evolution para el telefono del pedido.
+  // Sirve para comparar con Chatwoot y ver si hay mensajes que se quedaron en el camino.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-msgs')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const instance = u.searchParams.get('instance') || null;
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      const tel = String(p.telefono || '').replace(/\D/g, '');
+      if (!tel) return json(res, 200, { error: 'sin telefono' });
+
+      // Si no se pasa instancia, intentar todas
+      const instancias = instance ? [instance] : ['ws-ventas', 'ws-ney', 'ws-wendy', 'ws-paola', 'ws-duvan'];
+      const resultados = {};
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const remoteJid = tel + '@s.whatsapp.net';
+
+      for (const inst of instancias) {
+        try {
+          // Buscar los ultimos mensajes del chat con ese telefono
+          const r = await fetch(`${evoUrl}/chat/findMessages/${inst}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+            body: JSON.stringify({
+              where: { key: { remoteJid } },
+              limit: 30,
+            }),
+          });
+          if (!r.ok) {
+            resultados[inst] = { error: 'HTTP ' + r.status };
+            continue;
+          }
+          const data = await r.json();
+          const msgs = data.messages?.records || data.records || data || [];
+          const mensajesUtiles = msgs.slice(0, 15).map(m => ({
+            ts: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+            fromMe: m.key?.fromMe,
+            texto: (m.message?.conversation
+              || m.message?.extendedTextMessage?.text
+              || m.message?.imageMessage?.caption
+              || m.message?.audioMessage ? '[AUDIO]' : '')
+              || '[sin texto]',
+            tieneImagen: !!m.message?.imageMessage,
+            tieneAudio: !!m.message?.audioMessage,
+          }));
+          resultados[inst] = { total: msgs.length, mensajes: mensajesUtiles };
+        } catch (e) {
+          resultados[inst] = { error: e.message };
+        }
+      }
+
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, telefono: tel, vendedora: p.vendedora },
+        remoteJid,
+        instanciasConsultadas: resultados,
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: listar TODAS las conversaciones de un contacto en Chatwoot
   // GET /api/admin/debug-conversaciones?id=X
   if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-conversaciones')) {
