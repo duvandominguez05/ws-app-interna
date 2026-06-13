@@ -5286,6 +5286,38 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     });
   }
 
+  // DEBUG: listar chats recientes de una instancia Evolution
+  // GET /api/admin/debug-evolution-chats?instance=ws-ney&search=314414
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-chats')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const instance = u.searchParams.get('instance') || 'ws-ventas';
+      const search = u.searchParams.get('search') || '';
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const r = await fetch(`${evoUrl}/chat/findChats/${instance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) return json(res, 200, { error: 'HTTP '+r.status });
+      const data = await r.json();
+      const chats = Array.isArray(data) ? data : (data.chats || data.records || []);
+      const filtrados = search ? chats.filter(c => JSON.stringify(c).includes(search)) : chats.slice(0, 20);
+      return json(res, 200, {
+        instance,
+        totalChats: chats.length,
+        coincidencias: filtrados.length,
+        muestras: filtrados.slice(0, 10).map(c => ({
+          id: c.id || c.remoteJid || c.key?.remoteJid,
+          pushName: c.pushName,
+          lastMsgTs: c.lastMessageTimestamp ? new Date(c.lastMessageTimestamp*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+          unreadCount: c.unreadCount,
+        })),
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: ver mensajes en Evolution directo (no Chatwoot)
   // GET /api/admin/debug-evolution-msgs?id=X&instance=ws-ney
   // Devuelve los ultimos mensajes que tiene Evolution para el telefono del pedido.
