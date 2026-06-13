@@ -5067,6 +5067,13 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     _guardarConfigCron(cfg);
     return json(res, 200, { ok: true, activo: false, mensaje: 'Cron silencioso DESACTIVADO.' });
   }
+  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-reset-dia') {
+    const g = _leerGasto();
+    const hoy = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+    delete g.dia[hoy];
+    _guardarGasto(g);
+    return json(res, 200, { ok: true, mensaje: 'Gasto del día reseteado a $0' });
+  }
   if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-status') {
     const cfg = _leerConfigCron();
     const gasto = _leerGasto();
@@ -10558,8 +10565,9 @@ const CRON_SILENCIOSO_ULTIMO_FILE = path.join(__dirname, 'data', 'cron_silencios
 // Costos aprox por llamada (USD)
 const COSTO_GEMINI_FLASH = 0.002; // analizar chat + clasificar img + comparar PDFs ~$0.002
 const COSTO_CLAUDE_SONNET = 0.018; // ~$0.018 por chat
-const LIMITE_MES_USD = 3.00; // freno duro
-const LIMITE_DIA_USD = 0.50; // freno duro
+const LIMITE_MES_USD = parseFloat(process.env.CRON_LIMITE_MES_USD || '3.00');
+const LIMITE_DIA_USD = parseFloat(process.env.CRON_LIMITE_DIA_USD || '0.30');
+// Costos vs límite: 1 corrida ~$0.066 → cabe 4 corridas/día ($0.30) y 45/mes ($3)
 const AVISO_PORCENTAJE = 0.8; // 80% del limite mensual → notificacion
 
 function _leerConfigCron() {
