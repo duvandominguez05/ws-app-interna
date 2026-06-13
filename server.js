@@ -4912,7 +4912,18 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       let busquedaDetalles = { textoDiseno, tokensBuscados: [], pdfsMatcheados: [] };
       try {
         const archivos = await driveSync.listarArchivos(driveSync.FOLDER_PDFRIP, 200);
-        const pdfs = archivos.filter(a => /\.pdf$/i.test(a.name));
+        // SOLO PDFs de los últimos 60 días — los viejos no pueden ser de pedidos activos
+        const limiteFecha = Date.now() - (60 * 24 * 60 * 60 * 1000);
+        const pdfs = archivos.filter(a => {
+          if (!/\.pdf$/i.test(a.name)) return false;
+          if (a.modifiedTime || a.createdTime) {
+            const ts = new Date(a.modifiedTime || a.createdTime).getTime();
+            if (!isNaN(ts) && ts < limiteFecha) return false; // viejo, saltar
+          }
+          return true;
+        });
+        busquedaDetalles.pdfsRecienteFiltrados = pdfs.length;
+        busquedaDetalles.pdfsTotalDrive = archivos.length;
 
         // Construir tokens de busqueda:
         // - desde textoPrincipal del diseno (PRIMARIO)
