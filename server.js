@@ -5318,6 +5318,31 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // DEBUG: chat detalle por substring — devuelve TODO el objeto chat
+  // GET /api/admin/debug-chat-detalle?instance=ws-ney&search=3214144809
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-chat-detalle')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const instance = u.searchParams.get('instance') || 'ws-ney';
+      const search = u.searchParams.get('search') || '';
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const r = await fetch(`${evoUrl}/chat/findChats/${instance}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) return json(res, 200, { error: 'HTTP ' + r.status });
+      const data = await r.json();
+      const chats = Array.isArray(data) ? data : (data.chats || data.records || []);
+      const filtrados = chats.filter(c => JSON.stringify(c).includes(search));
+      return json(res, 200, {
+        instance, search,
+        total: filtrados.length,
+        chats: filtrados.slice(0, 5), // Objeto completo para ver TODOS los campos
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: buscar mensajes con chatId interno (CUID) o por subscripcion al telefono
   // GET /api/admin/debug-evolution-mensajes-chatid?instance=ws-ney&chatId=cmpme...
   if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-mensajes-chatid')) {
