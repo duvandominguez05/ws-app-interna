@@ -5056,6 +5056,16 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     const s = await verificarSaldoClaude();
     return json(res, 200, s);
   }
+  if (req.method === 'GET' && req.url === '/api/admin/saldos') {
+    const [claude, gemini] = await Promise.all([verificarSaldoClaude(), verificarSaldoGemini()]);
+    return json(res, 200, {
+      claude,
+      gemini,
+      gastoInternoMes: _gastoMesActual(),
+      gastoInternoDia: _gastoDiaActual(),
+      limites: { mensual: LIMITE_MES_USD, diario: LIMITE_DIA_USD },
+    });
+  }
 
   // DEBUG: ejecutar cualquier query Gmail
   if (req.method === 'GET' && req.url.startsWith('/api/admin/gmail-query')) {
@@ -10837,7 +10847,7 @@ console.log('[cron-silencioso] tick instalado — disparara a las 22 (10 PM) Bog
 // ═══════════════════════════════════════════════════════════════════
 async function verificarSaldoClaude() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ok: false, error: 'sin API key configurada' };
+  if (!apiKey) return { proveedor: 'claude', ok: false, error: 'sin API key configurada' };
   try {
     const body = {
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
@@ -10851,56 +10861,110 @@ async function verificarSaldoClaude() {
     });
     if (r.ok) {
       const data = await r.json();
-      return { ok: true, saldoActivo: true, modeloOk: data.model, mensaje: 'API responde. No hay forma de saber saldo exacto via API — solo en console.anthropic.com/settings/billing.' };
+      return {
+        proveedor: 'claude',
+        ok: true,
+        saldoActivo: true,
+        modeloOk: data.model,
+        mensaje: 'API responde. Saldo exacto solo en console.anthropic.com/settings/billing.',
+        urlSaldo: 'https://console.anthropic.com/settings/billing',
+      };
     }
     const errText = await r.text();
     const lowBalance = /credit balance.*too low/i.test(errText);
     return {
+      proveedor: 'claude',
       ok: false,
       saldoActivo: !lowBalance,
       httpStatus: r.status,
       error: errText.slice(0, 300),
       saldoAgotado: lowBalance,
+      urlSaldo: 'https://console.anthropic.com/settings/billing',
     };
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { proveedor: 'claude', ok: false, error: e.message };
   }
 }
 
-// Tick cada hora chequea saldo. Si esta agotado y no se notifico aun → notifica 1 vez.
-async function tickSaldoClaude() {
+async function verificarSaldoGemini() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { proveedor: 'gemini', ok: false, error: 'sin API key configurada' };
   try {
-    const status = await verificarSaldoClaude();
-    const g = _leerGasto();
-    if (status.saldoAgotado) {
-      if (!g.notificadoSaldoAgotado) {
-        try {
-          if (typeof notificarJefes === 'function') {
-            await notificarJefes(
-              `🚨 *Créditos Claude AGOTADOS*\n\nLa API de Anthropic rechazó la llamada por saldo bajo.\n\n` +
-              `→ Recargar en console.anthropic.com/settings/billing\n` +
-              `→ El cron silencioso seguirá funcionando con Gemini solo (sin escalado a Claude) mientras tanto.`,
-              { soloJefe: true, dedupeKey: `claude-saldo-agotado-${new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota'})}` }
-            );
-          }
-        } catch {}
-        g.notificadoSaldoAgotado = true;
-        _guardarGasto(g);
-      }
-    } else if (status.saldoActivo) {
-      if (g.notificadoSaldoAgotado) {
-        // Se recargó: limpiar flag
-        g.notificadoSaldoAgotado = false;
-        _guardarGasto(g);
-      }
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const body = {
+      contents: [{ parts: [{ text: 'hi' }] }],
+      generationConfig: { temperature: 0, maxOutputTokens: 5, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) {
+      return {
+        proveedor: 'gemini',
+        ok: true,
+        saldoActivo: true,
+        modelo,
+        mensaje: 'API responde. Gemini Flash tiene tier gratis (1500/dia). Si se pasa, queda en pago bajo. Cuotas en console.cloud.google.com/iam-admin/quotas.',
+        urlSaldo: 'https://aistudio.google.com/apikey',
+      };
     }
-  } catch (e) { console.error('[tick-saldo]', e.message); }
+    const errText = await r.text();
+    const cuotaExcedida = /quota.*exceeded|rate.*limit/i.test(errText);
+    return {
+      proveedor: 'gemini',
+      ok: false,
+      saldoActivo: !cuotaExcedida,
+      httpStatus: r.status,
+      error: errText.slice(0, 300),
+      cuotaExcedida,
+      urlSaldo: 'https://aistudio.google.com/apikey',
+    };
+  } catch (e) {
+    return { proveedor: 'gemini', ok: false, error: e.message };
+  }
+}
+
+// Tick cada 6 hs chequea AMBOS saldos. Notifica al jefe SOLO 1 vez por agotamiento.
+async function tickSaldos() {
+  try {
+    const [claude, gemini] = await Promise.all([verificarSaldoClaude(), verificarSaldoGemini()]);
+    const g = _leerGasto();
+    const avisos = [];
+
+    if (claude.saldoAgotado) {
+      if (!g.notificadoClaudeAgotado) {
+        avisos.push(`🚨 *Créditos Claude AGOTADOS*\nRecargar en ${claude.urlSaldo}\nEl cron silencioso seguirá con Gemini solo mientras tanto.`);
+        g.notificadoClaudeAgotado = true;
+      }
+    } else if (claude.saldoActivo && g.notificadoClaudeAgotado) {
+      avisos.push(`✅ Créditos Claude RECARGADOS, sistema completo activo.`);
+      g.notificadoClaudeAgotado = false;
+    }
+
+    if (gemini.cuotaExcedida) {
+      if (!g.notificadoGeminiAgotado) {
+        avisos.push(`🚨 *Cuota Gemini EXCEDIDA*\nRevisar en ${gemini.urlSaldo}\nEl cron silencioso quedará en pausa hasta que se reponga.`);
+        g.notificadoGeminiAgotado = true;
+      }
+    } else if (gemini.saldoActivo && g.notificadoGeminiAgotado) {
+      avisos.push(`✅ Cuota Gemini DISPONIBLE de nuevo.`);
+      g.notificadoGeminiAgotado = false;
+    }
+
+    if (avisos.length) {
+      _guardarGasto(g);
+      try {
+        if (typeof notificarJefes === 'function') {
+          await notificarJefes(avisos.join('\n\n'), { soloJefe: true, dedupeKey: `saldos-${new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota'})}-${avisos.length}` });
+        }
+      } catch {}
+    }
+  } catch (e) { console.error('[tick-saldos]', e.message); }
 }
 // Cada 6 horas
-setInterval(tickSaldoClaude, 6 * 60 * 60 * 1000);
+setInterval(tickSaldos, 6 * 60 * 60 * 1000);
 // Primer chequeo 2 min despues de arrancar
-setTimeout(tickSaldoClaude, 2 * 60 * 1000);
-console.log('[saldo-claude] tick instalado — chequea cada 6 hs');
+setTimeout(tickSaldos, 2 * 60 * 1000);
+console.log('[saldos] tick instalado — chequea Claude+Gemini cada 6 hs');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON 7 PM — snapshot de "Ventas por confirmar" al jefe (panel WA)
