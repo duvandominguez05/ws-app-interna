@@ -5101,10 +5101,10 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const conv = (dataConv.payload || [])[0];
       if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
 
-      // Traer 2 paginas de mensajes (hasta 50)
+      // Traer 5 paginas de mensajes (hasta 125)
       let todos = [];
       let ultimoId = null;
-      for (let pag = 0; pag < 2; pag++) {
+      for (let pag = 0; pag < 5; pag++) {
         const urlMsg = ultimoId
           ? `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${ultimoId}`
           : `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`;
@@ -5112,26 +5112,35 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         const dataMsg = await rMsg.json();
         const lote = dataMsg.payload || dataMsg || [];
         if (lote.length === 0) break;
+        if (lote[0]?.id === ultimoId) break; // loop guard
         todos = [...lote, ...todos];
         ultimoId = lote[0]?.id;
         if (!ultimoId) break;
       }
 
-      // Probar TODAS las imagenes (max 8) — el cliente puede mandar listas en varias fotos
+      // Probar TODAS las imagenes (max 10)
       const listas = [];
+      const debugImagenes = [];
       let probadas = 0;
       for (const m of todos) {
-        if (probadas >= 8) break;
+        if (probadas >= 10) break;
         const imgs = (m.attachments || []).filter(a => a.file_type === 'image');
         for (const att of imgs) {
-          if (probadas >= 8) break;
+          if (probadas >= 10) break;
           probadas++;
           const dl = await descargarAttachmentChatwootBase64(att.data_url);
           if (!dl) continue;
           const fecha = m.created_at ? new Date(m.created_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null;
           const quien = m.message_type === 0 ? 'cliente' : 'vendedora';
           const extraccion = await extraerListaJugadoresConGemini(dl.base64, dl.mime);
-          if (extraccion?.esLista === true) {
+          debugImagenes.push({
+            fecha, quien,
+            esLista: extraccion?.esLista,
+            totalJugadores: extraccion?.totalJugadores,
+            confianza: extraccion?.confianza,
+            encabezado: extraccion?.encabezado,
+          });
+          if (extraccion?.esLista === true && (extraccion?.jugadores||[]).length > 0) {
             listas.push({ fecha, quien, encabezado: extraccion.encabezado, totalJugadores: extraccion.totalJugadores, jugadores: extraccion.jugadores, marcas: extraccion.marcasDetectadas, confianza: extraccion.confianza });
           }
         }
@@ -5142,6 +5151,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         imagenesProbadas: probadas,
         listasEncontradas: listas.length,
         listas,
+        debugImagenes,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
