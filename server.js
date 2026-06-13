@@ -1038,6 +1038,59 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Extrae lista de jugadores de una imagen (foto del chat con tabla).
+// Soporta fotos de papel escrito a mano, Excel, capturas de pantalla.
+// Devuelve: { jugadores: [{ talla, nombre, numero, prendas: {...} }], errores: [...] }
+async function extraerListaJugadoresConGemini(imgBase64, imgMime) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const prompt = `Esta imagen es un listado de jugadores para un pedido de uniformes deportivos en W&S Enterprise (Colombia).\n` +
+      `Puede ser una foto de una tabla escrita a mano, Excel, captura de WhatsApp, o lista digital.\n\n` +
+      `Extrae CADA fila como un jugador con:\n` +
+      `- talla (numero o letra: 8, 10, 12, S, M, L, XL, etc)\n` +
+      `- nombre (el nombre a estampar en la espalda)\n` +
+      `- numero (el numero a estampar, si lo hay)\n\n` +
+      `Si ves puntos/marcas de colores al lado de cada fila, anotalos en "marcasDetectadas" (NO los uses como datos del jugador).\n\n` +
+      `Responde SOLO JSON valido (sin markdown):\n` +
+      `{\n` +
+      `  "esLista": true|false,  // false si la imagen no es un listado de jugadores\n` +
+      `  "encabezado": "titulo de la lista si lo hay (ej: 'Ahijado Lider', 'Transicion')",\n` +
+      `  "totalJugadores": numero,\n` +
+      `  "jugadores": [\n` +
+      `    {"talla": "8", "nombre": "Santiago C", "numero": "1"},\n` +
+      `    {"talla": "8", "nombre": "Thomas", "numero": ""}\n` +
+      `  ],\n` +
+      `  "marcasDetectadas": "descripcion breve de las marcas/colores si hay, ej: 'puntos verdes y azules al lado'",\n` +
+      `  "confianza": "alta"|"media"|"baja"\n` +
+      `}\n\nRespuesta:`;
+    const body = {
+      contents: [{ parts: [
+        { text: prompt },
+        { inline_data: { mime_type: imgMime || 'image/jpeg', data: imgBase64 } },
+      ] }],
+      generationConfig: { temperature: 0, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[extraer-lista] HTTP', r.status, errText.slice(0,200));
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try { return JSON.parse(limpio); }
+    catch { return { _raw: limpio.slice(0, 500) }; }
+  } catch (e) {
+    console.error('[extraer-lista error]', e.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Clasifica una imagen como: diseno-uniforme | comprobante-pago | lista-tallas | otro
 // Usado para descartar comprobantes/listas antes de extraer texto del diseno.
 async function clasificarImagenConGemini(imgBase64, imgMime) {
@@ -5018,6 +5071,77 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         veredicto,
         siCoincide: 'el pedido ya esta en produccion (PDF rip existe) — confirmar',
         siNoCoincide: 'el cliente aprobo pero todavia no se ripeo en Drive',
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ── Extraer lista de jugadores del chat del pedido ──────────────
+  // GET /api/admin/extraer-lista-pedido?id=X
+  // Recorre las imagenes del chat, busca tablas con jugadores y devuelve TODAS las que encontro.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/extraer-lista-pedido')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+      if (!p.telefono) return json(res, 200, { error: 'sin telefono' });
+
+      const contacto = await buscarContactoChatwoot(p.telefono);
+      if (!contacto?.id) return json(res, 200, { error: 'sin contacto chatwoot' });
+      const urlCw = process.env.CHATWOOT_URL;
+      const accId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiCw = process.env.CHATWOOT_API_KEY;
+      const rConv = await fetch(`${urlCw}/api/v1/accounts/${accId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': apiCw },
+      });
+      const dataConv = await rConv.json();
+      const conv = (dataConv.payload || [])[0];
+      if (!conv?.id) return json(res, 200, { error: 'sin conversacion' });
+
+      // Traer 2 paginas de mensajes (hasta 50)
+      let todos = [];
+      let ultimoId = null;
+      for (let pag = 0; pag < 2; pag++) {
+        const urlMsg = ultimoId
+          ? `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages?before=${ultimoId}`
+          : `${urlCw}/api/v1/accounts/${accId}/conversations/${conv.id}/messages`;
+        const rMsg = await fetch(urlMsg, { headers: { 'api_access_token': apiCw } });
+        const dataMsg = await rMsg.json();
+        const lote = dataMsg.payload || dataMsg || [];
+        if (lote.length === 0) break;
+        todos = [...lote, ...todos];
+        ultimoId = lote[0]?.id;
+        if (!ultimoId) break;
+      }
+
+      // Probar TODAS las imagenes (max 8) — el cliente puede mandar listas en varias fotos
+      const listas = [];
+      let probadas = 0;
+      for (const m of todos) {
+        if (probadas >= 8) break;
+        const imgs = (m.attachments || []).filter(a => a.file_type === 'image');
+        for (const att of imgs) {
+          if (probadas >= 8) break;
+          probadas++;
+          const dl = await descargarAttachmentChatwootBase64(att.data_url);
+          if (!dl) continue;
+          const fecha = m.created_at ? new Date(m.created_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null;
+          const quien = m.message_type === 0 ? 'cliente' : 'vendedora';
+          const extraccion = await extraerListaJugadoresConGemini(dl.base64, dl.mime);
+          if (extraccion?.esLista === true) {
+            listas.push({ fecha, quien, encabezado: extraccion.encabezado, totalJugadores: extraccion.totalJugadores, jugadores: extraccion.jugadores, marcas: extraccion.marcasDetectadas, confianza: extraccion.confianza });
+          }
+        }
+      }
+      return json(res, 200, {
+        pedido: { id: p.id, equipo: p.equipo, vendedora: p.vendedora, telefono: p.telefono },
+        totalMensajes: todos.length,
+        imagenesProbadas: probadas,
+        listasEncontradas: listas.length,
+        listas,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
