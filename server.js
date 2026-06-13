@@ -5318,6 +5318,47 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // DEBUG: buscar mensajes con chatId interno (CUID) o por subscripcion al telefono
+  // GET /api/admin/debug-evolution-mensajes-chatid?instance=ws-ney&chatId=cmpme...
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-mensajes-chatid')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const instance = u.searchParams.get('instance') || 'ws-ney';
+      const chatId = u.searchParams.get('chatId') || '';
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      // Probar varios donde
+      const intentos = [
+        { where: { chatId } },
+        { where: { key: { id: chatId } } },
+        { where: { 'Message.key.remoteJid': chatId } },
+      ];
+      const out = {};
+      for (const intento of intentos) {
+        try {
+          const r = await fetch(`${evoUrl}/chat/findMessages/${instance}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+            body: JSON.stringify({ ...intento, limit: 10 }),
+          });
+          const raw = await r.text();
+          let data; try { data = JSON.parse(raw); } catch {}
+          const recs = data?.messages?.records || data?.records || [];
+          out[JSON.stringify(intento.where)] = {
+            total: data?.messages?.total || recs.length,
+            primeros: recs.slice(0,5).map(m => ({
+              ts: m.messageTimestamp ? new Date(m.messageTimestamp*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+              fromMe: m.key?.fromMe,
+              remoteJid: m.key?.remoteJid,
+              texto: m.message?.conversation || m.message?.extendedTextMessage?.text || (m.message?.audioMessage?'[AUDIO]':'') || (m.message?.imageMessage?'[IMG]':'') || '',
+            })),
+          };
+        } catch {}
+      }
+      return json(res, 200, { instance, chatId, intentos: out });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: ver mensajes en Evolution directo (no Chatwoot)
   // GET /api/admin/debug-evolution-msgs?id=X&instance=ws-ney
   // Devuelve los ultimos mensajes que tiene Evolution para el telefono del pedido.
