@@ -5342,21 +5342,38 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
 
       for (const inst of instancias) {
         try {
-          // Buscar los ultimos mensajes del chat con ese telefono
-          const r = await fetch(`${evoUrl}/chat/findMessages/${inst}`, {
+          // Probar 2 estilos de query (Evolution v1 vs v2)
+          let r = await fetch(`${evoUrl}/chat/findMessages/${inst}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
-            body: JSON.stringify({
-              where: { key: { remoteJid } },
-              limit: 30,
-            }),
+            body: JSON.stringify({ where: { key: { remoteJid } }, limit: 30 }),
           });
+          let raw = await r.text();
+          let primer = raw.slice(0, 200);
+          // Si vacío, probar formato v2 (chatId)
+          let data;
+          try { data = JSON.parse(raw); } catch { data = null; }
+          let msgs0 = (data?.messages?.records || data?.records || (Array.isArray(data) ? data : []) || []);
+          if (msgs0.length === 0) {
+            const r2 = await fetch(`${evoUrl}/chat/findMessages/${inst}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+              body: JSON.stringify({ chatId: remoteJid, limit: 30 }),
+            });
+            const raw2 = await r2.text();
+            try { data = JSON.parse(raw2); } catch { data = null; }
+            msgs0 = (data?.messages?.records || data?.records || (Array.isArray(data) ? data : []) || []);
+            primer += ' || v2: ' + raw2.slice(0, 200);
+          }
+          // Override la variable usada despues
+          r = { ok: true, json: async () => ({ records: msgs0, _primer: primer }) };
           if (!r.ok) {
             resultados[inst] = { error: 'HTTP ' + r.status };
             continue;
           }
-          const data = await r.json();
-          const msgs = data.messages?.records || data.records || data || [];
+          const dataInst = await r.json();
+          const msgs = dataInst.records || dataInst.messages?.records || (Array.isArray(dataInst) ? dataInst : []) || [];
+          resultados[`${inst}_rawSample`] = dataInst._primer;
           const mensajesUtiles = msgs.slice(0, 15).map(m => ({
             ts: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
             fromMe: m.key?.fromMe,
@@ -5368,7 +5385,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
             tieneImagen: !!m.message?.imageMessage,
             tieneAudio: !!m.message?.audioMessage,
           }));
-          resultados[inst] = { total: msgs.length, mensajes: mensajesUtiles };
+          resultados[inst] = { total: msgs.length, mensajes: mensajesUtiles, raw: dataInst._primer || null };
         } catch (e) {
           resultados[inst] = { error: e.message };
         }
