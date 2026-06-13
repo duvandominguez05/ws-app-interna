@@ -5318,6 +5318,40 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // DEBUG: buscar TODOS los contactos en Chatwoot por telefono (puede haber duplicados)
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-chatwoot-contact-search')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const q = u.searchParams.get('q') || '';
+      const url = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiKey = process.env.CHATWOOT_API_KEY;
+      const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/search?q=${encodeURIComponent(q)}`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const data = await r.json();
+      const contactos = data.payload || [];
+      // Para cada contacto, traer sus conversaciones
+      const detalles = [];
+      for (const c of contactos.slice(0, 5)) {
+        const rConv = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${c.id}/conversations`, {
+          headers: { 'api_access_token': apiKey },
+        });
+        const dConv = await rConv.json();
+        detalles.push({
+          contact_id: c.id, name: c.name, phone: c.phone_number, email: c.email,
+          identifier: c.identifier,
+          conversaciones: (dConv.payload || []).map(cv => ({
+            id: cv.id, status: cv.status, inbox_id: cv.inbox_id,
+            labels: cv.labels || [],
+            last_activity_at: cv.last_activity_at ? new Date(cv.last_activity_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
+          })),
+        });
+      }
+      return json(res, 200, { totalContactos: contactos.length, detalles });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: ver configuracion Chatwoot dentro de Evolution para una instancia
   // GET /api/admin/debug-evolution-chatwoot?instance=ws-ney
   if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-evolution-chatwoot')) {
