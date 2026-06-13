@@ -5300,15 +5300,39 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const url = process.env.CHATWOOT_URL;
       const accountId = process.env.CHATWOOT_ACCOUNT_ID;
       const apiKey = process.env.CHATWOOT_API_KEY;
-      const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
-        headers: { 'api_access_token': apiKey },
-      });
+      // Probar con status=all explícito para incluir cerradas/resueltas
+      const url1 = `${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`;
+      const url2 = `${url}/api/v1/accounts/${accountId}/conversations?q[contact_id]=${contacto.id}&status=all`;
+      const r = await fetch(url1, { headers: { 'api_access_token': apiKey } });
       const data = await r.json();
       const convs = data.payload || [];
+
+      // También probar buscar por contact_id directo con todos los status
+      let convsAlt = [];
+      try {
+        const r2 = await fetch(url2, { headers: { 'api_access_token': apiKey } });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          convsAlt = (d2.data?.payload || d2.payload || []);
+        }
+      } catch {}
+
+      // Probar tambien la inbox del contacto: mensajes mas alla del primer chat
+      let inboxesDelContacto = [];
+      try {
+        const r3 = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${contacto.id}`, { headers: { 'api_access_token': apiKey } });
+        if (r3.ok) {
+          const d3 = await r3.json();
+          inboxesDelContacto = d3.payload?.contact_inboxes || d3.contact_inboxes || [];
+        }
+      } catch {}
+
       return json(res, 200, {
         pedido: { id: p.id, equipo: p.equipo, telefono: p.telefono },
         contactoId: contacto.id,
         totalConversaciones: convs.length,
+        totalConversacionesAlt: convsAlt.length,
+        contactInboxes: inboxesDelContacto.map(i => ({ inbox_id: i.inbox?.id || i.inbox_id, source_id: i.source_id, channel: i.inbox?.channel_type })),
         conversaciones: convs.map(c => ({
           id: c.id,
           status: c.status,
@@ -5319,6 +5343,10 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           assignee_id: c.meta?.assignee?.id || null,
           team_id: c.team_id,
           messages_count: c.messages_count || (c.messages||[]).length || 0,
+        })),
+        conversacionesAlt: convsAlt.map(c => ({
+          id: c.id, status: c.status, inbox_id: c.inbox_id,
+          last_activity_at: c.last_activity_at ? new Date(c.last_activity_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
         })),
       });
     } catch (e) { return json(res, 500, { error: e.message }); }
