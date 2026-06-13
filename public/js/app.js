@@ -1,4 +1,26 @@
 /* ════════════════════════════════════════════════════════════════
+   HELPER: nombre del pedido (prioridad: nombreDiseno → equipo → tel)
+   Se llama nombrePedido(p, opcional) y se usa en TODA la app para
+   mostrar el nombre del DISEÑO en vez del nombre del cliente.
+════════════════════════════════════════════════════════════════ */
+function nombrePedido(p, opciones) {
+  if (!p) return 'Sin pedido';
+  const o = opciones || {};
+  const limpioEquipo = (val) => {
+    if (!val) return null;
+    const s = String(val).trim();
+    if (!s) return null;
+    if (/^57\d{8,12}$/.test(s)) return null; // es un telefono pegado al campo
+    if (/^Cliente \+57/i.test(s)) return null; // placeholder
+    return s;
+  };
+  const nombreDis = limpioEquipo(p.nombreDiseno);
+  const eq = limpioEquipo(p.equipo);
+  const fallback = o.fallback || ((p.id != null ? '#' + p.id : '') + (p.telefono ? ' +57 ' + p.telefono : ''));
+  return nombreDis || eq || (fallback || 'Sin nombre');
+}
+
+/* ════════════════════════════════════════════════════════════════
    CONSTANTES
 ════════════════════════════════════════════════════════════════ */
 const PRENDAS = ['Camiseta','Uniforme completo','Pantalón','Chaqueta','Buso','Sudadera','Portero acolchado buso','Portero acolchado pantalón','Camiseta adicional'];
@@ -505,7 +527,7 @@ function miniStats(items) {
 }
 
 function miniCard(p, options = {}) {
-  const nombre = esc(p.equipo || p.telefono || 'Pedido sin nombre');
+  const nombre = esc(nombrePedido(p));
   const meta = [
     p.fechaEntrega ? `Entrega: ${fmtFecha(p.fechaEntrega)}` : '',
     p.vendedora ? `Venta: ${p.vendedora}` : '',
@@ -590,7 +612,7 @@ function _miDiaBloqueEntregasHoy() {
   if (!hoy.length) return '';
   const cards = hoy.slice(0, 8).map(p => `
     <div class="midia-card warn" onclick="irAlPedido(${p.id})">
-      <div class="midia-card-name">⏰ #${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+      <div class="midia-card-name">⏰ #${p.id} ${esc(nombrePedido(p))}</div>
       <div class="midia-card-meta">${ESTADO_LABELS[p.estado] || p.estado} · ${esc(p.vendedora || '—')}</div>
     </div>
   `).join('');
@@ -749,7 +771,7 @@ function _miDiaBloqueDiseno(nombrePersona) {
   const cards = mios.slice(0, 10).map(p => {
     const urg = _urgenciaFechaCorta(p.fechaEntrega);
     return '<div class="midia-card" onclick="abrirDetallePedido(' + p.id + ')">'
-      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-name">' + esc(nombrePedido(p)) + '</div>'
       + '<div class="midia-card-meta">🛍️ ' + esc(p.vendedora || '—') + (urg ? ' · ' + urg : '') + '</div>'
     + '</div>';
   }).join('') || (sinAsignar.length
@@ -809,7 +831,7 @@ async function tomarProximoDiseno() {
     });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.error || 'fallo');
-    toast(`🎨 Diseño tomado: ${p.equipo || '#' + p.id}`, 'success');
+    toast(`🎨 Diseño tomado: ${nombrePedido(p)}`, 'success');
     // Refrescar pedidos locales y re-render
     if (typeof resincronizarConServidor === 'function') {
       try { await resincronizarConServidor(); } catch (e) {}
@@ -862,7 +884,7 @@ function _miDiaBloqueVentas(nombrePersona) {
     const estadoLabel = ESTADO_LABELS[p.estado] || p.estado;
     // Es SU venta → puede ver finanzas del pedido
     return '<div class="midia-card' + (isWarn ? ' warn' : '') + '" onclick="abrirDetallePedido(' + p.id + ')">'
-      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-name">' + esc(nombrePedido(p)) + '</div>'
       + '<div class="midia-card-meta">'
         + '<span style="background:rgba(124,58,237,0.18);color:#c4b5fd;padding:1px 7px;border-radius:6px;font-weight:600;font-size:0.65rem;">' + estadoLabel + '</span>'
         + (p.telefono ? ' · 📱 ' + esc(p.telefono) : '')
@@ -921,7 +943,7 @@ function _miDiaBloqueProduccion() {
   const cards = enProd.slice(0, 10).map(p => {
     const urg = _urgenciaFechaCorta(p.fechaEntrega);
     return '<div class="midia-card" onclick="abrirDetallePedido(' + p.id + ')">'
-      + '<div class="midia-card-name">' + esc(p.equipo || 'Cliente +57 ' + (p.telefono || '?')) + '</div>'
+      + '<div class="midia-card-name">' + esc(nombrePedido(p)) + '</div>'
       + '<div class="midia-card-meta">'
         + '<span style="background:rgba(103,232,249,0.15);color:#67e8f9;padding:1px 7px;border-radius:6px;font-size:0.65rem;font-weight:600;">' + (ESTADO_LABELS[p.estado] || p.estado) + '</span>'
         + (urg ? ' · ' + urg : '')
@@ -958,7 +980,7 @@ function _miDiaBloqueCorte() {
       </header>
       <div class="midia-cards">${enCorte.slice(0, 10).map(p => `
         <div class="midia-card" onclick="irAlPedido(${p.id})">
-          <div class="midia-card-name">#${p.id} ${esc(p.equipo || p.telefono || 'Sin equipo')}</div>
+          <div class="midia-card-name">#${p.id} ${esc(nombrePedido(p))}</div>
           <div class="midia-card-meta">${esc(p.vendedora || '—')}</div>
         </div>
       `).join('') || '<div class="midia-empty">No hay pedidos en corte.</div>'}</div>
@@ -1672,7 +1694,7 @@ function renderDashboard() {
       return `<div class="dash-alert-item ${p.diff <= 1 ? '' : 'warn'}">
         <div class="dash-alert-dias ${cls}">${tipo}</div>
         <div class="dash-alert-info">
-          <div class="dash-alert-equipo">#${p.id} ${esc(p.equipo || p.telefono)}</div>
+          <div class="dash-alert-equipo">#${p.id} ${esc(nombrePedido(p))}</div>
           <div class="dash-alert-estado">${esc(p.vendedora || '—')} · ${estad}</div>
         </div>
       </div>`;
@@ -1779,7 +1801,7 @@ function renderMiDia(container) {
         ${listos.length ? listos.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="irAlPedido(${p.id})">
             <div>
-              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
               <div style="font-size:0.75rem; color:var(--text-muted);">Vendedora: ${esc(p.vendedora || '-')}</div>
             </div>
             <button class="btn btn-success btn-sm">Ver</button>
@@ -1795,7 +1817,7 @@ function renderMiDia(container) {
         ${enAprobacion.slice(0, 5).map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="showSection('bandeja', document.querySelector('[onclick*=bandeja]'))">
             <div>
-              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             </div>
           </div>
         `).join('')}
@@ -1815,7 +1837,7 @@ function renderMiDia(container) {
         ${porDisenar.slice(0,5).map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" onclick="showSection('diseno', document.querySelector('[onclick*=diseno]'))">
             <div>
-              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
               <div style="font-size:0.75rem; color:var(--orange);">Entrega: ${p.fechaEntrega ? fmtFecha(p.fechaEntrega) : 'Sin fecha'}</div>
             </div>
             <button class="btn btn-primary btn-sm">Ir a Diseño</button>
@@ -1830,7 +1852,7 @@ function renderMiDia(container) {
         <div class="dash-panel-title">🔥 Diseños en Proceso (${misDisenos.length})</div>
         ${misDisenos.slice(0,5).map(p => `
           <div class="bandeja-card" style="margin-bottom:8px;">
-            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             <div style="font-size:0.75rem; color:var(--text-muted);">Asignado a: ${esc(p.disenadorAsignado)}</div>
           </div>
         `).join('')}
@@ -1848,7 +1870,7 @@ function renderMiDia(container) {
         <div class="dash-panel-title">✂️ Llegó Impresión / Por Cortar (${porCortar.length})</div>
         ${porCortar.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             <button class="btn btn-glass btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Corte →</button>
           </div>
         `).join('')}
@@ -1861,7 +1883,7 @@ function renderMiDia(container) {
         <div class="dash-panel-title">Corte terminado / Pasar a Costura (${enCorte.length})</div>
         ${enCorte.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Pasar a Costura →</button>
           </div>
         `).join('')}
@@ -1874,7 +1896,7 @@ function renderMiDia(container) {
         <div class="dash-panel-title">Revision Final (${enCalidad.length})</div>
         ${enCalidad.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             <button class="btn btn-primary btn-sm" onclick="avanzar(${p.id}); setTimeout(render,100)">Revision OK →</button>
           </div>
         `).join('')}
@@ -1892,9 +1914,9 @@ function renderMiDia(container) {
         <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">Elige la persona de costura y entregale el pedido.</div>
         ${enCostura.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
             <div style="display:flex; gap:6px;">
-               <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega'); document.getElementById('sat-equipo').value='${esc(p.equipo||p.telefono)}'">📦 Entregar</button>
+               <button class="btn btn-success btn-sm" onclick="abrirFormSat('entrega'); document.getElementById('sat-equipo').value='${esc(nombrePedido(p))}'">📦 Entregar</button>
             </div>
           </div>
         `).join('')}
@@ -1908,7 +1930,7 @@ function renderMiDia(container) {
         ${trabajando.map(p => `
           <div class="bandeja-card" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="font-weight:700;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+              <div style="font-weight:700;">#${p.id} - ${esc(nombrePedido(p))}</div>
               <div style="font-size:0.75rem; color:var(--text-muted);">Costurera: ${esc(p.satelite || 'Sin asignar')}</div>
             </div>
             <button class="btn btn-success btn-sm" onclick="recibirSatelitePedido(${p.id}); setTimeout(render,100)">Recibi terminado</button>
@@ -1998,7 +2020,7 @@ function renderTablaRecientes() {
       <div class="pedido-row">
         <div class="pedido-row-top">
           <div class="pedido-row-id">#${p.id}</div>
-          <div class="pedido-row-nombre">${esc(p.equipo || p.telefono)}</div>
+          <div class="pedido-row-nombre">${esc(nombrePedido(p))}</div>
           <div class="pedido-row-meta">
             <span>${esc(p.vendedora || '—')}</span>
             <span style="color:var(--text-muted);font-size:0.68rem;">${items}</span>
@@ -2089,7 +2111,7 @@ function renderBandejaCotizaciones(arr) {
     <div class="bandeja-card">
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
+          <div class="bandeja-phone">${esc(nombrePedido(p))}</div>
           ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div class="bandeja-id">#${p.id}</div>
@@ -2228,7 +2250,7 @@ function renderBandejaPedidos(arr) {
     <div class="bandeja-card" ${esNavegable ? `onclick="irAlPedido(${p.id})" style="cursor:pointer;"` : ''}>
       <div class="bandeja-card-top">
         <div>
-          <div class="bandeja-phone">${esc(p.equipo || p.telefono)}</div>
+          <div class="bandeja-phone">${esc(nombrePedido(p))}</div>
           ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);">📱 ${esc(p.telefono)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -2371,7 +2393,7 @@ function renderKanbanCardDiseno(p) {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div style="font-size:0.7rem;color:var(--text-muted);">#${p.id}</div>
       </div>
-      <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(p.equipo || p.telefono)}</div>
+      <div style="font-size:0.9rem;font-weight:700;color:var(--text);margin-bottom:6px;">${esc(nombrePedido(p))}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
         <span style="background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.35);color:#fde047;border-radius:5px;padding:2px 8px;font-size:0.73rem;font-weight:700;">📅 ${fechaTxt}</span>
         <span style="font-size:0.73rem;color:var(--text-muted);">👤 ${esc(p.vendedora || '-')}</span>
@@ -2538,7 +2560,7 @@ function renderKanbanCard(p) {
     <div class="kanban-card ${p.arreglo ? 'arreglo' : ''}">
       <div class="kanban-card-id">#${p.id}</div>
       <div class="kanban-card-phone" style="font-size:0.85rem;font-weight:700;color:var(--text);">
-        ${esc(p.equipo || p.telefono)}
+        ${esc(nombrePedido(p))}
       </div>
       ${p.equipo && p.telefono ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:3px;">📱 ${esc(p.telefono)}</div>` : ''}
       <div class="kanban-card-items">${itemsTxt}</div>
@@ -2649,7 +2671,7 @@ function avanzarNormal(id) {
   guardar();
   render();
   toast(`#${id} arreglo llegó → Costura`, 'success');
-  crearNotif('🧵', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
+  crearNotif('🧵', `<strong>#${id} ${esc(nombrePedido(p))}</strong> — arreglo resuelto, pasa a <strong>costura</strong>`, 'success', id);
 }
 
 function registrarArreglo(id) {
@@ -2662,7 +2684,7 @@ function registrarArreglo(id) {
   guardar();
   render();
   toast(`#${id} marcado con arreglo — escribe la descripción y asigna diseñador`, 'info');
-  crearNotif('⚠️', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
+  crearNotif('⚠️', `<strong>#${id} ${esc(nombrePedido(p))}</strong> — tiene un <strong>arreglo pendiente</strong> en calidad`, 'warning', id);
 }
 
 function guardarArregloConDisenador(id) {
@@ -2681,7 +2703,7 @@ function guardarArregloConDisenador(id) {
   guardar();
   render();
   toast(`#${id} arreglo asignado a ${dis}`, 'success');
-  crearNotif('🎨', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo asignado a <strong>${esc(dis)}</strong>`, 'warning', id);
+  crearNotif('🎨', `<strong>#${id} ${esc(nombrePedido(p))}</strong> — arreglo asignado a <strong>${esc(dis)}</strong>`, 'warning', id);
 }
 
 function marcarArregloEnviado(id) {
@@ -2692,7 +2714,7 @@ function marcarArregloEnviado(id) {
   guardar();
   render();
   toast(`#${id} arreglo enviado por ${p.arregloDisenador}`, 'info');
-  crearNotif('📤', `<strong>#${id} ${esc(p.equipo || p.telefono)}</strong> — arreglo <strong>enviado</strong> por ${esc(p.arregloDisenador)}`, 'info', id);
+  crearNotif('📤', `<strong>#${id} ${esc(nombrePedido(p))}</strong> — arreglo <strong>enviado</strong> por ${esc(p.arregloDisenador)}`, 'info', id);
 }
 
 function guardarDescArreglo(id) {
@@ -3321,7 +3343,7 @@ function renderArreglos() {
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
           <div>
             <div style="font-size:0.65rem; color:#fca5a5; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Pedido de Producción #${p.id}</div>
-            <div style="font-weight:800; font-size:1.1rem; color:#fff; margin-top:2px;">${esc(p.equipo || p.telefono)}</div>
+            <div style="font-weight:800; font-size:1.1rem; color:#fff; margin-top:2px;">${esc(nombrePedido(p))}</div>
           </div>
           <span style="font-size:0.7rem; background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); border-radius:4px; padding:2px 8px;">En Calidad</span>
         </div>
@@ -4194,7 +4216,7 @@ function renderSatelites() {
 
     listParaEnviar.innerHTML = pParaEnviar.length ? pParaEnviar.map(p => `
       <div class="sat-card" style="margin:0; padding:12px;">
-        <div style="font-weight:700; margin-bottom:4px;">#${p.id} - ${esc(p.equipo || p.telefono)}</div>
+        <div style="font-weight:700; margin-bottom:4px;">#${p.id} - ${esc(nombrePedido(p))}</div>
         <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">${p.prendas?.map(pr=>pr.tipo).join(', ') || 'Uniforme'}</div>
         <div style="display:flex; gap:6px;">
           <select class="form-select" id="sel-sat-${p.id}" style="padding:4px; font-size:0.75rem;">
@@ -4212,7 +4234,7 @@ function renderSatelites() {
       return `
       <div class="sat-card" style="margin:0; padding:12px; border-left:4px solid ${col.header};">
         <div style="font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
-          <span>#${p.id} - ${esc(p.equipo || p.telefono)}</span>
+          <span>#${p.id} - ${esc(nombrePedido(p))}</span>
           <span style="font-size:0.7rem; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">${sName}</span>
         </div>
         <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;">${p.prendas?.map(pr=>pr.tipo).join(', ') || 'Uniforme'}</div>
@@ -4401,16 +4423,16 @@ function verificarAlertasFechas() {
 
     if (diff === 0) {
       localStorage.setItem(clave, '1');
-      crearNotif('🚨', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega HOY`, 'danger', p.id);
+      crearNotif('🚨', `<strong>#${p.id} ${esc(nombrePedido(p))}</strong> — entrega HOY`, 'danger', p.id);
     } else if (diff === 1) {
       localStorage.setItem(clave, '1');
-      crearNotif('⚠️', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega mañana`, 'warning', p.id);
+      crearNotif('⚠️', `<strong>#${p.id} ${esc(nombrePedido(p))}</strong> — entrega mañana`, 'warning', p.id);
     } else if (diff === 2) {
       localStorage.setItem(clave, '1');
-      crearNotif('📅', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega en 2 días`, 'info', p.id);
+      crearNotif('📅', `<strong>#${p.id} ${esc(nombrePedido(p))}</strong> — entrega en 2 días`, 'info', p.id);
     } else if (diff < 0) {
       localStorage.setItem(clave, '1');
-      crearNotif('🔴', `<strong>#${p.id} ${esc(p.equipo || p.telefono)}</strong> — entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
+      crearNotif('🔴', `<strong>#${p.id} ${esc(nombrePedido(p))}</strong> — entrega vencida hace ${Math.abs(diff)}d`, 'danger', p.id);
     }
   });
 }
@@ -5785,7 +5807,7 @@ function renderTVLista() {
     return `
       <div style="display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--card-bg);border:1px solid rgba(255,255,255,0.06);border-radius:10px;margin-bottom:8px;">
         <div style="font-size:0.75rem;color:var(--text-muted);font-weight:700;min-width:40px;">#${p.id}</div>
-        <div style="font-size:0.95rem;font-weight:700;color:var(--text);min-width:160px;">${esc(p.equipo || p.telefono)}</div>
+        <div style="font-size:0.95rem;font-weight:700;color:var(--text);min-width:160px;">${esc(nombrePedido(p))}</div>
         <div style="flex:1;"><div class="timeline-bar">${steps}</div></div>
         <div style="display:flex;align-items:center;gap:12px;min-width:200px;justify-content:flex-end;">
           <span style="font-size:0.78rem;color:var(--text-muted);">${esc(p.vendedora || '—')}</span>
@@ -5961,7 +5983,7 @@ function _semaforoCard(p, motivo, nivel) {
   const colorBorder = nivel === 'rojo' ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)';
   const colorText = nivel === 'rojo' ? '#fca5a5' : '#fbbf24';
   return '<div onclick="irAlPedido(' + p.id + ')" style="background:' + colorBg + ';border:1px solid ' + colorBorder + ';border-radius:8px;padding:10px 14px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;">' +
-    '<div><div style="font-weight:600;font-size:0.88rem;">#' + p.id + ' ' + esc(p.equipo || p.telefono || 'Sin equipo') + '</div>' +
+    '<div><div style="font-weight:600;font-size:0.88rem;">#' + p.id + ' ' + esc(nombrePedido(p)) + '</div>' +
     '<div style="font-size:0.72rem;color:var(--text-muted);">' + esc(p.vendedora || '—') + ' · ' + (ESTADO_LABELS[p.estado] || p.estado) + '</div></div>' +
     '<div style="font-size:0.74rem;color:' + colorText + ';font-weight:600;text-align:right;flex-shrink:0;">' + motivo + '</div>' +
     '</div>';
@@ -6256,7 +6278,7 @@ function renderTorreUnificada() {
       const colorEmoji = a.nivel === 'rojo' ? '🔴' : a.nivel === 'naranja' ? '🟠' : '🟡';
       html += '<div class="torre-alerta" onclick="abrirDetallePedido(' + a.p.id + ')">';
       html += '<span class="torre-alerta-emoji">' + colorEmoji + '</span>';
-      html += '<span class="torre-alerta-eq">#' + a.p.id + ' ' + esc(a.p.equipo || a.p.telefono || 'Sin equipo') + '</span>';
+      html += '<span class="torre-alerta-eq">#' + a.p.id + ' ' + esc(nombrePedido(a.p)) + '</span>';
       html += '<span class="torre-alerta-meta">' + esc(a.txt) + '</span>';
       html += '</div>';
     });
@@ -6395,7 +6417,7 @@ function renderTableroPrincipal() {
       html += '<div class="tab-empty">—</div>';
     } else {
       c.items.forEach(({ p, badge }) => {
-        const eq = esc(p.equipo || 'Sin nombre');
+        const eq = esc(nombrePedido(p));
         const tel = p.telefono ? esc(String(p.telefono).trim()) : '';
         const dis = p.disenadorAsignado ? esc(p.disenadorAsignado) : '';
         const ven = p.vendedora ? esc(p.vendedora) : '';
@@ -6568,7 +6590,7 @@ function abrirDetallePedido(id) {
       // === HEADER STICKY ===
       '<div style="position:sticky;top:0;z-index:5;background:#0c0e16;border-bottom:1px solid rgba(255,255,255,0.06);padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
         '<div style="flex:1;min-width:0;">' +
-          '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:1.25rem;color:var(--text);line-height:1.15;letter-spacing:-0.02em;overflow:hidden;text-overflow:ellipsis;">' + esc(p.equipo || 'Sin equipo') + '</div>' +
+          '<div style="font-family:Outfit,sans-serif;font-weight:800;font-size:1.25rem;color:var(--text);line-height:1.15;letter-spacing:-0.02em;overflow:hidden;text-overflow:ellipsis;">' + esc(nombrePedido(p)) + '</div>' +
           '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
             '<span style="font-size:0.66rem;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;font-weight:600;">#' + p.id + '</span>' +
             '<span style="padding:2px 9px;border-radius:99px;font-size:0.7rem;font-weight:700;background:' + estadoPillStyle + '">' + etapaActualLabel(p.estado) + '</span>' +
@@ -6997,7 +7019,7 @@ async function renderPdfsHuerfanos() {
     const candidatos = pedidos.filter(p => ['hacer-diseno', 'confirmado', 'enviado-calandra'].includes(p.estado));
     const opts = candidatos
       .sort((a, b) => (b.ultimoMovimiento || '').localeCompare(a.ultimoMovimiento || ''))
-      .map(p => '<option value="' + p.id + '">#' + p.id + ' ' + esc(p.equipo || p.telefono || 'Sin equipo') + ' — ' + esc(p.vendedora || '') + ' (' + (ESTADO_LABELS[p.estado] || p.estado) + ')</option>')
+      .map(p => '<option value="' + p.id + '">#' + p.id + ' ' + esc(nombrePedido(p)) + ' — ' + esc(p.vendedora || '') + ' (' + (ESTADO_LABELS[p.estado] || p.estado) + ')</option>')
       .join('');
 
     let html = '';

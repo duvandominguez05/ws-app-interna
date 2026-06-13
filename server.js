@@ -5024,6 +5024,42 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
+  // ── Setear nombreDiseno y/o listaJugadores en un pedido ──────────
+  // POST /api/pedidos/:id/diseno-detectado
+  // Body: { nombreDiseno?: "POR UN BELLO SAN MARTIN", listaJugadores?: [...] }
+  if (req.method === 'POST' && req.url.match(/^\/api\/pedidos\/\d+\/diseno-detectado$/)) {
+    const id = parseInt(req.url.split('/')[3]);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { nombreDiseno, listaJugadores } = JSON.parse(body || '{}');
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no existe' });
+        const cambios = [];
+        if (nombreDiseno && nombreDiseno.length > 1 && nombreDiseno !== p.nombreDiseno) {
+          p.nombreDisenoAnterior = p.nombreDiseno || null;
+          p.nombreDiseno = nombreDiseno;
+          cambios.push('nombreDiseno');
+        }
+        if (Array.isArray(listaJugadores) && listaJugadores.length > 0) {
+          p.listaJugadores = listaJugadores;
+          p.listaJugadoresDetectadaEn = new Date().toISOString();
+          cambios.push('listaJugadores');
+        }
+        if (cambios.length > 0) {
+          p.ultimoMovimiento = new Date().toISOString();
+          guardarPedidos(pedidos, leerNextId());
+        }
+        return json(res, 200, { ok: true, cambios, nombreDiseno: p.nombreDiseno, listaJugadores: p.listaJugadores });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── CRON SILENCIOSO: probar / ejecutar-ahora / on / off / status / saldo ───────────
   if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-probar') {
     try {
@@ -10764,6 +10800,22 @@ async function ejecutarCronSilencioso(modoPrueba = false) {
           if (r.ok) comparacionPdf = await r.json();
         } catch {}
         resultado.costoEstimado += COSTO_GEMINI_FLASH;
+      }
+
+      // 2b. Guardar nombreDiseno si Gemini lo extrajo (con validacion: que NO sea comprobante)
+      const textoDisenoExtraido = comparacionPdf?.textoDiseno?.textoPrincipal;
+      const esTextoValido = textoDisenoExtraido
+        && textoDisenoExtraido.length >= 3
+        && !/transacc|venta confirm|comprobante|bancolombia|nequi|daviplata/i.test(textoDisenoExtraido)
+        && comparacionPdf?.imagenChatQuien === 'vendedora'; // solo si la imagen es de la vendedora (es el diseño)
+      if (esTextoValido && textoDisenoExtraido !== p.nombreDiseno) {
+        try {
+          await fetch(`http://localhost:${PORT || process.env.PORT || 8080}/api/pedidos/${p.id}/diseno-detectado`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombreDiseno: textoDisenoExtraido }),
+          });
+        } catch (e) { console.error('[cron diseno-detectado]', e.message); }
       }
 
       // 3. Verificar WeTransfer si tenemos texto del diseño
