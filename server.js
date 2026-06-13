@@ -5318,6 +5318,32 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // DEBUG: ver configuracion de inboxes de Chatwoot
+  // GET /api/admin/debug-chatwoot-inboxes
+  if (req.method === 'GET' && req.url === '/api/admin/debug-chatwoot-inboxes') {
+    try {
+      const url = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const apiKey = process.env.CHATWOOT_API_KEY;
+      const r = await fetch(`${url}/api/v1/accounts/${accountId}/inboxes`, {
+        headers: { 'api_access_token': apiKey },
+      });
+      const data = await r.json();
+      return json(res, 200, {
+        total: (data.payload || []).length,
+        inboxes: (data.payload || []).map(i => ({
+          id: i.id,
+          name: i.name,
+          channel_type: i.channel_type,
+          provider_config: i.provider_config,
+          webhook_url: i.webhook_url,
+          forward_url: i.forward_url,
+          enable_auto_assignment: i.enable_auto_assignment,
+        })),
+      });
+    } catch (e) { return json(res, 500, { error: e.message }); }
+  }
+
   // DEBUG: chat detalle por substring — devuelve TODO el objeto chat
   // GET /api/admin/debug-chat-detalle?instance=ws-ney&search=3214144809
   if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-chat-detalle')) {
