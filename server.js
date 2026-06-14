@@ -5194,6 +5194,41 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── POST /api/admin/normalizar-telefonos ──
+  // Prefija "57" a telefonos colombianos de 10 digitos guardados sin codigo pais.
+  // Idempotente: solo toca los que faltan el 57. Recorre activos + archivados.
+  // Reporta lista de pedidos corregidos.
+  if (req.method === 'POST' && req.url === '/api/admin/normalizar-telefonos') {
+    try {
+      const pedidos = leerPedidos();
+      const archivados = (typeof leerArchivados === 'function') ? (leerArchivados() || []) : [];
+      const corregidos = [];
+      const fix = (lista, scope) => {
+        for (const p of lista) {
+          if (!p || !p.telefono) continue;
+          const t = String(p.telefono).replace(/\D/g, '');
+          if (t.length === 10 && /^3\d{9}$/.test(t)) {
+            const nuevo = '57' + t;
+            p.telefonoAnterior = p.telefono;
+            p.telefono = nuevo;
+            corregidos.push({ id: p.id, scope, antes: t, despues: nuevo, equipo: p.equipo });
+          }
+        }
+      };
+      fix(pedidos, 'activo');
+      fix(archivados, 'archivado');
+      if (corregidos.length > 0) {
+        guardarPedidos(pedidos, leerNextId());
+        if (typeof guardarArchivados === 'function') {
+          try { guardarArchivados(archivados); } catch (e) { console.error('[normalizar-tel archivados]', e.message); }
+        }
+      }
+      return json(res, 200, { ok: true, totalCorregidos: corregidos.length, corregidos });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── CRON SILENCIOSO: probar / ejecutar-ahora / on / off / status / saldo ───────────
   if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-probar') {
     try {
