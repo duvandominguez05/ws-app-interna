@@ -4138,8 +4138,9 @@ http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const soloId = u.searchParams.get('soloId') || null;
+      const forzar = u.searchParams.get('forzar') === '1';
       const limitePedidos = parseInt(u.searchParams.get('limit') || '20', 10);
-      const reporte = await chatReader.analizarChatsPedidosSinNombre({ db, soloId, limitePedidos });
+      const reporte = await chatReader.analizarChatsPedidosSinNombre({ db, soloId, limitePedidos, forzar });
       return json(res, 200, reporte);
     } catch (e) {
       return json(res, 500, { error: e.message });

@@ -256,20 +256,25 @@ REGLAS:
 }
 
 // ── ANALIZAR (modo prueba — NO modifica pedidos) ───────────────────
-async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = null, limitMensajes = 40, maxAudiosPorChat = 8 } = {}) {
+async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = null, forzar = false, limitMensajes = 40, maxAudiosPorChat = 8 } = {}) {
   if (!db || !db.leerPedidos) return { error: 'db requerido' };
 
   const pedidos = db.leerPedidos();
-  // Filtrar pedidos sin nombre real (equipoVieneDeBot=true) y no amarrados
-  let elegibles = pedidos.filter(p => {
-    if (p.equipoAmarradoDeGrupo) return false;
-    if (p.nombreDiseno) return false;
-    if (!p.equipoVieneDeBot && p.equipo && !/^cliente\s+\+?\d/i.test(p.equipo)) return false;
-    if (!p.telefono) return false;
-    if (!p.vendedora) return false;
-    return !['enviado-final', 'archivado', 'cancelado', 'entregado'].includes(p.estado);
-  });
-  if (soloId) elegibles = elegibles.filter(p => p.id === parseInt(soloId, 10));
+  // Si soloId+forzar: saltar el filtro estricto (para casos manuales / pruebas)
+  let elegibles;
+  if (soloId && forzar) {
+    elegibles = pedidos.filter(p => p.id === parseInt(soloId, 10) && p.telefono && p.vendedora);
+  } else {
+    elegibles = pedidos.filter(p => {
+      if (p.equipoAmarradoDeGrupo) return false;
+      if (p.nombreDiseno) return false;
+      if (!p.equipoVieneDeBot && p.equipo && !/^cliente\s+\+?\d/i.test(p.equipo)) return false;
+      if (!p.telefono) return false;
+      if (!p.vendedora) return false;
+      return !['enviado-final', 'archivado', 'cancelado', 'entregado'].includes(p.estado);
+    });
+    if (soloId) elegibles = elegibles.filter(p => p.id === parseInt(soloId, 10));
+  }
   elegibles = elegibles.slice(0, limitePedidos);
 
   // Cache de transcripciones persistente en state
