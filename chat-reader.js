@@ -35,10 +35,51 @@ function guardarState(s) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2));
 }
 
+// ── Cache de findChats por instancia (TTL 5 min) ──────────────────
+// WhatsApp ahora usa @lid (LinkedID). Evolution guarda el chat con
+// remoteJid en formato @lid y el telefono real en lastMessage.key.remoteJidAlt.
+// Hay que resolver el @lid antes de pedir mensajes.
+const _chatsCache = new Map(); // instance -> { ts, map: { tel -> remoteJid } }
+const CHATS_TTL_MS = 5 * 60 * 1000;
+
+async function _cargarMapaChats(instance) {
+  const ahora = Date.now();
+  const cached = _chatsCache.get(instance);
+  if (cached && (ahora - cached.ts) < CHATS_TTL_MS) return cached.map;
+  const r = await fetch(`${EVO_URL}/chat/findChats/${instance}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
+    body: JSON.stringify({ where: {} }),
+  });
+  if (!r.ok) return new Map();
+  const chats = await r.json();
+  const arr = Array.isArray(chats) ? chats : (chats?.records || []);
+  const map = new Map(); // tel -> remoteJid (@lid o @s.whatsapp.net)
+  for (const c of arr) {
+    const rj = c?.remoteJid;
+    if (!rj) continue;
+    // Tel directo en remoteJid (chats viejos @s.whatsapp.net)
+    const m1 = String(rj).match(/^(\d{8,15})@s\.whatsapp\.net$/);
+    if (m1) { map.set(m1[1], rj); continue; }
+    // Tel en lastMessage.remoteJidAlt (chats nuevos @lid)
+    const alt = c?.lastMessage?.key?.remoteJidAlt;
+    const m2 = String(alt || '').match(/^(\d{8,15})@s\.whatsapp\.net$/);
+    if (m2) map.set(m2[1], rj);
+  }
+  _chatsCache.set(instance, { ts: ahora, map });
+  return map;
+}
+
 // ── Listar mensajes de UN chat 1:1 con cliente ─────────────────────
 async function listarMensajesChat(instance, telefonoCliente, limit = 40) {
   const tel = String(telefonoCliente).replace(/\D/g, '');
-  const remoteJid = `${tel}@s.whatsapp.net`;
+  // 1) Resolver remoteJid real (puede ser @lid)
+  let remoteJid = `${tel}@s.whatsapp.net`;
+  try {
+    const mapa = await _cargarMapaChats(instance);
+    if (mapa.has(tel)) remoteJid = mapa.get(tel);
+  } catch (e) { /* fallback al @s.whatsapp.net */ }
+  // 2) Pedir mensajes
   const r = await fetch(`${EVO_URL}/chat/findMessages/${instance}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': EVO_KEY },
