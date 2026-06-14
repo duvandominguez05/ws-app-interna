@@ -222,10 +222,11 @@ async function analizarChatsPedidosSinNombre({ db, limitePedidos = 20, soloId = 
   // Filtrar pedidos sin nombre real (equipoVieneDeBot=true) y no amarrados
   let elegibles = pedidos.filter(p => {
     if (p.equipoAmarradoDeGrupo) return false;
+    if (p.nombreDiseno) return false;
     if (!p.equipoVieneDeBot && p.equipo && !/^cliente\s+\+?\d/i.test(p.equipo)) return false;
     if (!p.telefono) return false;
     if (!p.vendedora) return false;
-    return ['bandeja', 'hacer-diseno', 'confirmado'].includes(p.estado);
+    return !['enviado-final', 'archivado', 'cancelado', 'entregado'].includes(p.estado);
   });
   if (soloId) elegibles = elegibles.filter(p => p.id === parseInt(soloId, 10));
   elegibles = elegibles.slice(0, limitePedidos);
@@ -320,7 +321,12 @@ async function procesarYAmarrarChats({ db, notificarWAVendedora = null, notifica
     }
 
     const nombreNuevo = String(g.nombre_equipo).trim();
-    p.equipo = nombreNuevo;
+    p.nombreDiseno = nombreNuevo;
+    const equipoEsPlaceholder = p.equipoVieneDeBot || !p.equipo || /^cliente\s+\+?\d/i.test(p.equipo);
+    if (equipoEsPlaceholder) {
+      p.equipo = nombreNuevo;
+      p.equipoVieneDeBot = false;
+    }
     p.equipoAmarradoDeGrupo = true;
     p.amarradoDeGrupoFuente = 'chat-cliente';
     p.amarradoDeGrupoIso = new Date().toISOString();
