@@ -5212,8 +5212,16 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         const reporte = { vinculados: [], renombrados: [], sinContactoCw: [], sinCambio: [] };
         const tieneEncodingRoto = (s) => {
           if (!s) return false;
-          // Caracteres tipicos de UTF-8 doble-codificado: ð, Ã, ï¿, ï¸, â½, etc.
-          return /[ð]|Ã[^a-zA-Z]|ï¿|ï¸|â½|â£/.test(String(s));
+          // UTF-8 doble-codificado tipico: Ã±/Ã³/Ã©/Ã/Ã³, ð (high surrogate roto), â, ï¿½/ï¸
+          // Detectamos secuencias de caracteres latin-1 que NO son palabras espanolas validas
+          return /Ã[-ÿ]|ð[-ÿ]|â[-ÿ]|ï[-ÿ]|Â[-ÿ]/.test(String(s));
+        };
+        // Compara nombres "sin caracteres raros" para ver si son el mismo
+        const nombreBase = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
+        const mismoNombre = (a, b) => {
+          const na = nombreBase(a), nb = nombreBase(b);
+          if (!na || !nb) return false;
+          return na === nb || na.startsWith(nb) || nb.startsWith(na);
         };
         for (const p of pedidos) {
           if (!p.telefono) continue;
@@ -5239,18 +5247,26 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
             reporte.vinculados.push({ id: p.id, equipo: p.equipo, cwId: cwHit.id });
             touched = true;
           }
-          // 3) Reemplazar nombre si encoding roto
+          // 3) Reemplazar nombre si encoding roto Y el nombre de Chatwoot "coincide"
+          //    (mismo nombre limpiando caracteres). Asi no pisamos nombres reales del equipo.
           const nombreCw = (cwHit.name || '').trim();
-          if (nombreCw && tieneEncodingRoto(p.equipo)) {
-            const equipoAnt = p.equipo;
-            // No pisar nombreDiseno: solo reemplazar campos del cliente
-            if (p.equipoVieneDeBot !== false) p.equipo = nombreCw;
-            p.pushNameCliente = nombreCw;
-            reporte.renombrados.push({ id: p.id, antes: equipoAnt, despues: nombreCw });
-            touched = true;
-          } else if (nombreCw && tieneEncodingRoto(p.pushNameCliente)) {
-            p.pushNameCliente = nombreCw;
-            touched = true;
+          if (nombreCw) {
+            const equipoRoto = tieneEncodingRoto(p.equipo);
+            const pushRoto = tieneEncodingRoto(p.pushNameCliente);
+            const coincideEquipo = equipoRoto && mismoNombre(nombreCw, p.equipo);
+            const coincidePush = pushRoto && mismoNombre(nombreCw, p.pushNameCliente);
+            if (coincideEquipo) {
+              const antes = p.equipo;
+              if (p.equipoVieneDeBot !== false) p.equipo = nombreCw;
+              reporte.renombrados.push({ id: p.id, antes, despues: nombreCw, campo: 'equipo' });
+              touched = true;
+            }
+            if (coincidePush) {
+              const antes = p.pushNameCliente;
+              p.pushNameCliente = nombreCw;
+              if (!coincideEquipo) reporte.renombrados.push({ id: p.id, antes, despues: nombreCw, campo: 'pushNameCliente' });
+              touched = true;
+            }
           }
           if (touched) {
             p.ultimoMovimiento = new Date().toISOString();
