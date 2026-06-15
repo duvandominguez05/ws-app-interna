@@ -2779,6 +2779,70 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /api/pedidos/:id/registrar-entrega ──
+  // Marca un pedido como entregado al cliente y registra cómo se entregó.
+  // Body: {
+  //   tipo: 'fabrica' | 'envio' | 'domicilio',
+  //   fecha?: 'YYYY-MM-DD',          // por defecto hoy
+  //   entregadoPor?: string,         // Camilo / Wendy / etc.
+  //   recibidoPor?: string,          // nombre de la persona que recibio (cliente o representante)
+  //   transportadora?: string,       // solo para tipo=envio
+  //   numeroGuia?: string,           // solo para tipo=envio
+  //   valorACobrar?: number,         // solo para tipo=envio (contra-entrega)
+  //   direccion?: string,            // para tipo=domicilio
+  //   nota?: string,
+  // }
+  if (req.method === 'POST' && req.url.match(/^\/api\/pedidos\/\d+\/registrar-entrega$/)) {
+    const id = parseInt(req.url.split('/')[3]);
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const TIPOS_OK = ['fabrica', 'envio', 'domicilio'];
+        if (!TIPOS_OK.includes(data.tipo)) {
+          return json(res, 400, { error: `tipo invalido. Usar uno de: ${TIPOS_OK.join(', ')}` });
+        }
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        const estadoAnterior = p.estado;
+        const ahora = new Date().toISOString();
+        const fechaEntrega = data.fecha || new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
+        // Datos de entrega
+        p.entrega = {
+          tipo: data.tipo,
+          fecha: fechaEntrega,
+          entregadoPor: data.entregadoPor || null,
+          recibidoPor: data.recibidoPor || null,
+          transportadora: data.tipo === 'envio' ? (data.transportadora || null) : null,
+          numeroGuia: data.tipo === 'envio' ? (data.numeroGuia || null) : null,
+          valorACobrar: data.tipo === 'envio' ? (data.valorACobrar || null) : null,
+          direccion: data.tipo === 'domicilio' ? (data.direccion || null) : null,
+          nota: data.nota || null,
+          registradoEn: ahora,
+        };
+        p.estado = 'enviado-final';
+        p.ultimoMovimiento = ahora;
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: ahora,
+          por: data.entregadoPor || 'registro-entrega',
+          accion: 'registrar-entrega',
+          de: estadoAnterior,
+          a: 'enviado-final',
+          nota: `Entrega ${data.tipo}${data.fecha ? ' (' + data.fecha + ')' : ''}${data.recibidoPor ? ' a ' + data.recibidoPor : ''}${data.numeroGuia ? ' guia ' + data.numeroGuia : ''}`,
+        });
+        guardarPedidos(pedidos, leerNextId());
+        return json(res, 200, { ok: true, pedido: { id: p.id, estado: p.estado, entrega: p.entrega } });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/pedidos/:id/foto-costura ──
   // Recibe { fotoBase64: "data:image/jpeg;base64,..." } desde la app de la
   // costurera al pulsar "Terminé". Guarda la foto en disco, registra en
