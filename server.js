@@ -5195,6 +5195,80 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── POST /api/admin/sincronizar-chatwoot ──
+  // Para cada pedido activo:
+  //  1. Si NO tiene contactoChatwoot, busca por telefono en Chatwoot y lo vincula
+  //  2. Si el `equipo` o `pushNameCliente` tiene encoding roto, lo reemplaza
+  //     con el `name` correcto de Chatwoot (que esta bien guardado).
+  // Heuristica encoding roto: matches secuencias UTF-8 mal decodificadas.
+  if (req.method === 'POST' && req.url === '/api/admin/sincronizar-chatwoot') {
+    (async () => {
+      try {
+        const cwUrl = process.env.CHATWOOT_URL;
+        const cwToken = process.env.CHATWOOT_API_KEY;
+        const cwAccount = process.env.CHATWOOT_ACCOUNT_ID || '2';
+        if (!cwUrl || !cwToken) return json(res, 500, { error: 'falta CHATWOOT_URL o CHATWOOT_API_KEY' });
+        const pedidos = leerPedidos();
+        const reporte = { vinculados: [], renombrados: [], sinContactoCw: [], sinCambio: [] };
+        const tieneEncodingRoto = (s) => {
+          if (!s) return false;
+          // Caracteres tipicos de UTF-8 doble-codificado: ð, Ã, ï¿, ï¸, â½, etc.
+          return /[ð]|Ã[^a-zA-Z]|ï¿|ï¸|â½|â£/.test(String(s));
+        };
+        for (const p of pedidos) {
+          if (!p.telefono) continue;
+          let touched = false;
+          // 1) Buscar en Chatwoot por telefono
+          let cwHit = null;
+          try {
+            const r = await fetch(`${cwUrl}/api/v1/accounts/${cwAccount}/contacts/search?q=${encodeURIComponent(p.telefono)}`, {
+              headers: { 'api_access_token': cwToken },
+            });
+            if (r.ok) {
+              const data = await r.json();
+              cwHit = (data.payload || [])[0] || null;
+            }
+          } catch (e) { console.error('[sinc-cw] buscar', e.message); }
+          if (!cwHit) {
+            reporte.sinContactoCw.push({ id: p.id, equipo: p.equipo, tel: p.telefono });
+            continue;
+          }
+          // 2) Vincular contactoChatwoot si falta
+          if (!p.contactoChatwoot) {
+            p.contactoChatwoot = cwHit.id;
+            reporte.vinculados.push({ id: p.id, equipo: p.equipo, cwId: cwHit.id });
+            touched = true;
+          }
+          // 3) Reemplazar nombre si encoding roto
+          const nombreCw = (cwHit.name || '').trim();
+          if (nombreCw && tieneEncodingRoto(p.equipo)) {
+            const equipoAnt = p.equipo;
+            // No pisar nombreDiseno: solo reemplazar campos del cliente
+            if (p.equipoVieneDeBot !== false) p.equipo = nombreCw;
+            p.pushNameCliente = nombreCw;
+            reporte.renombrados.push({ id: p.id, antes: equipoAnt, despues: nombreCw });
+            touched = true;
+          } else if (nombreCw && tieneEncodingRoto(p.pushNameCliente)) {
+            p.pushNameCliente = nombreCw;
+            touched = true;
+          }
+          if (touched) {
+            p.ultimoMovimiento = new Date().toISOString();
+          } else {
+            reporte.sinCambio.push({ id: p.id });
+          }
+        }
+        if (reporte.vinculados.length || reporte.renombrados.length) {
+          guardarPedidos(pedidos, leerNextId());
+        }
+        return json(res, 200, { ok: true, totales: { vinculados: reporte.vinculados.length, renombrados: reporte.renombrados.length, sinContactoCw: reporte.sinContactoCw.length }, detalle: reporte });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/admin/normalizar-telefonos ──
   // Prefija "57" a telefonos colombianos de 10 digitos guardados sin codigo pais.
   // Idempotente: solo toca los que faltan el 57. Recorre activos + archivados.
