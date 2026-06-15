@@ -5271,7 +5271,18 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           if (touched) {
             p.ultimoMovimiento = new Date().toISOString();
           } else {
-            reporte.sinCambio.push({ id: p.id });
+            reporte.sinCambio.push({
+              id: p.id,
+              equipo: p.equipo,
+              pushNameCliente: p.pushNameCliente,
+              nombreCw,
+              equipoRoto: tieneEncodingRoto(p.equipo),
+              pushRoto: tieneEncodingRoto(p.pushNameCliente),
+              equipoEnNombreBase: nombreBase(p.equipo),
+              cwEnNombreBase: nombreBase(nombreCw),
+              mismoEquipo: mismoNombre(nombreCw, p.equipo),
+              mismoPush: mismoNombre(nombreCw, p.pushNameCliente),
+            });
           }
         }
         if (reporte.vinculados.length || reporte.renombrados.length) {
