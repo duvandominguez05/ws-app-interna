@@ -5271,17 +5271,24 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           if (touched) {
             p.ultimoMovimiento = new Date().toISOString();
           } else {
+            // Dump charcodes para diagnostico
+            const dumpCodes = (s) => {
+              if (!s) return [];
+              const out = [];
+              for (let k = 0; k < Math.min(s.length, 30); k++) {
+                const c = s.charCodeAt(k);
+                if (c >= 0x80) out.push({ pos: k, hex: c.toString(16) });
+              }
+              return out;
+            };
             reporte.sinCambio.push({
               id: p.id,
               equipo: p.equipo,
-              pushNameCliente: p.pushNameCliente,
               nombreCw,
               equipoRoto: tieneEncodingRoto(p.equipo),
-              pushRoto: tieneEncodingRoto(p.pushNameCliente),
-              equipoEnNombreBase: nombreBase(p.equipo),
-              cwEnNombreBase: nombreBase(nombreCw),
+              equipoHighCodes: dumpCodes(p.equipo),
+              cwHighCodes: dumpCodes(nombreCw),
               mismoEquipo: mismoNombre(nombreCw, p.equipo),
-              mismoPush: mismoNombre(nombreCw, p.pushNameCliente),
             });
           }
         }
