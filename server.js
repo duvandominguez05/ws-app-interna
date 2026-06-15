@@ -5214,7 +5214,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           if (!s) return false;
           // Control chars U+0080-U+009F del Latin-1 extendido JAMAS aparecen
           // en nombres reales. Son senal inequivoca de UTF-8 mal decodificado.
-          return /[-]/.test(String(s));
+          return /[\u0080-\u009F]/.test(String(s));
         };
         // Compara nombres "sin caracteres raros" para ver si son el mismo
         const nombreBase = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
