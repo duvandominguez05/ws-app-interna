@@ -5195,6 +5195,60 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── POST /api/admin/drive-subir-vigilante ──
+  // Recibe { nombreCarpeta? | parentId?, archivos: [{titulo, mimeType, contentBase64, publico?}] }
+  // Crea/encuentra la carpeta y sube los archivos. Devuelve los links.
+  if (req.method === 'POST' && req.url === '/api/admin/drive-subir-vigilante') {
+    (async () => {
+      try {
+        let body = '';
+        req.setEncoding('utf8');
+        req.on('data', d => body += d);
+        req.on('end', async () => {
+          try {
+            const { nombreCarpeta, parentId: parentIdProvided, archivos } = JSON.parse(body || '{}');
+            if (!Array.isArray(archivos) || archivos.length === 0) {
+              return json(res, 400, { error: 'falta archivos[]' });
+            }
+            let parentId = parentIdProvided;
+            let carpetaInfo = null;
+            if (!parentId && nombreCarpeta) {
+              carpetaInfo = await driveSync.crearOBuscarCarpeta(nombreCarpeta);
+              parentId = carpetaInfo.id;
+            }
+            const subidos = [];
+            for (const a of archivos) {
+              try {
+                const sub = await driveSync.subirArchivo({
+                  titulo: a.titulo,
+                  mimeType: a.mimeType,
+                  contentBase64: a.contentBase64,
+                  parentId,
+                });
+                if (a.publico) {
+                  try { await driveSync.hacerArchivoPublico(sub.id); } catch (e) { /* ignorar */ }
+                }
+                subidos.push({ titulo: a.titulo, id: sub.id, viewLink: sub.viewLink, downloadLink: sub.downloadLink });
+              } catch (e) {
+                subidos.push({ titulo: a.titulo, error: e.message });
+              }
+            }
+            return json(res, 200, {
+              ok: true,
+              carpeta: carpetaInfo ? { id: parentId, nombre: nombreCarpeta, creada: carpetaInfo.creada } : { id: parentId },
+              subidos,
+            });
+          } catch (e) {
+            return json(res, 500, { error: e.message });
+          }
+        });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
   // ── POST /api/admin/sincronizar-chatwoot ──
   // Para cada pedido activo:
   //  1. Si NO tiene contactoChatwoot, busca por telefono en Chatwoot y lo vincula

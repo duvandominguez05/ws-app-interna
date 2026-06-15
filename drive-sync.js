@@ -199,6 +199,42 @@ async function sincronizarConPedidos(pedidos) {
   };
 }
 
+// ── Crear/buscar carpeta en Drive por nombre ─────────────────────
+// Si existe, devuelve su ID. Si no existe, la crea en la raiz (o bajo parentId).
+async function crearOBuscarCarpeta(nombre, parentId = null) {
+  const tokens = gmailWT._leerTokens();
+  if (!tokens || !tokens.refresh_token) throw new Error('Drive no conectado');
+  let token = tokens.access_token;
+  // 1. Buscar carpeta por nombre
+  const q = `name='${nombre.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parentId ? ` and '${parentId}' in parents` : ''}`;
+  const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`;
+  let r = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (r.status === 401) {
+    const refreshed = await _refrescarToken();
+    token = refreshed.google;
+    r = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+  }
+  if (r.ok) {
+    const data = await r.json();
+    if (data.files && data.files.length > 0) return { id: data.files[0].id, creada: false };
+  }
+  // 2. Crear carpeta
+  const metadata = {
+    name: nombre,
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: parentId ? [parentId] : undefined,
+  };
+  const createUrl = 'https://www.googleapis.com/drive/v3/files?fields=id,name';
+  let r2 = await fetch(createUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadata),
+  });
+  if (!r2.ok) throw new Error('Drive crear carpeta fallo: ' + r2.status + ' ' + await r2.text());
+  const data2 = await r2.json();
+  return { id: data2.id, creada: true };
+}
+
 // ── Subir archivo a Drive (multipart upload) ─────────────────────
 // Body: { titulo, mimeType, contentBase64, parentId }
 // Devuelve: { id, viewLink, downloadLink }
@@ -371,6 +407,7 @@ module.exports = {
   procesarCorel,
   procesarPdfRip,
   subirArchivo,
+  crearOBuscarCarpeta,
   hacerArchivoPublico,
   descargarArchivoBase64,
   descargarThumbnailBase64,
