@@ -2726,6 +2726,166 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  // ── GET /aprobar/:token — pagina publica de aprobacion de diseno ──
+  // El cliente abre este link desde su WhatsApp. Recibe la pagina HTML.
+  if (req.method === 'GET' && req.url.match(/^\/aprobar\/[a-zA-Z0-9_-]+$/)) {
+    try {
+      const token = req.url.split('/')[2];
+      // Token formato: id-hash. Validamos.
+      const m = token.match(/^(\d+)-([a-zA-Z0-9_-]+)$/);
+      if (!m) {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>Link invalido</h1>');
+        return;
+      }
+      const pedidoId = parseInt(m[1], 10);
+      const hash = m[2];
+      const pedidos = leerPedidos();
+      const p = pedidos.find(x => x.id === pedidoId);
+      if (!p) {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>Pedido no encontrado</h1>');
+        return;
+      }
+      // Verificar hash (sencillo: id + secret hardcoded por ahora)
+      const crypto = require('crypto');
+      const secret = process.env.APROBAR_SECRET || 'ws-aprobar-2026';
+      const hashEsperado = crypto.createHash('sha256').update(`${pedidoId}-${secret}`).digest('base64url').slice(0, 12);
+      if (hash !== hashEsperado) {
+        res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>Link no valido o expirado</h1>');
+        return;
+      }
+      // Servir el archivo HTML
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(__dirname, 'public', 'aprobar.html');
+      if (!fs.existsSync(filePath)) {
+        res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<h1>Pagina no encontrada</h1>');
+        return;
+      }
+      let html = fs.readFileSync(filePath, 'utf8');
+      // Inyectar datos del pedido
+      const nombrePedido = p.nombreDiseno || p.equipo || ('Pedido #' + p.id);
+      const cliente = p.pushNameCliente || p.equipo || 'Cliente';
+      const yaRespondio = !!(p.aprobacionCliente && p.aprobacionCliente.respondioEn);
+      html = html
+        .replace(/__PEDIDO_ID__/g, String(p.id))
+        .replace(/__TOKEN__/g, token)
+        .replace(/__NOMBRE_PEDIDO__/g, nombrePedido.replace(/</g, '&lt;'))
+        .replace(/__CLIENTE__/g, cliente.replace(/</g, '&lt;'))
+        .replace(/__ESTADO_ACTUAL__/g, p.estado)
+        .replace(/__YA_RESPONDIO__/g, yaRespondio ? 'true' : 'false')
+        .replace(/__RESPUESTA_ANTERIOR__/g, yaRespondio ? (p.aprobacionCliente.accion || '') : '');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>Error: ' + e.message + '</h1>');
+    }
+    return;
+  }
+
+  // ── POST /api/aprobar/:token — el cliente toca un boton de la mini-web ──
+  // Body: { accion: 'aprobar'|'cambiar'|'pensar', detalleCambio? }
+  if (req.method === 'POST' && req.url.match(/^\/api\/aprobar\/[a-zA-Z0-9_-]+$/)) {
+    const token = req.url.split('/')[3];
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const m = token.match(/^(\d+)-([a-zA-Z0-9_-]+)$/);
+        if (!m) return json(res, 400, { error: 'token invalido' });
+        const pedidoId = parseInt(m[1], 10);
+        const hash = m[2];
+        const crypto = require('crypto');
+        const secret = process.env.APROBAR_SECRET || 'ws-aprobar-2026';
+        const hashEsperado = crypto.createHash('sha256').update(`${pedidoId}-${secret}`).digest('base64url').slice(0, 12);
+        if (hash !== hashEsperado) return json(res, 403, { error: 'token no valido' });
+        const data = JSON.parse(body || '{}');
+        const ACCIONES = ['aprobar', 'cambiar', 'pensar'];
+        if (!ACCIONES.includes(data.accion)) return json(res, 400, { error: 'accion invalida' });
+        const pedidos = leerPedidos();
+        const p = pedidos.find(x => x.id === pedidoId);
+        if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+        const ahora = new Date().toISOString();
+        p.aprobacionCliente = {
+          accion: data.accion,
+          detalleCambio: data.detalleCambio || null,
+          respondioEn: ahora,
+          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress || null,
+        };
+        p.historial = p.historial || [];
+        if (data.accion === 'aprobar') {
+          const estadoAnt = p.estado;
+          if (['hacer-diseno', 'bandeja'].includes(p.estado)) p.estado = 'confirmado';
+          p.fechaAprobacionCliente = ahora;
+          p.historial.push({
+            fecha: ahora,
+            por: 'cliente-link',
+            accion: 'aprobacion-cliente',
+            de: estadoAnt,
+            a: p.estado,
+            nota: `Cliente APROBO desde el link de aprobacion`,
+          });
+        } else if (data.accion === 'cambiar') {
+          p.historial.push({
+            fecha: ahora,
+            por: 'cliente-link',
+            accion: 'cliente-pide-cambio',
+            nota: `Cliente pidio cambiar: ${data.detalleCambio || '(sin detalle)'}`,
+          });
+        } else {
+          p.historial.push({
+            fecha: ahora,
+            por: 'cliente-link',
+            accion: 'cliente-piensa',
+            nota: 'Cliente sigue viendo el diseno',
+          });
+        }
+        p.ultimoMovimiento = ahora;
+        guardarPedidos(pedidos, leerNextId());
+        return json(res, 200, { ok: true, accion: data.accion, estado: p.estado });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/admin/generar-link-aprobacion ──
+  // Body: { pedidoId, mandarWA? }
+  // Devuelve: { url, hash }. Si mandarWA, manda el link al cliente del pedido via Evolution.
+  if (req.method === 'POST' && req.url === '/api/admin/generar-link-aprobacion') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      (async () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          const pedidoId = parseInt(data.pedidoId, 10);
+          if (!pedidoId) return json(res, 400, { error: 'falta pedidoId' });
+          const pedidos = leerPedidos();
+          const p = pedidos.find(x => x.id === pedidoId);
+          if (!p) return json(res, 404, { error: 'pedido no encontrado' });
+          const crypto = require('crypto');
+          const secret = process.env.APROBAR_SECRET || 'ws-aprobar-2026';
+          const hash = crypto.createHash('sha256').update(`${pedidoId}-${secret}`).digest('base64url').slice(0, 12);
+          const token = `${pedidoId}-${hash}`;
+          const baseUrl = process.env.PUBLIC_URL || 'https://ws-app-interna-production.up.railway.app';
+          const url = `${baseUrl}/aprobar/${token}`;
+          return json(res, 200, { ok: true, url, token, pedidoId });
+        } catch (e) {
+          return json(res, 500, { error: e.message });
+        }
+      })();
+    });
+    return;
+  }
+
   // ── GET /api/pedidos — lista todos los pedidos (purgando archivados) ──
   if (req.method === 'GET' && req.url === '/api/pedidos') {
     const peds = purgarArchivados(leerPedidos());

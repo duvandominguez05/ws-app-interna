@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aprobar diseño · W&S Enterprise</title>
+  <meta name="theme-color" content="#7c3aed">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%);
+      min-height: 100vh;
+      color: #1e293b;
+      padding: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap {
+      max-width: 480px;
+      margin: 0 auto;
+      padding-top: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .brand .logo {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 800;
+    }
+    .brand .name {
+      font-weight: 800; font-size: 18px;
+      letter-spacing: -0.5px;
+    }
+    .brand .sub {
+      font-size: 12px; color: #64748b; margin-top: -2px;
+    }
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+    }
+    h1 {
+      font-size: 22px; font-weight: 800; margin: 0 0 4px;
+      letter-spacing: -0.5px;
+    }
+    .pedido-label {
+      font-size: 13px; color: #64748b; margin-bottom: 18px;
+    }
+    .greeting {
+      font-size: 18px; font-weight: 600;
+      margin: 0 0 8px;
+    }
+    .question {
+      font-size: 15px; color: #475569; line-height: 1.4;
+      margin: 0 0 22px;
+    }
+    .btns { display: flex; flex-direction: column; gap: 10px; }
+    .btn {
+      width: 100%;
+      padding: 18px 16px;
+      border-radius: 14px;
+      border: 2px solid transparent;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 100ms, box-shadow 200ms;
+      display: flex; align-items: center; gap: 12px;
+      text-align: left;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn .icon {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .btn-aprobar {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    }
+    .btn-aprobar .icon { background: rgba(255, 255, 255, 0.25); }
+    .btn-cambiar {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fbbf24;
+    }
+    .btn-cambiar .icon { background: rgba(146, 64, 14, 0.15); }
+    .btn-pensar {
+      background: #f1f5f9;
+      color: #475569;
+      border-color: #cbd5e1;
+    }
+    .btn-pensar .icon { background: rgba(71, 85, 105, 0.15); }
+    .btn-label { display: flex; flex-direction: column; flex: 1; }
+    .btn-label .titulo { font-size: 16px; font-weight: 700; }
+    .btn-label .desc { font-size: 12px; font-weight: 500; opacity: 0.85; margin-top: 2px; }
+    .footer {
+      margin-top: 20px; text-align: center;
+      font-size: 12px; color: #94a3b8; line-height: 1.5;
+    }
+    .footer strong { color: #475569; }
+    .ya-respondio {
+      text-align: center;
+      padding: 30px 20px;
+      background: #ecfdf5;
+      border-radius: 16px;
+      margin-bottom: 12px;
+    }
+    .ya-respondio .check {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      background: #10b981;
+      color: white; font-size: 30px;
+      margin: 0 auto 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ya-respondio h2 { margin: 0 0 6px; font-size: 18px; color: #065f46; }
+    .ya-respondio p { margin: 0; font-size: 14px; color: #047857; }
+
+    /* Modal de cambio */
+    .modal-bg {
+      position: fixed; inset: 0;
+      background: rgba(15, 23, 42, 0.5);
+      display: none; align-items: center; justify-content: center;
+      padding: 16px; z-index: 100;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: white; border-radius: 20px;
+      padding: 24px; max-width: 440px; width: 100%;
+    }
+    .modal h2 { margin: 0 0 8px; font-size: 18px; }
+    .modal p { margin: 0 0 16px; font-size: 14px; color: #64748b; }
+    textarea {
+      width: 100%; padding: 14px;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      font-family: inherit; font-size: 15px;
+      min-height: 100px; resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: #7c3aed; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .modal-actions button {
+      flex: 1; padding: 14px;
+      border-radius: 12px; border: none;
+      font-family: inherit; font-weight: 700; font-size: 15px;
+      cursor: pointer;
+    }
+    .modal-cancelar { background: #f1f5f9; color: #475569; }
+    .modal-enviar { background: #f59e0b; color: white; }
+
+    /* Resultado final */
+    .resultado {
+      text-align: center; padding: 40px 20px;
+    }
+    .resultado .icon-big {
+      width: 80px; height: 80px; border-radius: 50%;
+      margin: 0 auto 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px;
+    }
+    .resultado.exito .icon-big { background: #ecfdf5; color: #10b981; }
+    .resultado.cambio .icon-big { background: #fef3c7; color: #f59e0b; }
+    .resultado.pensar .icon-big { background: #f1f5f9; color: #64748b; }
+    .resultado h2 { margin: 0 0 8px; font-size: 22px; }
+    .resultado p { margin: 0 0 4px; font-size: 15px; color: #64748b; line-height: 1.5; }
+    .spinner {
+      display: inline-block; width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">W</div>
+      <div>
+        <div class="name">W&S Enterprise</div>
+        <div class="sub">Uniformes deportivos</div>
+      </div>
+    </div>
+
+    <div class="card" id="card-principal">
+      <div id="contenido-principal">
+        <p class="pedido-label">Pedido #__PEDIDO_ID__</p>
+        <h1>__NOMBRE_PEDIDO__</h1>
+        <p class="greeting">Hola, __CLIENTE__ 👋</p>
+        <p class="question">Antes de pasar tu pedido a producción, necesitamos tu aprobación del diseño. ¿Cómo lo ves?</p>
+
+        <div class="btns">
+          <button class="btn btn-aprobar" onclick="responder('aprobar')">
+            <div class="icon">✓</div>
+            <div class="btn-label">
+              <span class="titulo">Apruebo el diseño</span>
+              <span class="desc">Pasa a producción</span>
+            </div>
+          </button>
+
+          <button class="btn btn-cambiar" onclick="abrirCambio()">
+            <div class="icon">✎</div>
+            <div class="btn-label">
+              <span class="titulo">Quiero cambiar algo</span>
+              <span class="desc">Cuéntanos qué ajustar</span>
+            </div>
+          </button>
+
+          <button class="btn btn-pensar" onclick="responder('pensar')">
+            <div class="icon">⏱</div>
+            <div class="btn-label">
+              <span class="titulo">Lo voy a pensar</span>
+              <span class="desc">Volver luego</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div id="contenido-resultado" style="display:none;"></div>
+    </div>
+
+    <div class="footer">
+      <strong>W&S Enterprise</strong> · Confeccionamos tu uniforme<br>
+      📞 +57 350 697 4711 · Bogotá - Colombia
+    </div>
+  </div>
+
+  <!-- Modal cambio -->
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <h2>¿Qué te gustaría cambiar?</h2>
+      <p>Cuéntanos en detalle: escudo, colores, tallas, nombres, lo que sea.</p>
+      <textarea id="detalleCambio" placeholder="Por ejemplo: el amarillo más oscuro, el escudo más grande..."></textarea>
+      <div class="modal-actions">
+        <button class="modal-cancelar" onclick="cerrarModal()">Cancelar</button>
+        <button class="modal-enviar" onclick="enviarCambio()">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN = '__TOKEN__';
+    const PEDIDO_ID = '__PEDIDO_ID__';
+    const YA_RESPONDIO = (__YA_RESPONDIO__);
+    const RESPUESTA_ANTERIOR = '__RESPUESTA_ANTERIOR__';
+
+    if (YA_RESPONDIO) {
+      mostrarYaRespondio(RESPUESTA_ANTERIOR);
+    }
+
+    async function responder(accion, detalleCambio) {
+      // Bloquear todo
+      const card = document.getElementById('contenido-principal');
+      card.innerHTML = '<div style="text-align:center;padding:40px 20px;"><div class="spinner" style="border-color:rgba(124,58,237,0.2);border-top-color:#7c3aed;width:40px;height:40px;border-width:4px;"></div><p style="margin-top:20px;color:#64748b;">Enviando tu respuesta...</p></div>';
+      try {
+        const r = await fetch('/api/aprobar/' + TOKEN, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion, detalleCambio }),
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        mostrarResultado(accion, detalleCambio);
+      } catch (e) {
+        card.innerHTML = '<div style="padding:30px;text-align:center;"><h2 style="color:#dc2626;">Algo salió mal</h2><p>Intenta de nuevo en unos segundos.<br>Si sigue fallando, escríbele a tu vendedora.</p></div>';
+      }
+    }
+
+    function abrirCambio() { document.getElementById('modal').classList.add('open'); }
+    function cerrarModal() { document.getElementById('modal').classList.remove('open'); }
+    function enviarCambio() {
+      const det = document.getElementById('detalleCambio').value.trim();
+      cerrarModal();
+      responder('cambiar', det);
+    }
+
+    function mostrarResultado(accion, detalleCambio) {
+      const cont = document.getElementById('contenido-principal');
+      cont.innerHTML = '';
+      const res = document.getElementById('contenido-resultado');
+      res.style.display = 'block';
+      if (accion === 'aprobar') {
+        res.innerHTML = '<div class="resultado exito"><div class="icon-big">✓</div><h2>¡Aprobado!</h2><p>Tu pedido <strong>__NOMBRE_PEDIDO__</strong> pasa a producción ahora mismo.</p><p style="margin-top:12px;">Te avisamos cuando esté listo.</p></div>';
+      } else if (accion === 'cambiar') {
+        res.innerHTML = '<div class="resultado cambio"><div class="icon-big">✎</div><h2>Tu mensaje llegó</h2><p>Tu vendedora ya recibió los cambios que pediste.</p>' + (detalleCambio ? '<p style="margin-top:12px;font-size:13px;color:#92400e;background:#fef3c7;padding:12px;border-radius:8px;">"' + detalleCambio.replace(/</g, '&lt;') + '"</p>' : '') + '</div>';
+      } else {
+        res.innerHTML = '<div class="resultado pensar"><div class="icon-big">⏱</div><h2>Te esperamos</h2><p>Cuando lo decidas, vuelve a abrir este mismo link.</p></div>';
+      }
+    }
+
+    function mostrarYaRespondio(accion) {
+      const cont = document.getElementById('contenido-principal');
+      cont.innerHTML = '';
+      const res = document.getElementById('contenido-resultado');
+      res.style.display = 'block';
+      if (accion === 'aprobar') {
+        res.innerHTML = '<div class="ya-respondio"><div class="check">✓</div><h2>Ya aprobaste este diseño</h2><p>Tu pedido está en producción.</p></div>';
+      } else {
+        res.innerHTML = '<div class="ya-respondio" style="background:#fef3c7;"><div class="check" style="background:#f59e0b;">!</div><h2 style="color:#92400e;">Ya respondiste</h2><p style="color:#92400e;">Tu respuesta llegó. Tu vendedora se está encargando.</p></div>';
+      }
+    }
+  </script>
+</body>
+</html>
