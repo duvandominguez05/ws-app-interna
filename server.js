@@ -5953,6 +5953,40 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // DEBUG: ver mensajes en Evolution directo (no Chatwoot)
+  // GET /api/admin/debug-eventos-recientes?tipo=LABELS&limit=10
+  // Lista los ultimos N eventos crudos guardados en evolution_events.
+  // Util para diagnosticar si llegan eventos LABELS_EDIT / LABELS_ASSOCIATION
+  // que Evolution emite cuando se etiqueta un chat manualmente en WA.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-eventos-recientes')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const tipoFiltro = (u.searchParams.get('tipo') || '').toUpperCase();
+      const limit = Math.min(parseInt(u.searchParams.get('limit') || '20', 10), 200);
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 3').all().map(r => r.fecha);
+      const out = [];
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha);
+        for (const ev of events) {
+          const ed = ev.data || ev;
+          const eventName = String(ed?.event || '').toUpperCase();
+          if (tipoFiltro && !eventName.includes(tipoFiltro)) continue;
+          out.push({
+            fecha,
+            event: ed?.event || '',
+            instance: ed?.instance || '',
+            dateTime: ed?.date_time || '',
+            data: ed?.data || ed,
+          });
+          if (out.length >= limit) break;
+        }
+        if (out.length >= limit) break;
+      }
+      return json(res, 200, { total: out.length, eventos: out });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // GET /api/admin/debug-evolution-msgs?id=X&instance=ws-ney
   // Devuelve los ultimos mensajes que tiene Evolution para el telefono del pedido.
   // Sirve para comparar con Chatwoot y ver si hay mensajes que se quedaron en el camino.
