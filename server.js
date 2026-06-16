@@ -122,6 +122,17 @@ function json(res, code, obj) {
 function leerPedidos() { return db.leerPedidos(); }
 function leerNextId() { return db.leerNextId(); }
 
+// Mapping pollMsgId -> pedidoId para asociar votos de aprobacion
+const POLLS_MAPPING_FILE = path.join(__dirname, 'data', 'polls-aprobacion.json');
+function leerPollsMapping() {
+  try { return JSON.parse(fs.readFileSync(POLLS_MAPPING_FILE, 'utf8')); }
+  catch { return []; }
+}
+function guardarPollsMapping(arr) {
+  try { fs.mkdirSync(path.dirname(POLLS_MAPPING_FILE), { recursive: true }); } catch {}
+  fs.writeFileSync(POLLS_MAPPING_FILE, JSON.stringify(arr, null, 2));
+}
+
 // Manda mensaje a Telegram. No bloquea — si falla, solo loguea.
 async function notificarTelegram(texto) {
   try {
@@ -8671,6 +8682,166 @@ setInterval(cargar, 15000);
             }
           } catch (errSticker) {
             console.error('[sticker error]', errSticker);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // DETECTOR DE DISEÑO ENVIADO POR LA VENDEDORA (fromMe=true)
+        // Cuando la vendedora manda una imagen al cliente:
+        //  1. Verifica que el cliente tiene pedido activo en hacer-diseno/bandeja
+        //  2. Gemini Vision clasifica: ¿es diseno-uniforme?
+        //  3. Si SI -> manda encuesta de aprobacion al cliente
+        //  4. Anti-duplicado: no manda 2 encuestas en 24h al mismo pedido
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'imageMessage') {
+          try {
+            const fromMe = eventData.key?.fromMe === true;
+            const remoteJid = eventData.key?.remoteJid || '';
+            const esGrupo = remoteJid.endsWith('@g.us');
+            if (fromMe && !esGrupo && remoteJid && process.env.GEMINI_API_KEY) {
+              const telCliente = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
+              if (telCliente.length >= 8) {
+                const vendedora = vendedoraDeInstancia(payload.instance);
+                (async () => {
+                  try {
+                    // 1. Pedido activo del cliente
+                    const peds = leerPedidos();
+                    const ESTADOS_DISENO = ['hacer-diseno', 'bandeja'];
+                    const pedido = peds.find(p => String(p.telefono || '').replace(/\D/g, '') === telCliente && ESTADOS_DISENO.includes(p.estado));
+                    if (!pedido) {
+                      // No hay pedido en hacer-diseno -> no hacemos nada
+                      return;
+                    }
+                    // 2. Anti-duplicado: si en las ultimas 24h ya se mando poll para este pedido, salir
+                    const mapping = leerPollsMapping();
+                    const hace24h = Date.now() - 24 * 60 * 60 * 1000;
+                    const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace24h);
+                    if (yaMandado) {
+                      console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no mando otro`);
+                      return;
+                    }
+                    // 3. Descargar imagen y clasificar
+                    const img = await descargarImagenEvolution(payload.instance, eventData.key);
+                    if (!img || !img.base64) { console.log('[diseno-aprobacion] no se pudo descargar imagen'); return; }
+                    const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
+                    if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza === 'baja') {
+                      console.log(`[diseno-aprobacion] imagen NO es diseno (tipo=${clasif?.tipo} conf=${clasif?.confianza})`);
+                      return;
+                    }
+                    // 4. Mandar encuesta al cliente desde la misma instancia
+                    const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+                    const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
+                    const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
+                    const pollBody = JSON.stringify({
+                      number: telCliente,
+                      name: `Sobre el diseno de ${nombre}, como lo ves?`,
+                      selectableCount: 1,
+                      values: ['Apruebo el diseno', 'Quiero cambiar algo'],
+                    });
+                    const r = await fetch(`${evoUrl}/message/sendPoll/${encodeURIComponent(payload.instance)}`, {
+                      method: 'POST',
+                      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+                      body: pollBody,
+                    });
+                    if (!r.ok) { console.log(`[diseno-aprobacion] sendPoll fallo ${r.status}`); return; }
+                    const pollResp = await r.json();
+                    const pollMsgId = pollResp.key?.id;
+                    if (!pollMsgId) { console.log('[diseno-aprobacion] sendPoll sin msgId'); return; }
+                    // 5. Guardar mapping
+                    mapping.push({
+                      pollMsgId,
+                      pedidoId: pedido.id,
+                      telCliente,
+                      vendedora,
+                      instance: payload.instance,
+                      ts: new Date().toISOString(),
+                    });
+                    // Conservar solo los ultimos 200 polls
+                    if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
+                    guardarPollsMapping(mapping);
+                    // 6. Registrar en historial
+                    pedido.historial = pedido.historial || [];
+                    pedido.historial.push({
+                      fecha: new Date().toISOString(),
+                      por: 'auto-aprobacion-bot',
+                      accion: 'poll-aprobacion-enviado',
+                      nota: `Encuesta de aprobacion enviada al cliente tras imagen detectada como diseno (Gemini conf=${clasif.confianza})`,
+                    });
+                    guardarPedidos(peds, leerNextId());
+                    console.log(`[diseno-aprobacion] poll enviado a ${telCliente} para pedido #${pedido.id} (${vendedora}). pollId=${pollMsgId}`);
+                  } catch (eAprob) {
+                    console.error('[diseno-aprobacion]', eAprob.message);
+                  }
+                })();
+              }
+            }
+          } catch (eOuter) {
+            console.error('[diseno-aprobacion outer]', eOuter.message);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // DETECTOR DE VOTO DEL CLIENTE EN POLL DE APROBACION
+        // Cuando llega pollUpdateMessage, buscamos el poll en el mapping
+        // y aplicamos la accion al pedido.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'pollUpdateMessage') {
+          try {
+            const pollMsg = eventData.message?.pollUpdateMessage;
+            const pollMsgId = pollMsg?.pollCreationMessageKey?.id;
+            const opciones = pollMsg?.vote?.selectedOptions || [];
+            const voto = opciones[0] || '';
+            if (pollMsgId && voto) {
+              const mapping = leerPollsMapping();
+              const reg = mapping.find(m => m.pollMsgId === pollMsgId);
+              if (reg) {
+                const peds = leerPedidos();
+                const p = peds.find(x => x.id === reg.pedidoId);
+                if (p) {
+                  const ahora = new Date().toISOString();
+                  p.historial = p.historial || [];
+                  if (/aprueb/i.test(voto)) {
+                    const estadoAnt = p.estado;
+                    if (['hacer-diseno', 'bandeja'].includes(p.estado)) p.estado = 'confirmado';
+                    p.fechaAprobacionCliente = ahora;
+                    p.aprobacionCliente = { accion: 'aprobar', respondioEn: ahora, viaPoll: true, pollMsgId };
+                    p.historial.push({
+                      fecha: ahora,
+                      por: 'cliente-poll',
+                      accion: 'aprobacion-cliente',
+                      de: estadoAnt,
+                      a: p.estado,
+                      nota: `Cliente APROBO el diseno via encuesta WA. Opcion: "${voto}"`,
+                    });
+                    guardarPedidos(peds, leerNextId());
+                    console.log(`[voto-poll] #${p.id} APROBADO por cliente (${reg.vendedora})`);
+                    // Notif suave a la vendedora
+                    if (typeof notificarWAVendedora === 'function') {
+                      const nm = p.nombreDiseno || p.equipo || `Pedido #${p.id}`;
+                      notificarWAVendedora(reg.vendedora, `✅ ${nm}: cliente APROBO el diseno por la encuesta. Pedido a confirmado.`).catch(()=>{});
+                    }
+                  } else if (/cambiar|cambio/i.test(voto)) {
+                    p.aprobacionCliente = { accion: 'cambiar', respondioEn: ahora, viaPoll: true, pollMsgId };
+                    p.historial.push({
+                      fecha: ahora,
+                      por: 'cliente-poll',
+                      accion: 'cliente-pide-cambio',
+                      nota: `Cliente quiere cambios. Opcion: "${voto}"`,
+                    });
+                    guardarPedidos(peds, leerNextId());
+                    console.log(`[voto-poll] #${p.id} cliente quiere cambios (${reg.vendedora})`);
+                    if (typeof notificarWAVendedora === 'function') {
+                      const nm = p.nombreDiseno || p.equipo || `Pedido #${p.id}`;
+                      notificarWAVendedora(reg.vendedora, `✏️ ${nm}: cliente quiere CAMBIOS en el diseno. Contactalo para saber que ajustar.`).catch(()=>{});
+                    }
+                  }
+                }
+              } else {
+                console.log(`[voto-poll] poll ${pollMsgId} sin mapping (no es de aprobacion W&S)`);
+              }
+            }
+          } catch (eVoto) {
+            console.error('[voto-poll]', eVoto.message);
           }
         }
 
