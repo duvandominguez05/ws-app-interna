@@ -5966,16 +5966,19 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const out = [];
       for (const fecha of fechas) {
         const events = db.leerEvolutionEvents(fecha);
-        for (const ev of events) {
-          const ed = ev.data || ev;
-          const eventName = String(ed?.event || '').toUpperCase();
+        // events ya viene como array de payloads — recorrer en reversa (mas nuevos primero)
+        for (let i = events.length - 1; i >= 0; i--) {
+          const ev = events[i];
+          // ev puede ser el payload completo o un wrapper. Tratamos ambos.
+          const eventName = String(ev?.event || ev?.data?.event || '').toUpperCase();
           if (tipoFiltro && !eventName.includes(tipoFiltro)) continue;
           out.push({
             fecha,
-            event: ed?.event || '',
-            instance: ed?.instance || '',
-            dateTime: ed?.date_time || '',
-            data: ed?.data || ed,
+            event: ev?.event || '',
+            instance: ev?.instance || '',
+            dateTime: ev?.date_time || ev?.dateTime || '',
+            messageType: ev?.data?.messageType || '',
+            raw: ev,
           });
           if (out.length >= limit) break;
         }
