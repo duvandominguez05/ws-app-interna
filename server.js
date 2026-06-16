@@ -5430,6 +5430,59 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── POST /api/admin/crear-pedido-test — crea pedido de prueba ──
+  // Body: { telefono, equipo, vendedora }
+  if (req.method === 'POST' && req.url === '/api/admin/crear-pedido-test') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const { telefono, equipo, vendedora } = JSON.parse(body || '{}');
+        if (!telefono || !equipo || !vendedora) {
+          return json(res, 400, { error: 'falta telefono, equipo o vendedora' });
+        }
+        const r = crearVentaInterna('pedido', vendedora, String(telefono).replace(/\s/g, ''), 'test-' + Date.now(), equipo);
+        if (r.ok) {
+          // Marcar como pedido de TEST en historial
+          const peds = leerPedidos();
+          const p = peds.find(x => x.id === r.id);
+          if (p) {
+            p.esTest = true;
+            p.historial = p.historial || [];
+            p.historial.push({
+              fecha: new Date().toISOString(),
+              por: 'admin-test',
+              accion: 'pedido-test-creado',
+              nota: 'Pedido creado para prueba del flujo de aprobacion (puede borrarse despues)',
+            });
+            guardarPedidos(peds, leerNextId());
+          }
+        }
+        return json(res, 200, r);
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── DELETE /api/admin/pedido-test/:id — borra pedido de prueba ──
+  if (req.method === 'DELETE' && req.url.match(/^\/api\/admin\/pedido-test\/\d+$/)) {
+    try {
+      const id = parseInt(req.url.split('/')[4], 10);
+      const peds = leerPedidos();
+      const idx = peds.findIndex(p => p.id === id);
+      if (idx < 0) return json(res, 404, { error: 'pedido no encontrado' });
+      if (!peds[idx].esTest) return json(res, 403, { error: 'no es pedido de test, no se borra desde aqui' });
+      const eliminado = peds.splice(idx, 1)[0];
+      guardarPedidos(peds, leerNextId());
+      return json(res, 200, { ok: true, eliminado: { id: eliminado.id, equipo: eliminado.equipo } });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/ultimos-polls — diagnostico de webhooks de polls ──
   if (req.method === 'GET' && req.url === '/api/admin/ultimos-polls') {
     return json(res, 200, { polls: global._ultimosPolls || [] });
