@@ -8752,81 +8752,96 @@ setInterval(cargar, 15000);
             const remoteJid = eventData.key?.remoteJid || '';
             const esGrupo = remoteJid.endsWith('@g.us');
             if (fromMe && !esGrupo && remoteJid && process.env.GEMINI_API_KEY) {
-              const telCliente = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-              if (telCliente.length >= 8) {
-                const vendedora = vendedoraDeInstancia(payload.instance);
-                (async () => {
-                  try {
-                    // 1. Pedido activo del cliente
-                    const peds = leerPedidos();
-                    const ESTADOS_DISENO = ['hacer-diseno', 'bandeja'];
-                    const pedido = peds.find(p => String(p.telefono || '').replace(/\D/g, '') === telCliente && ESTADOS_DISENO.includes(p.estado));
-                    if (!pedido) {
-                      // No hay pedido en hacer-diseno -> no hacemos nada
-                      return;
-                    }
-                    // 2. Anti-duplicado: si en las ultimas 24h ya se mando poll para este pedido, salir
-                    const mapping = leerPollsMapping();
-                    const hace24h = Date.now() - 24 * 60 * 60 * 1000;
-                    const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace24h);
-                    if (yaMandado) {
-                      console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no mando otro`);
-                      return;
-                    }
-                    // 3. Descargar imagen y clasificar
-                    const img = await descargarImagenEvolution(payload.instance, eventData.key);
-                    if (!img || !img.base64) { console.log('[diseno-aprobacion] no se pudo descargar imagen'); return; }
-                    const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
-                    if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza === 'baja') {
-                      console.log(`[diseno-aprobacion] imagen NO es diseno (tipo=${clasif?.tipo} conf=${clasif?.confianza})`);
-                      return;
-                    }
-                    // 4. Mandar encuesta al cliente desde la misma instancia
-                    const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-                    const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
-                    const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
-                    const pollBody = JSON.stringify({
-                      number: telCliente,
-                      name: `Sobre el diseno de ${nombre}, como lo ves?`,
-                      selectableCount: 1,
-                      values: ['Apruebo el diseno', 'Quiero cambiar algo'],
-                    });
-                    const r = await fetch(`${evoUrl}/message/sendPoll/${encodeURIComponent(payload.instance)}`, {
-                      method: 'POST',
-                      headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-                      body: pollBody,
-                    });
-                    if (!r.ok) { console.log(`[diseno-aprobacion] sendPoll fallo ${r.status}`); return; }
-                    const pollResp = await r.json();
-                    const pollMsgId = pollResp.key?.id;
-                    if (!pollMsgId) { console.log('[diseno-aprobacion] sendPoll sin msgId'); return; }
-                    // 5. Guardar mapping
-                    mapping.push({
-                      pollMsgId,
-                      pedidoId: pedido.id,
-                      telCliente,
-                      vendedora,
-                      instance: payload.instance,
-                      ts: new Date().toISOString(),
-                    });
-                    // Conservar solo los ultimos 200 polls
-                    if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
-                    guardarPollsMapping(mapping);
-                    // 6. Registrar en historial
-                    pedido.historial = pedido.historial || [];
-                    pedido.historial.push({
-                      fecha: new Date().toISOString(),
-                      por: 'auto-aprobacion-bot',
-                      accion: 'poll-aprobacion-enviado',
-                      nota: `Encuesta de aprobacion enviada al cliente tras imagen detectada como diseno (Gemini conf=${clasif.confianza})`,
-                    });
-                    guardarPedidos(peds, leerNextId());
-                    console.log(`[diseno-aprobacion] poll enviado a ${telCliente} para pedido #${pedido.id} (${vendedora}). pollId=${pollMsgId}`);
-                  } catch (eAprob) {
-                    console.error('[diseno-aprobacion]', eAprob.message);
+              const vendedora = vendedoraDeInstancia(payload.instance);
+              (async () => {
+                try {
+                  // Resolver telefono (manejar @lid)
+                  let telCliente = '';
+                  if (remoteJid.endsWith('@lid')) {
+                    try {
+                      const evoUrlR = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+                      const evoKeyR = process.env.EVOLUTION_API_KEY || '3506974711';
+                      const rChats = await fetch(`${evoUrlR}/chat/findChats/${encodeURIComponent(payload.instance)}`, {
+                        method: 'POST',
+                        headers: { apikey: evoKeyR, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ where: {} }),
+                      });
+                      if (rChats.ok) {
+                        const chats = await rChats.json();
+                        const c = (Array.isArray(chats) ? chats : []).find(x => x?.remoteJid === remoteJid);
+                        const alt = c?.lastMessage?.key?.remoteJidAlt;
+                        if (alt) telCliente = String(alt).replace('@s.whatsapp.net', '').replace(/\D/g, '');
+                      }
+                    } catch (eLid) { console.error('[diseno-aprobacion lid]', eLid.message); }
+                  } else {
+                    telCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
                   }
-                })();
-              }
+                  if (telCliente.length < 8) return;
+                  // 1. Pedido activo del cliente
+                  const peds = leerPedidos();
+                  const ESTADOS_DISENO = ['hacer-diseno', 'bandeja'];
+                  const pedido = peds.find(p => String(p.telefono || '').replace(/\D/g, '') === telCliente && ESTADOS_DISENO.includes(p.estado));
+                  if (!pedido) return;
+                  // 2. Anti-duplicado
+                  const mapping = leerPollsMapping();
+                  const hace24h = Date.now() - 24 * 60 * 60 * 1000;
+                  const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace24h);
+                  if (yaMandado) {
+                    console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no mando otro`);
+                    return;
+                  }
+                  // 3. Descargar imagen y clasificar
+                  const img = await descargarImagenEvolution(payload.instance, eventData.key);
+                  if (!img || !img.base64) { console.log('[diseno-aprobacion] no se pudo descargar imagen'); return; }
+                  const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
+                  if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza === 'baja') {
+                    console.log(`[diseno-aprobacion] imagen NO es diseno (tipo=${clasif?.tipo} conf=${clasif?.confianza})`);
+                    return;
+                  }
+                  // 4. Mandar encuesta
+                  const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+                  const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
+                  const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
+                  const pollBody = JSON.stringify({
+                    number: telCliente,
+                    name: `Sobre el diseno de ${nombre}, como lo ves?`,
+                    selectableCount: 1,
+                    values: ['Apruebo el diseno', 'Quiero cambiar algo'],
+                  });
+                  const r = await fetch(`${evoUrl}/message/sendPoll/${encodeURIComponent(payload.instance)}`, {
+                    method: 'POST',
+                    headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+                    body: pollBody,
+                  });
+                  if (!r.ok) { console.log(`[diseno-aprobacion] sendPoll fallo ${r.status}`); return; }
+                  const pollResp = await r.json();
+                  const pollMsgId = pollResp.key?.id;
+                  if (!pollMsgId) { console.log('[diseno-aprobacion] sendPoll sin msgId'); return; }
+                  // 5. Guardar mapping
+                  mapping.push({
+                    pollMsgId,
+                    pedidoId: pedido.id,
+                    telCliente,
+                    vendedora,
+                    instance: payload.instance,
+                    ts: new Date().toISOString(),
+                  });
+                  if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
+                  guardarPollsMapping(mapping);
+                  // 6. Historial
+                  pedido.historial = pedido.historial || [];
+                  pedido.historial.push({
+                    fecha: new Date().toISOString(),
+                    por: 'auto-aprobacion-bot',
+                    accion: 'poll-aprobacion-enviado',
+                    nota: `Encuesta de aprobacion enviada al cliente tras imagen detectada como diseno (Gemini conf=${clasif.confianza})`,
+                  });
+                  guardarPedidos(peds, leerNextId());
+                  console.log(`[diseno-aprobacion] poll enviado a ${telCliente} para pedido #${pedido.id} (${vendedora}). pollId=${pollMsgId}`);
+                } catch (eAprob) {
+                  console.error('[diseno-aprobacion]', eAprob.message);
+                }
+              })();
             }
           } catch (eOuter) {
             console.error('[diseno-aprobacion outer]', eOuter.message);
