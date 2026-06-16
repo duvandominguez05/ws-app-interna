@@ -133,6 +133,19 @@ function guardarPollsMapping(arr) {
   fs.writeFileSync(POLLS_MAPPING_FILE, JSON.stringify(arr, null, 2));
 }
 
+// Cola de aprobaciones pendientes: cuando la vendedora manda imagen, se
+// guarda aqui y el cron verifica 5 min despues si realmente conviene mandar
+// la encuesta (filtros anti-falso-positivo basados en chats reales W&S).
+const PENDING_APPROVALS_FILE = path.join(__dirname, 'data', 'pending-approvals.json');
+function leerPendingApprovals() {
+  try { return JSON.parse(fs.readFileSync(PENDING_APPROVALS_FILE, 'utf8')); }
+  catch { return []; }
+}
+function guardarPendingApprovals(arr) {
+  try { fs.mkdirSync(path.dirname(PENDING_APPROVALS_FILE), { recursive: true }); } catch {}
+  fs.writeFileSync(PENDING_APPROVALS_FILE, JSON.stringify(arr, null, 2));
+}
+
 // Manda mensaje a Telegram. No bloquea — si falla, solo loguea.
 async function notificarTelegram(texto) {
   try {
@@ -8740,11 +8753,12 @@ setInterval(cargar, 15000);
 
         // ─────────────────────────────────────────────────────────────
         // DETECTOR DE DISEÑO ENVIADO POR LA VENDEDORA (fromMe=true)
-        // Cuando la vendedora manda una imagen al cliente:
-        //  1. Verifica que el cliente tiene pedido activo en hacer-diseno/bandeja
-        //  2. Gemini Vision clasifica: ¿es diseno-uniforme?
-        //  3. Si SI -> manda encuesta de aprobacion al cliente
-        //  4. Anti-duplicado: no manda 2 encuestas en 24h al mismo pedido
+        // NUEVO FLUJO (basado en analisis de chats reales W&S):
+        //  1. Encola en pending-approvals.json con verificarEn = now+5min
+        //  2. Filtros instantaneos: pedido activo, no duplicado, no burst
+        //  3. Cron 'verificar-aprobaciones-pendientes' ejecuta filtros pesados
+        //     (Claude lee ventana, audios transcritos, keywords negativas)
+        //     y decide si mandar la encuesta o cancelar.
         // ─────────────────────────────────────────────────────────────
         if (eventType === 'messages.upsert' && eventData?.messageType === 'imageMessage') {
           try {
@@ -8782,62 +8796,42 @@ setInterval(cargar, 15000);
                   const ESTADOS_DISENO = ['hacer-diseno', 'bandeja'];
                   const pedido = peds.find(p => String(p.telefono || '').replace(/\D/g, '') === telCliente && ESTADOS_DISENO.includes(p.estado));
                   if (!pedido) return;
-                  // 2. Anti-duplicado
+                  // 2. Skip mayorista / catalogo (memoria: clientes_catalogo)
+                  const eqLower = String(pedido.equipo || '').toLowerCase();
+                  if (eqLower.includes('mayorista') || eqLower.includes('catalogo') || eqLower.includes('catálogo')) {
+                    console.log(`[diseno-aprobacion] skip mayorista/catalogo: #${pedido.id} ${pedido.equipo}`);
+                    return;
+                  }
+                  // 3. Anti-duplicado encuesta ya mandada en 24h
                   const mapping = leerPollsMapping();
                   const hace24h = Date.now() - 24 * 60 * 60 * 1000;
                   const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace24h);
                   if (yaMandado) {
-                    console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no mando otro`);
+                    console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no encolo otra`);
                     return;
                   }
-                  // 3. Descargar imagen y clasificar
-                  const img = await descargarImagenEvolution(payload.instance, eventData.key);
-                  if (!img || !img.base64) { console.log('[diseno-aprobacion] no se pudo descargar imagen'); return; }
-                  const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
-                  if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza === 'baja') {
-                    console.log(`[diseno-aprobacion] imagen NO es diseno (tipo=${clasif?.tipo} conf=${clasif?.confianza})`);
-                    return;
-                  }
-                  // 4. Mandar encuesta
-                  const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-                  const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
-                  const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
-                  const pollBody = JSON.stringify({
-                    number: telCliente,
-                    name: `Sobre el diseno de ${nombre}, como lo ves?`,
-                    selectableCount: 1,
-                    values: ['Apruebo el diseno', 'Quiero cambiar algo'],
-                  });
-                  const r = await fetch(`${evoUrl}/message/sendPoll/${encodeURIComponent(payload.instance)}`, {
-                    method: 'POST',
-                    headers: { apikey: evoKey, 'Content-Type': 'application/json' },
-                    body: pollBody,
-                  });
-                  if (!r.ok) { console.log(`[diseno-aprobacion] sendPoll fallo ${r.status}`); return; }
-                  const pollResp = await r.json();
-                  const pollMsgId = pollResp.key?.id;
-                  if (!pollMsgId) { console.log('[diseno-aprobacion] sendPoll sin msgId'); return; }
-                  // 5. Guardar mapping
-                  mapping.push({
-                    pollMsgId,
+                  // 4. Encolar en pending-approvals (cron verifica 5 min despues)
+                  const pendings = leerPendingApprovals();
+                  // Si ya hay un pending del mismo pedido sin procesar -> es burst
+                  // El cron lo manejara mirando count: si hay 2+ pendings en 10 min = opciones, cancelar.
+                  const ahora = Date.now();
+                  const tsMsg = eventData.messageTimestamp ? eventData.messageTimestamp * 1000 : ahora;
+                  pendings.push({
                     pedidoId: pedido.id,
                     telCliente,
                     vendedora,
                     instance: payload.instance,
-                    ts: new Date().toISOString(),
+                    imageMsgKey: eventData.key,
+                    imageTs: new Date(tsMsg).toISOString(),
+                    verificarEn: new Date(ahora + 5 * 60 * 1000).toISOString(),
+                    estado: 'esperando',
+                    creadoEn: new Date(ahora).toISOString(),
                   });
-                  if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
-                  guardarPollsMapping(mapping);
-                  // 6. Historial
-                  pedido.historial = pedido.historial || [];
-                  pedido.historial.push({
-                    fecha: new Date().toISOString(),
-                    por: 'auto-aprobacion-bot',
-                    accion: 'poll-aprobacion-enviado',
-                    nota: `Encuesta de aprobacion enviada al cliente tras imagen detectada como diseno (Gemini conf=${clasif.confianza})`,
-                  });
-                  guardarPedidos(peds, leerNextId());
-                  console.log(`[diseno-aprobacion] poll enviado a ${telCliente} para pedido #${pedido.id} (${vendedora}). pollId=${pollMsgId}`);
+                  // Cleanup: dejar maximo 200, descartar entradas viejas (>24h)
+                  const limpiados = pendings.filter(p => (ahora - new Date(p.creadoEn).getTime()) < 24 * 60 * 60 * 1000);
+                  if (limpiados.length > 200) limpiados.splice(0, limpiados.length - 200);
+                  guardarPendingApprovals(limpiados);
+                  console.log(`[diseno-aprobacion] encolado pedido #${pedido.id} (${vendedora}) -> verificar en 5 min`);
                 } catch (eAprob) {
                   console.error('[diseno-aprobacion]', eAprob.message);
                 }
@@ -12725,6 +12719,184 @@ async function cronCatalogoTick() {
 setInterval(cronCatalogoTick, 10 * 60 * 1000); // cada 10 min
 setTimeout(cronCatalogoTick, 120 * 1000); // primer tick 120s tras arrancar
 console.log('[cron-catalogo] activado — lee Drive CATALOGO cada 10 min (cutoff al arranque)');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON VERIFICAR APROBACIONES PENDIENTES — cada 1 min
+// Procesa data/pending-approvals.json. Para cada pending con verificarEn<=now:
+//  1. Burst check (>1 img vendedora en 10 min = opciones)
+//  2. Cliente mando imagen <5 min antes (iteracion)
+//  3. Keywords negativas vendedora ±5 min ("o la otra", "asi?", "lo ideal", "gracias por su compra")
+//  4. Cliente ya respondio positivo despues ("ok", "dale", "listo", "🙏")
+//  5. Gemini estricto (confianza=alta + tipo=diseno-uniforme)
+// Si pasa todo -> manda encuesta poll.
+// ═══════════════════════════════════════════════════════════════════
+const KEYWORDS_NEGATIVAS_APROBACION = [
+  'o la otra', 'o esta otra', 'asi?', 'así?', 'lo ideal',
+  'cual te gusta', 'cuál te gusta', 'te paso varias', 'te paso unas opciones',
+  'mira cual', 'mira cuál', 'que tal queda mejor', 'qué tal queda mejor',
+  'y cual hacemos', 'y cuál hacemos', 'gracias por su compra',
+  'te paso opciones', 'mira esta idea', 'te pase varias',
+  'mira para que veas', 'mira esta otra', 'cambios',
+];
+const RESPUESTAS_CLIENTE_POSITIVAS = [
+  'ok', 'dale', 'listo', 'perfecto', '🙏', '👍', 'me gusta',
+  'esta bien', 'está bien', 'aprobado', 'apruebo', 'va', 'chevere',
+  'chévere', 'bacano', 'genial', 'excelente',
+];
+let _cronVerifAprobEjecutando = false;
+async function cronVerificarAprobacionesPendientesTick() {
+  if (_cronVerifAprobEjecutando) return;
+  _cronVerifAprobEjecutando = true;
+  try {
+    const pendings = leerPendingApprovals();
+    const ahora = Date.now();
+    let cambios = false;
+    for (const p of pendings) {
+      if (p.estado !== 'esperando') continue;
+      if (new Date(p.verificarEn).getTime() > ahora) continue;
+      try {
+        const peds = leerPedidos();
+        const pedido = peds.find(x => x.id === p.pedidoId);
+        if (!pedido) { p.estado = 'cancelado'; p.motivo = 'pedido no existe'; cambios = true; continue; }
+        if (!['hacer-diseno', 'bandeja'].includes(pedido.estado)) {
+          p.estado = 'cancelado'; p.motivo = `pedido ya esta en ${pedido.estado}`; cambios = true; continue;
+        }
+        // 1. Anti-duplicado: ya hay encuesta activa en 24h
+        const mapping = leerPollsMapping();
+        const hace24h = ahora - 24 * 60 * 60 * 1000;
+        if (mapping.find(m => m.pedidoId === p.pedidoId && new Date(m.ts).getTime() > hace24h)) {
+          p.estado = 'cancelado'; p.motivo = 'ya hay encuesta activa'; cambios = true; continue;
+        }
+        // 2. Burst check
+        const tsImg = new Date(p.imageTs).getTime();
+        const burst = pendings.filter(x =>
+          x.pedidoId === p.pedidoId &&
+          Math.abs(new Date(x.imageTs).getTime() - tsImg) < 10 * 60 * 1000
+        );
+        if (burst.length > 1) {
+          burst.forEach(x => { if (x.estado === 'esperando') { x.estado = 'cancelado'; x.motivo = `burst de ${burst.length} imgs en 10 min = opciones`; } });
+          cambios = true;
+          console.log(`[verif-aprob] cancelando burst de ${burst.length} imgs pedido #${p.pedidoId}`);
+          continue;
+        }
+        // 3. Leer mensajes Chatwoot
+        if (!pedido.telefono) { p.estado = 'cancelado'; p.motivo = 'pedido sin tel'; cambios = true; continue; }
+        const contacto = await buscarContactoChatwoot(pedido.telefono);
+        if (!contacto?.id) { p.estado = 'cancelado'; p.motivo = 'sin contacto chatwoot'; cambios = true; continue; }
+        const cwUrl = process.env.CHATWOOT_URL;
+        const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+        const cwKey = process.env.CHATWOOT_API_KEY;
+        const rConv = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+          headers: { 'api_access_token': cwKey },
+        });
+        const dataConv = await rConv.json();
+        const conv = (dataConv.payload || [])[0];
+        if (!conv?.id) { p.estado = 'cancelado'; p.motivo = 'sin conversacion'; cambios = true; continue; }
+        const rMsg = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, {
+          headers: { 'api_access_token': cwKey },
+        });
+        const dataMsg = await rMsg.json();
+        const todos = ((dataMsg.payload || dataMsg || [])).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        const tsImgSec = Math.floor(tsImg / 1000);
+        const ventanaAntes = todos.filter(m => m.created_at >= tsImgSec - 600 && m.created_at < tsImgSec);
+        const ventanaDespues = todos.filter(m => m.created_at >= tsImgSec && m.created_at <= tsImgSec + 5 * 60);
+        // 4. Cliente mando imagen <5 min antes
+        const clienteMandoImg = ventanaAntes.some(m =>
+          m.message_type === 0 &&
+          (m.attachments || []).some(a => a.file_type === 'image')
+        );
+        if (clienteMandoImg) {
+          p.estado = 'cancelado'; p.motivo = 'cliente mando img antes (iteracion)'; cambios = true; continue;
+        }
+        // 5. Keyword negativa vendedora ventana ±5 min
+        const textosVend = [...ventanaAntes, ...ventanaDespues]
+          .filter(m => m.message_type === 1 && m.content)
+          .map(m => String(m.content).toLowerCase());
+        let kwNegHit = null;
+        for (const t of textosVend) {
+          const found = KEYWORDS_NEGATIVAS_APROBACION.find(k => t.includes(k));
+          if (found) { kwNegHit = found; break; }
+        }
+        if (kwNegHit) {
+          p.estado = 'cancelado'; p.motivo = `keyword negativa: "${kwNegHit}"`; cambios = true; continue;
+        }
+        // 6. Cliente ya respondio positivo
+        const respCliente = ventanaDespues
+          .filter(m => m.message_type === 0 && m.content)
+          .some(m => {
+            const t = String(m.content).toLowerCase().trim().replace(/[.!¡¿?]+$/, '');
+            return RESPUESTAS_CLIENTE_POSITIVAS.some(r => t === r || t.startsWith(r + ' ') || t.includes(r));
+          });
+        if (respCliente) {
+          p.estado = 'cancelado'; p.motivo = 'cliente ya aprobo por texto'; cambios = true; continue;
+        }
+        // 7. Gemini estricto
+        const img = await descargarImagenEvolution(p.instance, p.imageMsgKey);
+        if (!img || !img.base64) { p.estado = 'cancelado'; p.motivo = 'no se pudo descargar imagen'; cambios = true; continue; }
+        const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
+        if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza !== 'alta') {
+          p.estado = 'cancelado'; p.motivo = `Gemini: tipo=${clasif?.tipo} conf=${clasif?.confianza}`; cambios = true; continue;
+        }
+        // ─── MANDAR ENCUESTA ───
+        const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+        const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
+        const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
+        const pollBody = JSON.stringify({
+          number: p.telCliente,
+          name: `Sobre el diseno de ${nombre}, como lo ves?`,
+          selectableCount: 1,
+          values: ['Apruebo el diseno', 'Quiero cambiar algo'],
+        });
+        const rEnv = await fetch(`${evoUrl}/message/sendPoll/${encodeURIComponent(p.instance)}`, {
+          method: 'POST',
+          headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+          body: pollBody,
+        });
+        if (!rEnv.ok) { p.estado = 'fallido'; p.motivo = `sendPoll ${rEnv.status}`; cambios = true; continue; }
+        const pollResp = await rEnv.json();
+        const pollMsgId = pollResp.key?.id;
+        if (!pollMsgId) { p.estado = 'fallido'; p.motivo = 'sin msgId'; cambios = true; continue; }
+        mapping.push({
+          pollMsgId,
+          pedidoId: pedido.id,
+          telCliente: p.telCliente,
+          vendedora: p.vendedora,
+          instance: p.instance,
+          imageMsgKey: p.imageMsgKey,
+          ts: new Date(ahora).toISOString(),
+        });
+        if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
+        guardarPollsMapping(mapping);
+        pedido.historial = pedido.historial || [];
+        pedido.historial.push({
+          fecha: new Date(ahora).toISOString(),
+          por: 'auto-aprobacion-bot',
+          accion: 'poll-aprobacion-enviado',
+          nota: `Encuesta enviada tras filtros (5min delay). Gemini conf=${clasif.confianza}`,
+        });
+        guardarPedidos(peds, leerNextId());
+        p.estado = 'mandado';
+        p.pollMsgId = pollMsgId;
+        p.mandadoEn = new Date(ahora).toISOString();
+        cambios = true;
+        console.log(`[verif-aprob] ENCUESTA enviada -> #${pedido.id} (${p.vendedora}) tel=${p.telCliente}`);
+      } catch (eP) {
+        console.error('[verif-aprob item err]', eP.message);
+        p.estado = 'fallido';
+        p.motivo = 'error: ' + eP.message.slice(0, 100);
+        cambios = true;
+      }
+    }
+    if (cambios) guardarPendingApprovals(pendings);
+  } catch (e) {
+    console.error('[verif-aprob tick err]', e.message);
+  } finally {
+    _cronVerifAprobEjecutando = false;
+  }
+}
+setInterval(cronVerificarAprobacionesPendientesTick, 60 * 1000); // cada 1 min
+setTimeout(cronVerificarAprobacionesPendientesTick, 30 * 1000); // primer tick a los 30s
+console.log('[verif-aprob] activado — verifica aprobaciones pendientes cada 1 min con filtros anti-falso-positivo');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON LECTOR DE CHATS — cada 15 min
