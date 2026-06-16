@@ -5419,6 +5419,11 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
+  // ── GET /api/admin/ultimos-polls — diagnostico de webhooks de polls ──
+  if (req.method === 'GET' && req.url === '/api/admin/ultimos-polls') {
+    return json(res, 200, { polls: global._ultimosPolls || [] });
+  }
+
   // ── POST /api/admin/drive-subir-vigilante ──
   // Recibe { nombreCarpeta? | parentId?, archivos: [{titulo, mimeType, contentBase64, publico?}] }
   // Crea/encuentra la carpeta y sube los archivos. Devuelve los links.
@@ -8289,6 +8294,27 @@ setInterval(cargar, 15000);
                      console.log(`[evolution-webhook] Etiqueta ignorada, el pedido para ${telefono} ya existe en estado confirmado.`);
                  }
             }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // CAPTURADOR DE POLLS — para diagnosticar formato del webhook
+        // Guarda en memoria los ultimos 50 eventos relacionados con polls
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType && /poll/i.test(eventData.messageType)) {
+          if (!global._ultimosPolls) global._ultimosPolls = [];
+          global._ultimosPolls.unshift({
+            ts: new Date().toISOString(),
+            eventType,
+            messageType: eventData.messageType,
+            fromMe: eventData.key?.fromMe,
+            remoteJid: eventData.key?.remoteJid,
+            messageId: eventData.key?.id,
+            pushName: eventData.pushName,
+            message: eventData.message,
+            payloadCompleto: payload,
+          });
+          if (global._ultimosPolls.length > 50) global._ultimosPolls.pop();
+          console.log(`[poll-captura] ${eventData.messageType} de ${eventData.key?.remoteJid}`);
         }
 
         // ─────────────────────────────────────────────────────────────
