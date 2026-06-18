@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>W&S Costura</title>
+  <link rel="icon" type="image/png" href="/icon.png">
+  <meta name="theme-color" content="#8b5cf6">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0d;
+      --panel: #14141a;
+      --panel-2: #1c1c24;
+      --line: rgba(255,255,255,0.08);
+      --muted: #8a8a99;
+      --text: #f0f0f5;
+      --purple: #8b5cf6;
+      --purple-soft: rgba(139,92,246,0.18);
+      --orange: #f97316;
+      --orange-soft: rgba(249,115,22,0.18);
+      --green: #16a34a;
+      --green-soft: rgba(22,163,74,0.18);
+      --red: #ef4444;
+      --red-soft: rgba(239,68,68,0.18);
+      --blue: #2563eb;
+      --blue-soft: rgba(37,99,235,0.18);
+    }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+      padding-bottom: 80px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--purple-soft), rgba(37,99,235,0.10));
+      border: 1px solid rgba(139,92,246,0.30);
+      margin-bottom: 18px;
+    }
+    .header h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .header .sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .refresh-btn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--line);
+      color: var(--text);
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1.1rem;
+    }
+    .refresh-btn:active { transform: scale(0.95); }
+
+    .section {
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 10px;
+      padding-left: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title .count {
+      background: rgba(255,255,255,0.08);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    /* Costureras row */
+    .costu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .costu-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 12px;
+      text-align: center;
+      position: relative;
+    }
+    .costu-card.alerta {
+      border-color: rgba(239,68,68,0.4);
+      background: linear-gradient(145deg, var(--red-soft), var(--panel));
+    }
+    .costu-emoji {
+      font-size: 1.8rem;
+      margin-bottom: 4px;
+    }
+    .costu-nombre {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+    .costu-stat {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .costu-stat strong {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .costu-stat .verde { color: #4ade80; font-weight: 700; }
+
+    /* Pedido card */
+    .ped-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .ped-thumb {
+      width: 64px;
+      height: 64px;
+      border-radius: 10px;
+      background: var(--panel-2);
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      font-size: 1.8rem;
+      overflow: hidden;
+    }
+    .ped-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .ped-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .ped-equipo {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ped-meta {
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .ped-meta .dot { color: rgba(255,255,255,0.2); }
+    .ped-action {
+      background: var(--purple);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .ped-action:active { transform: scale(0.95); }
+    .ped-action.green { background: var(--green); }
+    .alerta-tag {
+      background: var(--red-soft);
+      color: #fca5a5;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .pago-banner {
+      background: linear-gradient(135deg, var(--green-soft), rgba(34,197,94,0.05));
+      border: 1px solid rgba(34,197,94,0.30);
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .pago-banner .label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 2px;
+    }
+    .pago-banner .amount {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #4ade80;
+      font-variant-numeric: tabular-nums;
+    }
+    .pago-banner button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(34,197,94,0.4);
+      color: #4ade80;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .loader {
+      display: grid;
+      place-items: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--panel) 25%, var(--panel-2) 50%, var(--panel) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 8px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Modal placeholder */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 100;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 22px;
+      max-width: 480px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>🪡 Costura</h1>
+    <div class="sub" id="header-sub">Cargando...</div>
+  </div>
+  <button class="refresh-btn" onclick="cargarDashboard()">↻</button>
+</div>
+
+<div id="pago-banner-wrap"></div>
+
+<div class="section">
+  <div class="section-title">
+    <span>Costureras</span>
+    <span class="count" id="count-costureras">0</span>
+  </div>
+  <div class="costu-grid" id="costu-grid">
+    <div class="skeleton" style="height:100px;"></div>
+    <div class="skeleton" style="height:100px;"></div>
+    <div class="skeleton" style="height:100px;"></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <span>Para enviar a costura</span>
+    <span class="count" id="count-paraenviar">0</span>
+  </div>
+  <div id="lista-paraenviar">
+    <div class="skeleton" style="height:80px; margin-bottom:10px;"></div>
+    <div class="skeleton" style="height:80px;"></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <span>En costura</span>
+    <span class="count" id="count-encostura">0</span>
+  </div>
+  <div id="lista-encostura">
+    <div class="skeleton" style="height:80px; margin-bottom:10px;"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal" onclick="cerrarModal(event)">
+  <div class="modal" id="modal-content" onclick="event.stopPropagation()"></div>
+</div>
+
+<script>
+let dashboardData = null;
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function money(n) {
+  return '$' + Math.round(n || 0).toLocaleString('es-CO');
+}
+function getInitials(equipo) {
+  return (equipo || '?').split(/\s+/).slice(0,2).map(w => (w[0]||'')).join('').toUpperCase().slice(0,2) || '?';
+}
+
+async function cargarDashboard() {
+  try {
+    const r = await fetch('/api/costura/dashboard');
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'error');
+    dashboardData = d;
+    render();
+  } catch (e) {
+    $('header-sub').textContent = 'Error: ' + e.message;
+  }
+}
+
+function render() {
+  const d = dashboardData;
+  $('header-sub').textContent = `Semana del ${d.semanaInicio || ''}`;
+
+  // Banner de pagos
+  const totalPago = (d.pagosSemana || []).reduce((s,x) => s + x.monto, 0);
+  if (totalPago > 0) {
+    $('pago-banner-wrap').innerHTML = `
+      <div class="pago-banner">
+        <div>
+          <div class="label">Domingo: a pagar</div>
+          <div class="amount">${money(totalPago)}</div>
+        </div>
+        <button onclick="verPagos()">Ver lista</button>
+      </div>
+    `;
+  } else {
+    $('pago-banner-wrap').innerHTML = '';
+  }
+
+  // Costureras
+  $('count-costureras').textContent = d.costureras.length;
+  $('costu-grid').innerHTML = d.costureras.map(c => `
+    <div class="costu-card ${c.alerta ? 'alerta' : ''}">
+      <div class="costu-emoji">${esc(c.emoji)}</div>
+      <div class="costu-nombre">${esc(c.nombre)}</div>
+      <div class="costu-stat">
+        <strong>${c.pedidosActivos}</strong> activos
+      </div>
+      ${c.valorSemanaEstimado > 0 ? `
+        <div class="costu-stat" style="margin-top:4px;">
+          <span class="verde">${money(c.valorSemanaEstimado)}</span>
+        </div>
+      ` : ''}
+    </div>
+  `).join('') || '<div class="empty-state">Sin costureras registradas</div>';
+
+  // Para enviar
+  $('count-paraenviar').textContent = d.paraEnviar.length;
+  $('lista-paraenviar').innerHTML = d.paraEnviar.map(p => `
+    <div class="ped-card" onclick="abrirPedido(${p.id})">
+      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="">` : esc(getInitials(p.equipo))}</div>
+      <div class="ped-info">
+        <div class="ped-equipo">${esc(p.equipo)}</div>
+        <div class="ped-meta">
+          <span>${esc(p.vendedora)}</span>
+          ${p.numUniformes ? `<span class="dot">·</span><span>${p.numUniformes} prendas</span>` : ''}
+          <span class="dot">·</span><span>${esc(p.estado)}</span>
+        </div>
+      </div>
+      <button class="ped-action" onclick="event.stopPropagation(); asignar(${p.id})">▶ Enviar</button>
+    </div>
+  `).join('') || '<div class="empty-state">Nada pendiente para enviar</div>';
+
+  // En costura
+  $('count-encostura').textContent = d.enCostura.length;
+  $('lista-encostura').innerHTML = d.enCostura.map(p => `
+    <div class="ped-card" onclick="abrirPedido(${p.id})">
+      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="">` : esc(getInitials(p.equipo))}</div>
+      <div class="ped-info">
+        <div class="ped-equipo">${esc(p.equipo)}</div>
+        <div class="ped-meta">
+          <span>${esc(p.costureraNombre || 'sin asignar')}</span>
+          ${p.diasEnCostura != null ? `<span class="dot">·</span><span>${p.diasEnCostura}d</span>` : ''}
+          ${p.alerta ? '<span class="alerta-tag">⚠ atrasado</span>' : ''}
+        </div>
+      </div>
+      <button class="ped-action green" onclick="event.stopPropagation(); devolver(${p.id})">✓ Devuelto</button>
+    </div>
+  `).join('') || '<div class="empty-state">Nada en costura</div>';
+}
+
+function abrirPedido(id) {
+  $('modal-content').innerHTML = `
+    <h2 style="margin-bottom:12px;">Pedido #${id}</h2>
+    <p style="color:var(--muted);">Ficha completa próximamente.</p>
+    <button style="margin-top:18px; padding:12px 18px; background:var(--purple); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;" onclick="cerrarModal({target:$('modal')})">Cerrar</button>
+  `;
+  $('modal').classList.add('show');
+}
+
+function asignar(id) {
+  alert('Próximamente: pantalla de asignar pedido #' + id);
+}
+
+function devolver(id) {
+  alert('Próximamente: marcar devuelto pedido #' + id);
+}
+
+function verPagos() {
+  const d = dashboardData;
+  $('modal-content').innerHTML = `
+    <h2 style="margin-bottom:12px;">Pagos del domingo</h2>
+    <div style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">Semana ${esc(d.semanaInicio)}</div>
+    ${d.pagosSemana.map(p => `
+      <div style="background:var(--panel-2); padding:12px; border-radius:10px; margin-bottom:8px;">
+        <div style="font-weight:700;">${esc(p.nombre)}</div>
+        <div style="color:var(--muted); font-size:0.85rem;">${p.count} pedidos</div>
+        <div style="color:#4ade80; font-weight:800; font-size:1.15rem; margin-top:4px;">${money(p.monto)}</div>
+      </div>
+    `).join('')}
+    <button style="margin-top:14px; padding:12px 18px; background:var(--purple); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; width:100%;" onclick="cerrarModal({target:$('modal')})">Cerrar</button>
+  `;
+  $('modal').classList.add('show');
+}
+
+function cerrarModal(e) {
+  if (e.target.id === 'modal' || !e.target.closest('.modal')) {
+    $('modal').classList.remove('show');
+  }
+}
+
+cargarDashboard();
+</script>
+
+</body>
+</html>

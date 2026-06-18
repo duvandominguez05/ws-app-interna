@@ -10533,6 +10533,170 @@ setInterval(cargar, 15000);
     return json(res, 200, { costureras });
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // MINI-APP COSTURA DE CAMILO — Dashboard
+  // GET /api/costura/dashboard
+  // Devuelve:
+  //  - costureras: con resumen (pedidos activos, valor estimado semana)
+  //  - paraEnviar: pedidos en estados (enviado-calandra, llego-impresion, corte)
+  //  - enCostura: pedidos asignados a costureras (con movimiento abierto)
+  //  - pagoSemana: lista de pagos sugeridos por costurera (semana actual)
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/costura/dashboard') {
+    try {
+      const peds = leerPedidos();
+      const tarifas = Object.fromEntries(
+        (db.listarTarifasCostura() || []).map(t => [t.tipo, t.valor])
+      );
+      const costureraSlugs = PERSONAS.filter(p => p.roles.includes('costura'));
+
+      // Pedidos por estado relevante (incluye los del flujo Lidermeyer)
+      const ESTADOS_PARA_ENVIAR = ['enviado-calandra', 'llego-impresion', 'corte', 'tela-recibida'];
+      const ESTADOS_EN_COSTURA = ['costura', 'en-satelite', 'en-costura'];
+
+      const paraEnviar = peds.filter(p =>
+        ESTADOS_PARA_ENVIAR.includes(p.estado) &&
+        !['enviado-final', 'archivado', 'cancelado'].includes(p.estado)
+      ).map(p => ({
+        id: p.id,
+        equipo: p.equipo || `Pedido #${p.id}`,
+        vendedora: p.vendedora || '',
+        numUniformes: p.numUniformes || null,
+        estado: p.estado,
+        fechaVenta: p.fechaVenta || '',
+        ultimoMov: p.ultimoMovimiento || '',
+        thumbnail: (db.getFotoPedido(p.id)?.url) || (p.drive?.pdfRip?.thumbnail) || null,
+      }));
+
+      // Movimientos abiertos (sin recepcion)
+      const movsAbiertos = db.leerMovimientosCosturaPendientes() || [];
+      const movsPorPedido = new Map();
+      movsAbiertos.forEach(m => {
+        if (!movsPorPedido.has(m.pedido_id)) movsPorPedido.set(m.pedido_id, []);
+        movsPorPedido.get(m.pedido_id).push(m);
+      });
+
+      const enCostura = peds.filter(p =>
+        ESTADOS_EN_COSTURA.includes(p.estado) ||
+        movsPorPedido.has(p.id)
+      ).map(p => {
+        const movs = movsPorPedido.get(p.id) || [];
+        const slug = movs[0]?.costurera_slug || null;
+        const costuNombre = movs[0]?.costurera_nombre || null;
+        const fechaEnvio = movs[0]?.fecha_envio || null;
+        const diasEnCostura = fechaEnvio
+          ? Math.floor((Date.now() - new Date(fechaEnvio).getTime()) / (24*60*60*1000))
+          : null;
+        return {
+          id: p.id,
+          equipo: p.equipo || `Pedido #${p.id}`,
+          vendedora: p.vendedora || '',
+          costureraSlug: slug,
+          costureraNombre: costuNombre,
+          fechaEnvio,
+          diasEnCostura,
+          estado: p.estado,
+          thumbnail: (db.getFotoPedido(p.id)?.url) || (p.drive?.pdfRip?.thumbnail) || null,
+          alerta: diasEnCostura !== null && diasEnCostura > 7,
+        };
+      });
+
+      // Resumen por costurera (semana actual)
+      const ahora = new Date();
+      const dia = ahora.getDay(); // 0=Dom, 1=Lun
+      const diasDesdeLunes = (dia === 0 ? 6 : dia - 1);
+      const inicioSemana = new Date(ahora);
+      inicioSemana.setHours(0,0,0,0);
+      inicioSemana.setDate(ahora.getDate() - diasDesdeLunes);
+      const finSemana = new Date(inicioSemana);
+      finSemana.setDate(inicioSemana.getDate() + 7);
+      const movsSemana = db.leerMovimientosCosturaSemana(
+        inicioSemana.toISOString(), finSemana.toISOString()
+      ) || [];
+
+      const resumenCostureras = costureraSlugs.map(p => {
+        const movs = movsSemana.filter(m => m.costurera_slug === p.slug);
+        const activos = movsAbiertos.filter(m => m.costurera_slug === p.slug).length;
+        // Valor estimado: cantidad recibida * tarifa del tipo
+        let valorSemana = 0;
+        movs.forEach(m => {
+          if (m.fecha_recepcion && m.cantidad_recibida > 0) {
+            const tarifa = tarifas[(m.prenda || '').toLowerCase()] || 0;
+            valorSemana += tarifa * m.cantidad_recibida;
+          }
+        });
+        return {
+          slug: p.slug,
+          nombre: p.nombre,
+          emoji: p.emoji || '🪡',
+          color: p.color || '#888',
+          pedidosActivos: activos,
+          valorSemanaEstimado: valorSemana,
+          alerta: activos > 3,
+        };
+      });
+
+      // Pago sugerido semana (movimientos recibidos no pagados)
+      const semanaKey = inicioSemana.toISOString().slice(0,10);
+      const pagosSemana = costureraSlugs.map(p => {
+        const movsRecibidos = movsSemana.filter(m =>
+          m.costurera_slug === p.slug && m.fecha_recepcion
+        );
+        let monto = 0;
+        movsRecibidos.forEach(m => {
+          const tarifa = tarifas[(m.prenda || '').toLowerCase()] || 0;
+          monto += tarifa * (m.cantidad_recibida || 0);
+        });
+        return { slug: p.slug, nombre: p.nombre, monto, count: movsRecibidos.length };
+      }).filter(x => x.monto > 0);
+
+      return json(res, 200, {
+        ok: true,
+        semanaInicio: semanaKey,
+        costureras: resumenCostureras,
+        paraEnviar,
+        enCostura,
+        pagosSemana,
+        tarifasConfiguradas: Object.keys(tarifas).length,
+      });
+    } catch (e) {
+      console.error('[costura dashboard]', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/costura/tarifas — listado de tarifas configuradas ──
+  if (req.method === 'GET' && req.url === '/api/costura/tarifas') {
+    try {
+      return json(res, 200, { tarifas: db.listarTarifasCostura() || [] });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/costura/tarifas — configurar tarifas ──
+  // Body: { tipo: 'camiseta', valor: 4500 }  ó  { tarifas: [{tipo,valor},...] }
+  if (req.method === 'POST' && req.url === '/api/costura/tarifas') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        if (Array.isArray(data.tarifas)) {
+          data.tarifas.forEach(t => db.setTarifaCostura(t.tipo, t.valor));
+        } else if (data.tipo) {
+          db.setTarifaCostura(data.tipo, data.valor);
+        } else {
+          return json(res, 400, { error: 'falta tipo+valor o tarifas[]' });
+        }
+        return json(res, 200, { ok: true, tarifas: db.listarTarifasCostura() });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/costureras/envio — Lidermeyer registra envio a una costurera ──
   // Body: { pedido_id, costurera_slug, prenda, cantidad, observaciones, enviado_por }
   if (req.method === 'POST' && req.url === '/api/costureras/envio') {

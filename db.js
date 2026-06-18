@@ -177,6 +177,37 @@ db.exec(`
     monto INTEGER,
     ts INTEGER NOT NULL
   );
+
+  -- Tarifas de costura por tipo de prenda (camiseta, pantaloneta, chaqueta, ...)
+  CREATE TABLE IF NOT EXISTS tarifas_costura (
+    tipo TEXT PRIMARY KEY,
+    valor INTEGER NOT NULL,
+    actualizado_en TEXT
+  );
+
+  -- Pagos semanales a costureras (Domingo). Una fila por costurera por semana.
+  CREATE TABLE IF NOT EXISTS pagos_costura (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    costurera_slug TEXT NOT NULL,
+    semana TEXT NOT NULL,
+    monto INTEGER NOT NULL,
+    movimientos_ids TEXT,
+    fecha_pago TEXT NOT NULL,
+    metodo TEXT,
+    referencia TEXT,
+    creado_en TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pagos_costura ON pagos_costura(costurera_slug);
+  CREATE INDEX IF NOT EXISTS idx_pagos_semana ON pagos_costura(semana);
+
+  -- Foto del pedido (puede ser URL Drive, base64, o ruta local). Si no esta,
+  -- el frontend resuelve placeholder con el nombre del equipo.
+  CREATE TABLE IF NOT EXISTS pedido_fotos (
+    pedido_id INTEGER PRIMARY KEY,
+    url TEXT,
+    fuente TEXT,
+    actualizado_en TEXT
+  );
 `);
 
 // ── Migraciones in-place (ALTER TABLE no soporta IF NOT EXISTS en SQLite) ──
@@ -821,6 +852,101 @@ function leerMovimientosCosturaSinAviso7Dias(limiteIso) {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// TARIFAS DE COSTURA (por tipo de prenda)
+// ═════════════════════════════════════════════════════════════════
+const _tarifaGet = db.prepare(`SELECT valor FROM tarifas_costura WHERE tipo = ?`);
+const _tarifaList = db.prepare(`SELECT tipo, valor, actualizado_en FROM tarifas_costura ORDER BY tipo`);
+const _tarifaUpsert = db.prepare(`
+  INSERT INTO tarifas_costura (tipo, valor, actualizado_en)
+  VALUES (@tipo, @valor, @actualizado_en)
+  ON CONFLICT(tipo) DO UPDATE SET valor=@valor, actualizado_en=@actualizado_en
+`);
+const _tarifaDelete = db.prepare(`DELETE FROM tarifas_costura WHERE tipo = ?`);
+
+function getTarifaCostura(tipo) {
+  const r = _tarifaGet.get(String(tipo).toLowerCase());
+  return r ? r.valor : 0;
+}
+function listarTarifasCostura() {
+  return _tarifaList.all();
+}
+function setTarifaCostura(tipo, valor) {
+  return _tarifaUpsert.run({
+    tipo: String(tipo).toLowerCase(),
+    valor: Math.round(Number(valor) || 0),
+    actualizado_en: new Date().toISOString(),
+  });
+}
+function eliminarTarifaCostura(tipo) {
+  return _tarifaDelete.run(String(tipo).toLowerCase());
+}
+
+// ═════════════════════════════════════════════════════════════════
+// PAGOS A COSTURERAS (semanal)
+// ═════════════════════════════════════════════════════════════════
+const _pagoInsert = db.prepare(`
+  INSERT INTO pagos_costura
+    (costurera_slug, semana, monto, movimientos_ids, fecha_pago, metodo, referencia, creado_en)
+  VALUES
+    (@costurera_slug, @semana, @monto, @movimientos_ids, @fecha_pago, @metodo, @referencia, @creado_en)
+`);
+const _pagoListPorCostu = db.prepare(`
+  SELECT * FROM pagos_costura
+  WHERE costurera_slug = ?
+  ORDER BY fecha_pago DESC
+  LIMIT ?
+`);
+const _pagoListPorSemana = db.prepare(`
+  SELECT * FROM pagos_costura WHERE semana = ?
+`);
+
+function registrarPagoCostura(data) {
+  const res = _pagoInsert.run({
+    costurera_slug: data.costurera_slug,
+    semana: data.semana,
+    monto: Math.round(Number(data.monto) || 0),
+    movimientos_ids: data.movimientos_ids ? JSON.stringify(data.movimientos_ids) : null,
+    fecha_pago: data.fecha_pago || new Date().toISOString(),
+    metodo: data.metodo || null,
+    referencia: data.referencia || null,
+    creado_en: new Date().toISOString(),
+  });
+  return res.lastInsertRowid;
+}
+function leerPagosCostureraPorSlug(slug, limit = 50) {
+  return _pagoListPorCostu.all(slug, limit);
+}
+function leerPagosCostureraPorSemana(semana) {
+  return _pagoListPorSemana.all(semana);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// FOTO DEL PEDIDO (resolucion automatica + override manual)
+// ═════════════════════════════════════════════════════════════════
+const _fotoGet = db.prepare(`SELECT * FROM pedido_fotos WHERE pedido_id = ?`);
+const _fotoUpsert = db.prepare(`
+  INSERT INTO pedido_fotos (pedido_id, url, fuente, actualizado_en)
+  VALUES (@pedido_id, @url, @fuente, @actualizado_en)
+  ON CONFLICT(pedido_id) DO UPDATE SET url=@url, fuente=@fuente, actualizado_en=@actualizado_en
+`);
+const _fotoDelete = db.prepare(`DELETE FROM pedido_fotos WHERE pedido_id = ?`);
+
+function getFotoPedido(pedidoId) {
+  return _fotoGet.get(pedidoId);
+}
+function setFotoPedido(pedidoId, url, fuente) {
+  return _fotoUpsert.run({
+    pedido_id: pedidoId,
+    url: url || null,
+    fuente: fuente || 'manual',
+    actualizado_en: new Date().toISOString(),
+  });
+}
+function eliminarFotoPedido(pedidoId) {
+  return _fotoDelete.run(pedidoId);
+}
+
+// ═════════════════════════════════════════════════════════════════
 // DOCUMENTOS SALIENTES WHATSAPP (captura facturas manuales de vendedoras)
 // ═════════════════════════════════════════════════════════════════
 
@@ -957,4 +1083,9 @@ module.exports = {
   leerDocumentosSalientesWANoRevisados, leerDocumentoSalienteWAporId,
   marcarDocumentoSalienteRevisado, setDocumentoSalienteGemini,
   leerDocumentosSalientesPorHash, actualizarHashDocSaliente,
+  // Tarifas y pagos de costura (Mini-app costura Camilo)
+  getTarifaCostura, listarTarifasCostura, setTarifaCostura, eliminarTarifaCostura,
+  registrarPagoCostura, leerPagosCostureraPorSlug, leerPagosCostureraPorSemana,
+  // Foto del pedido
+  getFotoPedido, setFotoPedido, eliminarFotoPedido,
 };
