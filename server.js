@@ -10515,6 +10515,15 @@ setInterval(cargar, 15000);
     });
   }
 
+  // ── GET /costura — mini-app de Camilo para gestion de costureras ──
+  if (req.method === 'GET' && (req.url === '/costura' || req.url === '/costura/')) {
+    return fs.readFile(path.join(__dirname, 'public', 'costura.html'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
+  }
+
   // ── GET /api/personas — roster completo (slug, nombre, roles, color, vistaInicial) ──
   if (req.method === 'GET' && req.url === '/api/personas') {
     return json(res, 200, { personas: PERSONAS });
