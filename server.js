@@ -10516,6 +10516,290 @@ setInterval(cargar, 15000);
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // MINI-APP COSTURA — Endpoints de detalle / acciones
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── GET /api/costura/pedido/:id — ficha completa del pedido ──
+  if (req.method === 'GET' && req.url.match(/^\/api\/costura\/pedido\/\d+$/)) {
+    try {
+      const id = parseInt(req.url.split('/').pop(), 10);
+      const peds = leerPedidos();
+      const p = peds.find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+
+      // Movimientos de costura asociados
+      const movs = (db.leerMovimientosCosturaPendientes() || [])
+        .filter(m => m.pedido_id === id);
+      const movsTodos = db.raw.prepare(
+        'SELECT * FROM costureras_movimientos WHERE pedido_id = ? ORDER BY fecha_envio DESC'
+      ).all(id);
+
+      // Foto: 1) override manual, 2) thumbnail Drive, 3) null (placeholder en UI)
+      const fotoManual = db.getFotoPedido(id);
+      const foto = fotoManual?.url
+        || p.drive?.pdfRip?.thumbnail
+        || null;
+
+      // Tarifas para calcular costo costura sugerido
+      const tarifas = Object.fromEntries(
+        (db.listarTarifasCostura() || []).map(t => [t.tipo, t.valor])
+      );
+
+      // Composición: si el pedido no tiene desglose explicito, derivar del campo numUniformes
+      // como una sola fila "camiseta" (default editable en UI)
+      const composicion = Array.isArray(p.prendas) && p.prendas.length
+        ? p.prendas
+        : (p.numUniformes ? [{ tipo: p.tipoPrenda || 'camiseta', cantidad: p.numUniformes }] : []);
+
+      return json(res, 200, {
+        ok: true,
+        pedido: {
+          id: p.id,
+          equipo: p.equipo || `Pedido #${p.id}`,
+          vendedora: p.vendedora || '',
+          cliente: p.pushNameCliente || '',
+          telefono: p.telefono || '',
+          fechaVenta: p.fechaVenta || '',
+          estado: p.estado,
+          numUniformes: p.numUniformes || null,
+          tipoPrenda: p.tipoPrenda || '',
+          color: p.color || '',
+          fechaEntregaTexto: p.fechaEntregaTexto || '',
+          notas: p.notas || '',
+          total: p.total || 0,
+          abonado: p.abonado || 0,
+          saldoPendiente: p.saldoPendiente || 0,
+          composicion,
+          foto,
+          drive: p.drive || null,
+          historial: (p.historial || []).slice(-10),
+        },
+        movimientosCostura: movsTodos,
+        tarifas,
+      });
+    } catch (e) {
+      console.error('[costura pedido]', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/costura/asignar — asignar pedido a costurera ──
+  // Body: { pedido_id, costurera_slug, prendas: [{tipo, cantidad}], notas }
+  // - Crea UN movimiento por cada tipo de prenda (para tracking granular)
+  // - Avanza pedido a 'en-costura'
+  if (req.method === 'POST' && req.url === '/api/costura/asignar') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const { pedido_id, costurera_slug, prendas, notas } = data;
+        if (!pedido_id || !costurera_slug || !Array.isArray(prendas) || !prendas.length) {
+          return json(res, 400, { error: 'falta pedido_id, costurera_slug o prendas[]' });
+        }
+        const costu = PERSONAS.find(p => p.slug === costurera_slug && p.roles.includes('costura'));
+        if (!costu) return json(res, 400, { error: 'costurera no encontrada' });
+
+        const peds = leerPedidos();
+        const idx = peds.findIndex(x => x.id === pedido_id);
+        if (idx < 0) return json(res, 404, { error: 'pedido no existe' });
+        const p = peds[idx];
+
+        // Crear UN movimiento por cada tipo de prenda
+        const tarifas = Object.fromEntries(
+          (db.listarTarifasCostura() || []).map(t => [t.tipo, t.valor])
+        );
+        const movIds = [];
+        let totalPrendas = 0;
+        let valorTotal = 0;
+        for (const pr of prendas) {
+          const tipo = String(pr.tipo || '').toLowerCase();
+          const cantidad = parseInt(pr.cantidad, 10) || 0;
+          if (!tipo || cantidad <= 0) continue;
+          const mid = db.crearMovimientoCostura({
+            pedido_id,
+            costurera_slug,
+            costurera_nombre: costu.nombre,
+            equipo: p.equipo || '',
+            prenda: tipo,
+            cantidad_enviada: cantidad,
+            enviado_por: 'Camilo',
+            observaciones: notas || null,
+          });
+          movIds.push(mid);
+          totalPrendas += cantidad;
+          valorTotal += (tarifas[tipo] || 0) * cantidad;
+        }
+
+        // Avanzar pedido a 'en-costura' y guardar referencia de costurera
+        const estadoAnterior = p.estado;
+        p.estado = 'en-costura';
+        p.satelite = costu.nombre;
+        p.ultimoMovimiento = new Date().toISOString();
+        p.costuraResumen = {
+          costureraSlug: costurera_slug,
+          costureraNombre: costu.nombre,
+          totalPrendas,
+          valorAPagar: valorTotal,
+          fechaAsignacion: new Date().toISOString(),
+          movIds,
+        };
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'Camilo',
+          accion: 'asignar-costurera',
+          de: estadoAnterior,
+          a: 'en-costura',
+          nota: `${costu.nombre}: ${totalPrendas} prendas, $${valorTotal.toLocaleString('es-CO')}`,
+        });
+        peds[idx] = p;
+        db.guardarPedidos(peds);
+
+        return json(res, 200, {
+          ok: true,
+          movIds,
+          totalPrendas,
+          valorAPagar: valorTotal,
+          costurera: costu.nombre,
+        });
+      } catch (e) {
+        console.error('[costura asignar]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/costura/devolver — marcar devolucion ──
+  // Body: { pedido_id, devoluciones: [{movimiento_id, cantidad_recibida}], notas }
+  // - Si todas las prendas devueltas == enviadas: avanza pedido a 'listo'
+  // - Si faltan: registra faltante (el flujo de arreglo automatico se mantiene)
+  if (req.method === 'POST' && req.url === '/api/costura/devolver') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const { pedido_id, devoluciones, notas } = data;
+        if (!pedido_id || !Array.isArray(devoluciones) || !devoluciones.length) {
+          return json(res, 400, { error: 'falta pedido_id o devoluciones[]' });
+        }
+
+        const peds = leerPedidos();
+        const idx = peds.findIndex(x => x.id === pedido_id);
+        if (idx < 0) return json(res, 404, { error: 'pedido no existe' });
+        const p = peds[idx];
+
+        let totalEnviado = 0;
+        let totalRecibido = 0;
+        let totalFaltante = 0;
+
+        for (const dev of devoluciones) {
+          const mov = db.leerMovimientoCostura(dev.movimiento_id);
+          if (!mov || mov.pedido_id !== pedido_id) continue;
+          const recibida = parseInt(dev.cantidad_recibida, 10) || 0;
+          const faltante = Math.max(0, mov.cantidad_enviada - recibida);
+          db.recibirMovimientoCostura(dev.movimiento_id, {
+            cantidad_recibida: recibida,
+            faltante,
+            recibido_por: 'Camilo',
+            observaciones: notas || null,
+          });
+          totalEnviado += mov.cantidad_enviada;
+          totalRecibido += recibida;
+          totalFaltante += faltante;
+        }
+
+        // Avanzar estado del pedido
+        const estadoAnterior = p.estado;
+        if (totalFaltante === 0) {
+          p.estado = 'listo';
+        } else {
+          p.estado = 'costura-parcial';
+        }
+        p.ultimoMovimiento = new Date().toISOString();
+        p.historial = p.historial || [];
+        p.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'Camilo',
+          accion: 'marcar-devuelto-costura',
+          de: estadoAnterior,
+          a: p.estado,
+          nota: `Recibido ${totalRecibido}/${totalEnviado}${totalFaltante > 0 ? ` (faltan ${totalFaltante})` : ''}`,
+        });
+        peds[idx] = p;
+        db.guardarPedidos(peds);
+
+        return json(res, 200, {
+          ok: true,
+          totalEnviado,
+          totalRecibido,
+          totalFaltante,
+          nuevoEstado: p.estado,
+        });
+      } catch (e) {
+        console.error('[costura devolver]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/costura/pagar — marcar pago semanal a una costurera ──
+  // Body: { costurera_slug, semana?, monto, metodo?, referencia? }
+  if (req.method === 'POST' && req.url === '/api/costura/pagar') {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const { costurera_slug, monto, metodo, referencia } = data;
+        if (!costurera_slug || !monto) return json(res, 400, { error: 'falta costurera_slug o monto' });
+        const ahora = new Date();
+        const dia = ahora.getDay();
+        const diasDesdeLunes = (dia === 0 ? 6 : dia - 1);
+        const inicio = new Date(ahora);
+        inicio.setHours(0,0,0,0);
+        inicio.setDate(ahora.getDate() - diasDesdeLunes);
+        const semana = data.semana || inicio.toISOString().slice(0,10);
+
+        const pagoId = db.registrarPagoCostura({
+          costurera_slug,
+          semana,
+          monto: parseInt(monto, 10) || 0,
+          metodo: metodo || 'Nequi',
+          referencia: referencia || null,
+        });
+        return json(res, 200, { ok: true, pagoId, semana });
+      } catch (e) {
+        console.error('[costura pagar]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/costura/pedido/:id/foto — subir foto manual del pedido ──
+  // Body: { url } (URL ya subida en otro lado, o data URL base64)
+  if (req.method === 'POST' && req.url.match(/^\/api\/costura\/pedido\/\d+\/foto$/)) {
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const id = parseInt(req.url.split('/')[4], 10);
+        const data = JSON.parse(body || '{}');
+        if (!data.url) return json(res, 400, { error: 'falta url' });
+        db.setFotoPedido(id, data.url, data.fuente || 'manual');
+        return json(res, 200, { ok: true });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── POST /api/costureras/envio — Lidermeyer registra envio a una costurera ──
   // Body: { pedido_id, costurera_slug, prenda, cantidad, observaciones, enviado_por }
   if (req.method === 'POST' && req.url === '/api/costureras/envio') {

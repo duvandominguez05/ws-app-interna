@@ -13,14 +13,18 @@
       --bg: #0a0a0d;
       --panel: #14141a;
       --panel-2: #1c1c24;
+      --panel-3: #25252f;
       --line: rgba(255,255,255,0.08);
+      --line-strong: rgba(255,255,255,0.15);
       --muted: #8a8a99;
+      --muted-2: #5e5e6d;
       --text: #f0f0f5;
       --purple: #8b5cf6;
       --purple-soft: rgba(139,92,246,0.18);
       --orange: #f97316;
       --orange-soft: rgba(249,115,22,0.18);
       --green: #16a34a;
+      --green-bright: #4ade80;
       --green-soft: rgba(22,163,74,0.18);
       --red: #ef4444;
       --red-soft: rgba(239,68,68,0.18);
@@ -33,8 +37,10 @@
       color: var(--text);
       min-height: 100vh;
       padding: 16px;
-      padding-bottom: 80px;
+      padding-bottom: 100px;
     }
+    button { font-family: inherit; }
+    /* Header */
     .header {
       display: flex;
       justify-content: space-between;
@@ -45,166 +51,17 @@
       border: 1px solid rgba(139,92,246,0.30);
       margin-bottom: 18px;
     }
-    .header h1 {
-      font-size: 1.35rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
+    .header h1 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; }
+    .header .sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .header-actions { display: flex; gap: 8px; }
+    .icon-btn {
+      background: rgba(255,255,255,0.06); border: 1px solid var(--line);
+      color: var(--text); width: 40px; height: 40px; border-radius: 12px;
+      cursor: pointer; font-size: 1.1rem;
     }
-    .header .sub {
-      font-size: 0.78rem;
-      color: var(--muted);
-      margin-top: 2px;
-    }
-    .refresh-btn {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid var(--line);
-      color: var(--text);
-      width: 40px;
-      height: 40px;
-      border-radius: 12px;
-      cursor: pointer;
-      font-size: 1.1rem;
-    }
-    .refresh-btn:active { transform: scale(0.95); }
+    .icon-btn:active { transform: scale(0.95); }
 
-    .section {
-      margin-bottom: 24px;
-    }
-    .section-title {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: var(--muted);
-      font-weight: 700;
-      margin-bottom: 10px;
-      padding-left: 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .section-title .count {
-      background: rgba(255,255,255,0.08);
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 0.7rem;
-      color: var(--text);
-      font-weight: 800;
-    }
-
-    /* Costureras row */
-    .costu-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 10px;
-    }
-    .costu-card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px 12px;
-      text-align: center;
-      position: relative;
-    }
-    .costu-card.alerta {
-      border-color: rgba(239,68,68,0.4);
-      background: linear-gradient(145deg, var(--red-soft), var(--panel));
-    }
-    .costu-emoji {
-      font-size: 1.8rem;
-      margin-bottom: 4px;
-    }
-    .costu-nombre {
-      font-weight: 700;
-      font-size: 0.95rem;
-      margin-bottom: 6px;
-    }
-    .costu-stat {
-      font-size: 0.78rem;
-      color: var(--muted);
-    }
-    .costu-stat strong {
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-    }
-    .costu-stat .verde { color: #4ade80; font-weight: 700; }
-
-    /* Pedido card */
-    .ped-card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 10px;
-      display: flex;
-      gap: 14px;
-      align-items: center;
-    }
-    .ped-thumb {
-      width: 64px;
-      height: 64px;
-      border-radius: 10px;
-      background: var(--panel-2);
-      flex-shrink: 0;
-      display: grid;
-      place-items: center;
-      font-size: 1.8rem;
-      overflow: hidden;
-    }
-    .ped-thumb img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .ped-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .ped-equipo {
-      font-weight: 700;
-      font-size: 1rem;
-      margin-bottom: 4px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .ped-meta {
-      font-size: 0.78rem;
-      color: var(--muted);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-    .ped-meta .dot { color: rgba(255,255,255,0.2); }
-    .ped-action {
-      background: var(--purple);
-      color: white;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-weight: 700;
-      font-size: 0.85rem;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .ped-action:active { transform: scale(0.95); }
-    .ped-action.green { background: var(--green); }
-    .alerta-tag {
-      background: var(--red-soft);
-      color: #fca5a5;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 0.7rem;
-      font-weight: 700;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
+    /* Pago banner */
     .pago-banner {
       background: linear-gradient(135deg, var(--green-soft), rgba(34,197,94,0.05));
       border: 1px solid rgba(34,197,94,0.30);
@@ -216,82 +73,273 @@
       align-items: center;
     }
     .pago-banner .label {
-      font-size: 0.72rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      margin-bottom: 2px;
+      font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 1.5px; margin-bottom: 2px;
     }
     .pago-banner .amount {
-      font-size: 1.4rem;
-      font-weight: 800;
-      color: #4ade80;
-      font-variant-numeric: tabular-nums;
+      font-size: 1.4rem; font-weight: 800; color: var(--green-bright); font-variant-numeric: tabular-nums;
     }
     .pago-banner button {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(34,197,94,0.4);
-      color: #4ade80;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-weight: 700;
-      font-size: 0.85rem;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(34,197,94,0.4);
+      color: var(--green-bright); padding: 10px 16px; border-radius: 10px;
+      font-weight: 700; font-size: 0.85rem; cursor: pointer;
+    }
+
+    /* Secciones */
+    .section { margin-bottom: 24px; }
+    .section-title {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--muted); font-weight: 700; margin-bottom: 10px; padding-left: 4px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title .count {
+      background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 999px;
+      font-size: 0.7rem; color: var(--text); font-weight: 800;
+    }
+
+    /* Costureras */
+    .costu-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+    }
+    .costu-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 10px; text-align: center; position: relative;
+    }
+    .costu-card.alerta {
+      border-color: rgba(239,68,68,0.4);
+      background: linear-gradient(145deg, var(--red-soft), var(--panel));
+    }
+    .costu-emoji { font-size: 1.6rem; margin-bottom: 2px; }
+    .costu-nombre { font-weight: 700; font-size: 0.92rem; margin-bottom: 4px; }
+    .costu-stat { font-size: 0.74rem; color: var(--muted); }
+    .costu-stat strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .costu-stat .verde { color: var(--green-bright); font-weight: 700; }
+
+    /* Pedido card (lista) */
+    .ped-card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center;
       cursor: pointer;
     }
-
-    .loader {
-      display: grid;
-      place-items: center;
-      padding: 60px 20px;
-      color: var(--muted);
+    .ped-card:active { transform: scale(0.99); }
+    .ped-thumb {
+      width: 64px; height: 64px; border-radius: 10px; background: var(--panel-2);
+      flex-shrink: 0; display: grid; place-items: center;
+      font-size: 1.4rem; font-weight: 800; color: var(--muted); overflow: hidden;
+    }
+    .ped-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .ped-info { flex: 1; min-width: 0; }
+    .ped-equipo {
+      font-weight: 700; font-size: 1rem; margin-bottom: 4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ped-meta {
+      font-size: 0.78rem; color: var(--muted);
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    }
+    .ped-meta .dot { color: rgba(255,255,255,0.2); }
+    .ped-action {
+      background: var(--purple); color: white; border: none;
+      padding: 10px 16px; border-radius: 10px; font-weight: 700; font-size: 0.85rem;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .ped-action:active { transform: scale(0.95); }
+    .ped-action.green { background: var(--green); }
+    .alerta-tag {
+      background: var(--red-soft); color: #fca5a5;
+      padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700;
+    }
+    .empty-state {
+      text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.92rem;
     }
 
+    /* Loaders */
     .skeleton {
       background: linear-gradient(90deg, var(--panel) 25%, var(--panel-2) 50%, var(--panel) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: 8px;
+      background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px;
     }
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-    /* Modal placeholder */
+    /* Modal */
     .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.75);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      z-index: 100;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: none; align-items: flex-end; justify-content: center;
+      padding: 0; z-index: 100; backdrop-filter: blur(4px);
     }
     .modal-backdrop.show { display: flex; }
-    .modal {
-      background: var(--panel);
-      border-radius: 16px;
-      padding: 22px;
-      max-width: 480px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
+    @media (min-width: 640px) {
+      .modal-backdrop { align-items: center; padding: 20px; }
     }
+    .modal {
+      background: var(--panel); border-radius: 18px 18px 0 0;
+      padding: 22px 18px 28px; max-width: 560px; width: 100%;
+      max-height: 92vh; overflow-y: auto;
+      animation: slideUp 0.25s ease;
+    }
+    @media (min-width: 640px) { .modal { border-radius: 18px; } }
+    @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 12px; margin-bottom: 18px;
+    }
+    .modal-head h2 { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.02em; }
+    .modal-head .sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+    .close-btn {
+      background: rgba(255,255,255,0.06); border: none; color: var(--text);
+      width: 36px; height: 36px; border-radius: 50%; font-size: 1rem;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .step-dots { display: flex; gap: 6px; margin-bottom: 14px; }
+    .step-dot { width: 28px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); }
+    .step-dot.active { background: var(--purple); }
+    .step-dot.done { background: rgba(139,92,246,0.5); }
+    .step-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted-2); font-weight: 700; margin-bottom: 12px; }
+
+    /* Ficha de pedido */
+    .ficha-hero {
+      width: 100%; aspect-ratio: 1; border-radius: 14px; overflow: hidden;
+      background: linear-gradient(135deg, var(--panel-2), var(--panel-3));
+      display: grid; place-items: center; margin-bottom: 14px; position: relative;
+      cursor: pointer;
+    }
+    .ficha-hero img { width: 100%; height: 100%; object-fit: cover; }
+    .ficha-hero .placeholder { font-size: 4rem; font-weight: 900; color: var(--muted-2); }
+    .ficha-hero .cambiar-foto {
+      position: absolute; bottom: 10px; right: 10px;
+      background: rgba(0,0,0,0.7); color: white; border: none;
+      padding: 6px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700;
+      cursor: pointer;
+    }
+    .ficha-title { font-size: 1.3rem; font-weight: 800; margin-bottom: 2px; letter-spacing: -0.02em; }
+    .ficha-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 14px; }
+    .ficha-block { background: var(--panel-2); padding: 14px; border-radius: 12px; margin-bottom: 10px; }
+    .ficha-block-title {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--muted); font-weight: 700; margin-bottom: 8px;
+    }
+    .ficha-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; font-size: 0.92rem;
+    }
+    .ficha-row .key { color: var(--muted); }
+    .ficha-row .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* Botones de acción ficha */
+    .btn-primary {
+      width: 100%; background: linear-gradient(180deg, var(--purple), #7c3aed);
+      border: none; color: white; padding: 16px; border-radius: 12px;
+      font-weight: 800; font-size: 1rem; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(139,92,246,0.35); margin-top: 8px;
+    }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-green {
+      width: 100%; background: linear-gradient(180deg, var(--green), #15803d);
+      border: none; color: white; padding: 16px; border-radius: 12px;
+      font-weight: 800; font-size: 1rem; cursor: pointer; margin-top: 8px;
+    }
+    .btn-ghost {
+      width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+      color: var(--text); padding: 14px; border-radius: 12px;
+      font-weight: 600; font-size: 0.92rem; cursor: pointer; margin-top: 8px;
+    }
+
+    /* Modal asignar — paso costurera */
+    .costu-pick-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px;
+    }
+    .costu-pick {
+      background: var(--panel-2); border: 2px solid transparent; border-radius: 14px;
+      padding: 14px 8px; text-align: center; cursor: pointer;
+    }
+    .costu-pick.selected {
+      border-color: var(--purple); background: var(--purple-soft);
+    }
+    .costu-pick .emoji { font-size: 1.6rem; }
+    .costu-pick .nombre { font-weight: 700; margin-top: 4px; font-size: 0.92rem; }
+    .costu-pick .activos { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .costu-pick.alerta { border-color: rgba(239,68,68,0.5); }
+
+    /* Modal asignar — paso prendas */
+    .prenda-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .prenda-row:last-child { border-bottom: none; }
+    .prenda-tipo {
+      flex: 1; background: var(--panel-3); border: 1px solid var(--line);
+      color: var(--text); padding: 10px 12px; border-radius: 10px;
+      font-size: 0.92rem;
+    }
+    .qty-ctrl { display: flex; align-items: center; gap: 6px; }
+    .qty-btn {
+      width: 36px; height: 36px; background: var(--panel-3);
+      border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+      font-size: 1.1rem; font-weight: 700; cursor: pointer;
+    }
+    .qty-val {
+      min-width: 40px; text-align: center; font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .qty-x {
+      background: transparent; border: none; color: var(--muted-2);
+      font-size: 1.1rem; cursor: pointer; padding: 0 6px;
+    }
+    .add-prenda-btn {
+      width: 100%; background: rgba(255,255,255,0.04);
+      border: 1px dashed var(--line-strong); color: var(--muted);
+      padding: 12px; border-radius: 10px; font-size: 0.88rem;
+      cursor: pointer; margin: 8px 0;
+    }
+    .resumen-total {
+      background: var(--purple-soft); border: 1px solid rgba(139,92,246,0.3);
+      padding: 12px 14px; border-radius: 10px; margin: 12px 0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .resumen-total .key { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; }
+    .resumen-total .val { font-weight: 800; font-size: 1.15rem; color: white; }
+
+    /* Tarifa edit */
+    .tarifa-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .tarifa-row .tipo-name { flex: 1; font-weight: 600; text-transform: capitalize; }
+    .tarifa-input {
+      width: 110px; background: var(--panel-3); border: 1px solid var(--line);
+      color: var(--text); padding: 8px 10px; border-radius: 8px; text-align: right;
+      font-variant-numeric: tabular-nums; font-weight: 700;
+    }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--panel-3); border: 1px solid var(--line-strong);
+      color: white; padding: 12px 20px; border-radius: 12px;
+      font-weight: 600; font-size: 0.92rem; z-index: 200;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .toast.show { opacity: 1; }
+    .toast.ok { border-color: rgba(34,197,94,0.5); }
+    .toast.err { border-color: rgba(239,68,68,0.5); }
   </style>
 </head>
 <body>
 
+<!-- HEADER -->
 <div class="header">
   <div>
     <h1>🪡 Costura</h1>
     <div class="sub" id="header-sub">Cargando...</div>
   </div>
-  <button class="refresh-btn" onclick="cargarDashboard()">↻</button>
+  <div class="header-actions">
+    <button class="icon-btn" onclick="abrirTarifas()" title="Tarifas">💰</button>
+    <button class="icon-btn" onclick="cargarDashboard()" title="Refrescar">↻</button>
+  </div>
 </div>
 
 <div id="pago-banner-wrap"></div>
 
+<!-- COSTURERAS -->
 <div class="section">
   <div class="section-title">
     <span>Costureras</span>
@@ -304,6 +352,7 @@
   </div>
 </div>
 
+<!-- PARA ENVIAR -->
 <div class="section">
   <div class="section-title">
     <span>Para enviar a costura</span>
@@ -311,38 +360,61 @@
   </div>
   <div id="lista-paraenviar">
     <div class="skeleton" style="height:80px; margin-bottom:10px;"></div>
-    <div class="skeleton" style="height:80px;"></div>
   </div>
 </div>
 
+<!-- EN COSTURA -->
 <div class="section">
   <div class="section-title">
     <span>En costura</span>
     <span class="count" id="count-encostura">0</span>
   </div>
   <div id="lista-encostura">
-    <div class="skeleton" style="height:80px; margin-bottom:10px;"></div>
+    <div class="empty-state">Cargando...</div>
   </div>
 </div>
 
+<!-- MODAL -->
 <div class="modal-backdrop" id="modal" onclick="cerrarModal(event)">
   <div class="modal" id="modal-content" onclick="event.stopPropagation()"></div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 let dashboardData = null;
+let pedidoActual = null;
+let asignarState = { paso: 1, costureraSlug: null, prendas: [] };
+let devolverState = { devoluciones: [] };
+const TIPOS_PRENDA = ['camiseta','pantaloneta','chaqueta','buzo','pantalon','chaleco','sudadera','licra','medias','sombrero','gorra','otro'];
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
-function money(n) {
-  return '$' + Math.round(n || 0).toLocaleString('es-CO');
-}
+function money(n) { return '$' + Math.round(n || 0).toLocaleString('es-CO'); }
 function getInitials(equipo) {
   return (equipo || '?').split(/\s+/).slice(0,2).map(w => (w[0]||'')).join('').toUpperCase().slice(0,2) || '?';
 }
+function toast(msg, tipo = 'ok') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `toast show ${tipo}`;
+  setTimeout(() => t.className = 'toast', 2400);
+}
+function abrirModal(html) {
+  $('modal-content').innerHTML = html;
+  $('modal').classList.add('show');
+}
+function cerrarModal(e) {
+  if (!e || e.target.id === 'modal' || !e.target.closest('.modal-head')) {
+    if (e && e.target && e.target.closest('.modal') && !e.target.closest('.close-btn')) return;
+    $('modal').classList.remove('show');
+  }
+}
+function cerrarModalDirecto() { $('modal').classList.remove('show'); }
 
+// ──────────── DASHBOARD ────────────
 async function cargarDashboard() {
   try {
     const r = await fetch('/api/costura/dashboard');
@@ -359,7 +431,7 @@ function render() {
   const d = dashboardData;
   $('header-sub').textContent = `Semana del ${d.semanaInicio || ''}`;
 
-  // Banner de pagos
+  // Banner pagos
   const totalPago = (d.pagosSemana || []).reduce((s,x) => s + x.monto, 0);
   if (totalPago > 0) {
     $('pago-banner-wrap').innerHTML = `
@@ -381,22 +453,16 @@ function render() {
     <div class="costu-card ${c.alerta ? 'alerta' : ''}">
       <div class="costu-emoji">${esc(c.emoji)}</div>
       <div class="costu-nombre">${esc(c.nombre)}</div>
-      <div class="costu-stat">
-        <strong>${c.pedidosActivos}</strong> activos
-      </div>
-      ${c.valorSemanaEstimado > 0 ? `
-        <div class="costu-stat" style="margin-top:4px;">
-          <span class="verde">${money(c.valorSemanaEstimado)}</span>
-        </div>
-      ` : ''}
+      <div class="costu-stat"><strong>${c.pedidosActivos}</strong> activos</div>
+      ${c.valorSemanaEstimado > 0 ? `<div class="costu-stat" style="margin-top:4px;"><span class="verde">${money(c.valorSemanaEstimado)}</span></div>` : ''}
     </div>
-  `).join('') || '<div class="empty-state">Sin costureras registradas</div>';
+  `).join('') || '<div class="empty-state">Sin costureras</div>';
 
   // Para enviar
   $('count-paraenviar').textContent = d.paraEnviar.length;
   $('lista-paraenviar').innerHTML = d.paraEnviar.map(p => `
-    <div class="ped-card" onclick="abrirPedido(${p.id})">
-      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="">` : esc(getInitials(p.equipo))}</div>
+    <div class="ped-card" onclick="abrirFicha(${p.id})">
+      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${esc(getInitials(p.equipo))}';">` : esc(getInitials(p.equipo))}</div>
       <div class="ped-info">
         <div class="ped-equipo">${esc(p.equipo)}</div>
         <div class="ped-meta">
@@ -405,15 +471,15 @@ function render() {
           <span class="dot">·</span><span>${esc(p.estado)}</span>
         </div>
       </div>
-      <button class="ped-action" onclick="event.stopPropagation(); asignar(${p.id})">▶ Enviar</button>
+      <button class="ped-action" onclick="event.stopPropagation(); abrirAsignar(${p.id})">▶ Enviar</button>
     </div>
   `).join('') || '<div class="empty-state">Nada pendiente para enviar</div>';
 
   // En costura
   $('count-encostura').textContent = d.enCostura.length;
   $('lista-encostura').innerHTML = d.enCostura.map(p => `
-    <div class="ped-card" onclick="abrirPedido(${p.id})">
-      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="">` : esc(getInitials(p.equipo))}</div>
+    <div class="ped-card" onclick="abrirFicha(${p.id})">
+      <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${esc(getInitials(p.equipo))}';">` : esc(getInitials(p.equipo))}</div>
       <div class="ped-info">
         <div class="ped-equipo">${esc(p.equipo)}</div>
         <div class="ped-meta">
@@ -422,49 +488,449 @@ function render() {
           ${p.alerta ? '<span class="alerta-tag">⚠ atrasado</span>' : ''}
         </div>
       </div>
-      <button class="ped-action green" onclick="event.stopPropagation(); devolver(${p.id})">✓ Devuelto</button>
+      <button class="ped-action green" onclick="event.stopPropagation(); abrirDevolver(${p.id})">✓ Devuelto</button>
     </div>
   `).join('') || '<div class="empty-state">Nada en costura</div>';
 }
 
-function abrirPedido(id) {
-  $('modal-content').innerHTML = `
-    <h2 style="margin-bottom:12px;">Pedido #${id}</h2>
-    <p style="color:var(--muted);">Ficha completa próximamente.</p>
-    <button style="margin-top:18px; padding:12px 18px; background:var(--purple); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;" onclick="cerrarModal({target:$('modal')})">Cerrar</button>
-  `;
-  $('modal').classList.add('show');
+// ──────────── FICHA DE PEDIDO ────────────
+async function abrirFicha(id) {
+  abrirModal(`<div class="modal-head"><div><h2>Cargando...</h2></div><button class="close-btn" onclick="cerrarModalDirecto()">✕</button></div>`);
+  try {
+    const r = await fetch(`/api/costura/pedido/${id}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    pedidoActual = d.pedido;
+    renderFicha(d);
+  } catch (e) {
+    toast('Error: ' + e.message, 'err');
+    cerrarModalDirecto();
+  }
 }
 
-function asignar(id) {
-  alert('Próximamente: pantalla de asignar pedido #' + id);
+function renderFicha(d) {
+  const p = d.pedido;
+  const movs = d.movimientosCostura || [];
+  const enCostu = movs.find(m => !m.fecha_recepcion);
+  const composicionStr = (p.composicion || []).map(c => `${c.cantidad} ${c.tipo}`).join(' · ');
+  const valorCostura = (p.composicion || []).reduce((s, c) => s + (d.tarifas[c.tipo.toLowerCase()] || 0) * c.cantidad, 0);
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <div class="ficha-title">${esc(p.equipo)}</div>
+        <div class="ficha-sub">${esc(p.vendedora || '')} ${p.cliente ? '· ' + esc(p.cliente) : ''}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+
+    <div class="ficha-hero" onclick="cambiarFoto(${p.id})">
+      ${p.foto
+        ? `<img src="${esc(p.foto)}" alt="" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=placeholder>${esc(getInitials(p.equipo))}</div>';">`
+        : `<div class="placeholder">${esc(getInitials(p.equipo))}</div>`}
+      <button class="cambiar-foto" onclick="event.stopPropagation(); cambiarFoto(${p.id})">📷 Foto</button>
+    </div>
+
+    <div class="ficha-block">
+      <div class="ficha-block-title">📦 Composición</div>
+      ${(p.composicion || []).length
+        ? p.composicion.map(c => `<div class="ficha-row"><span class="key">${esc(c.tipo)}</span><span class="val">${c.cantidad}</span></div>`).join('')
+        : `<div class="ficha-row"><span class="key" style="color:var(--muted-2);">Sin composición. Se asume ${p.numUniformes || 0} ${p.tipoPrenda || 'prenda(s)'}</span></div>`}
+    </div>
+
+    <div class="ficha-block">
+      <div class="ficha-block-title">💰 Valores</div>
+      <div class="ficha-row"><span class="key">Cliente paga</span><span class="val">${money(p.total)}</span></div>
+      <div class="ficha-row"><span class="key">Abonado</span><span class="val" style="color:var(--green-bright);">${money(p.abonado)}</span></div>
+      <div class="ficha-row"><span class="key">Saldo</span><span class="val" style="color:var(--orange);">${money(p.saldoPendiente)}</span></div>
+      ${valorCostura > 0 ? `<div class="ficha-row" style="border-top:1px solid var(--line); margin-top:6px; padding-top:10px;"><span class="key">Costura sugerida</span><span class="val" style="color:var(--purple);">${money(valorCostura)}</span></div>` : ''}
+    </div>
+
+    ${enCostu ? `
+      <div class="ficha-block">
+        <div class="ficha-block-title">🪡 En costura</div>
+        <div class="ficha-row"><span class="key">Costurera</span><span class="val">${esc(enCostu.costurera_nombre)}</span></div>
+        <div class="ficha-row"><span class="key">Desde</span><span class="val">${esc((enCostu.fecha_envio || '').slice(0,10))}</span></div>
+        <div class="ficha-row"><span class="key">Prendas</span><span class="val">${enCostu.cantidad_enviada}</span></div>
+      </div>
+    ` : ''}
+
+    ${p.notas ? `
+      <div class="ficha-block">
+        <div class="ficha-block-title">📝 Notas</div>
+        <div style="font-size:0.88rem; color:var(--text); line-height:1.4;">${esc(p.notas)}</div>
+      </div>
+    ` : ''}
+
+    ${p.estado === 'en-costura' || enCostu
+      ? `<button class="btn-green" onclick="cerrarModalDirecto(); abrirDevolver(${p.id});">✓ MARCAR DEVUELTO</button>`
+      : `<button class="btn-primary" onclick="cerrarModalDirecto(); abrirAsignar(${p.id});">▶ ENVIAR A COSTURA</button>`}
+  `);
 }
 
-function devolver(id) {
-  alert('Próximamente: marcar devuelto pedido #' + id);
+async function cambiarFoto(id) {
+  const url = prompt('Pegá URL de la foto del pedido (Drive, Imgur, etc):');
+  if (!url) return;
+  try {
+    const r = await fetch(`/api/costura/pedido/${id}/foto`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url, fuente: 'manual'})
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    toast('Foto guardada');
+    abrirFicha(id);
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
+// ──────────── ASIGNAR (3 pasos) ────────────
+async function abrirAsignar(pedidoId) {
+  try {
+    const r = await fetch(`/api/costura/pedido/${pedidoId}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    pedidoActual = d.pedido;
+    asignarState = {
+      paso: 1,
+      pedidoId,
+      costureraSlug: null,
+      prendas: (d.pedido.composicion || []).map(c => ({tipo: c.tipo.toLowerCase(), cantidad: c.cantidad})),
+      tarifas: d.tarifas,
+      notas: '',
+    };
+    if (!asignarState.prendas.length) {
+      asignarState.prendas = [{tipo: 'camiseta', cantidad: d.pedido.numUniformes || 1}];
+    }
+    renderAsignarPaso1();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+function renderAsignarPaso1() {
+  const cs = dashboardData?.costureras || [];
+  asignarState.paso = 1;
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Asignar a costurera</h2>
+        <div class="sub">${esc(pedidoActual.equipo)}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div class="step-dots"><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div></div>
+    <div class="step-label">Paso 1 · ¿A QUIÉN?</div>
+    <div class="costu-pick-grid">
+      ${cs.map(c => `
+        <div class="costu-pick ${asignarState.costureraSlug === c.slug ? 'selected' : ''} ${c.alerta ? 'alerta' : ''}" onclick="pickCostu('${c.slug}')">
+          <div class="emoji">${esc(c.emoji)}</div>
+          <div class="nombre">${esc(c.nombre)}</div>
+          <div class="activos">${c.pedidosActivos} activos</div>
+        </div>
+      `).join('')}
+    </div>
+    <button class="btn-primary" id="btn-next" ${asignarState.costureraSlug ? '' : 'disabled style="opacity:0.5;"'} onclick="renderAsignarPaso2()">SIGUIENTE ▶</button>
+  `);
+}
+function pickCostu(slug) {
+  asignarState.costureraSlug = slug;
+  renderAsignarPaso1();
+}
+
+function renderAsignarPaso2() {
+  if (!asignarState.costureraSlug) { toast('Elegí costurera', 'err'); return; }
+  asignarState.paso = 2;
+  renderPrendasView();
+}
+function renderPrendasView() {
+  const tarifas = asignarState.tarifas || {};
+  let total = 0, valor = 0;
+  const filas = asignarState.prendas.map((p, i) => {
+    const tarifa = tarifas[(p.tipo||'').toLowerCase()] || 0;
+    const subt = tarifa * p.cantidad;
+    total += p.cantidad; valor += subt;
+    return `
+      <div class="prenda-row">
+        <select class="prenda-tipo" onchange="setPrendaTipo(${i}, this.value)">
+          ${TIPOS_PRENDA.map(t => `<option value="${t}" ${p.tipo===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="qtyAjuste(${i}, -1)">−</button>
+          <div class="qty-val">${p.cantidad}</div>
+          <button class="qty-btn" onclick="qtyAjuste(${i}, 1)">+</button>
+        </div>
+        <button class="qty-x" onclick="quitarPrenda(${i})">✕</button>
+      </div>
+      ${tarifa > 0 ? `<div style="font-size:0.74rem; color:var(--muted); padding-left:4px; margin-top:-4px;">${p.cantidad} × ${money(tarifa)} = ${money(subt)}</div>` : `<div style="font-size:0.74rem; color:var(--orange); padding-left:4px;">⚠ sin tarifa para "${p.tipo}"</div>`}
+    `;
+  }).join('');
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Prendas del lote</h2>
+        <div class="sub">${esc(pedidoActual.equipo)} → ${esc(getCostuName(asignarState.costureraSlug))}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div class="step-dots"><div class="step-dot done"></div><div class="step-dot active"></div><div class="step-dot"></div></div>
+    <div class="step-label">Paso 2 · ¿QUÉ PRENDAS?</div>
+    ${filas}
+    <button class="add-prenda-btn" onclick="agregarPrenda()">+ Agregar otra prenda</button>
+    <div class="resumen-total">
+      <div>
+        <div class="key">Total prendas</div>
+        <div class="val">${total}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="key">A pagar costurera</div>
+        <div class="val">${money(valor)}</div>
+      </div>
+    </div>
+    <textarea id="notas-asignar" placeholder="Notas para la costurera (opcional)" style="width:100%; background:var(--panel-3); border:1px solid var(--line); color:var(--text); padding:10px; border-radius:10px; resize:vertical; min-height:60px; font-family:inherit; margin-bottom:6px;">${esc(asignarState.notas || '')}</textarea>
+    <button class="btn-ghost" onclick="renderAsignarPaso1()">◀ Atrás</button>
+    <button class="btn-primary" onclick="irPasoConfirmar()">SIGUIENTE ▶</button>
+  `);
+}
+function setPrendaTipo(i, v) { asignarState.prendas[i].tipo = v; renderPrendasView(); }
+function qtyAjuste(i, delta) {
+  asignarState.prendas[i].cantidad = Math.max(1, (asignarState.prendas[i].cantidad || 0) + delta);
+  renderPrendasView();
+}
+function quitarPrenda(i) {
+  asignarState.prendas.splice(i, 1);
+  if (!asignarState.prendas.length) asignarState.prendas = [{tipo: 'camiseta', cantidad: 1}];
+  renderPrendasView();
+}
+function agregarPrenda() { asignarState.prendas.push({tipo: 'pantaloneta', cantidad: 1}); renderPrendasView(); }
+function getCostuName(slug) { return (dashboardData?.costureras || []).find(c => c.slug === slug)?.nombre || slug; }
+
+function irPasoConfirmar() {
+  asignarState.notas = $('notas-asignar')?.value || '';
+  asignarState.paso = 3;
+  const tarifas = asignarState.tarifas || {};
+  let total = 0, valor = 0;
+  asignarState.prendas.forEach(p => {
+    total += p.cantidad;
+    valor += (tarifas[(p.tipo||'').toLowerCase()] || 0) * p.cantidad;
+  });
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Confirmar envío</h2>
+        <div class="sub">Revisá los datos antes de enviar</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div class="step-dots"><div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot active"></div></div>
+    <div class="step-label">Paso 3 · CONFIRMAR</div>
+    <div class="ficha-block">
+      <div class="ficha-row"><span class="key">Equipo</span><span class="val">${esc(pedidoActual.equipo)}</span></div>
+      <div class="ficha-row"><span class="key">Costurera</span><span class="val">→ ${esc(getCostuName(asignarState.costureraSlug))}</span></div>
+      <div class="ficha-row"><span class="key">Total prendas</span><span class="val">${total}</span></div>
+      <div class="ficha-row"><span class="key">A pagar</span><span class="val" style="color:var(--purple);">${money(valor)}</span></div>
+      ${asignarState.notas ? `<div class="ficha-row" style="display:block;"><div class="key" style="margin-bottom:4px;">Notas</div><div style="font-size:0.88rem;">${esc(asignarState.notas)}</div></div>` : ''}
+    </div>
+    <button class="btn-ghost" onclick="renderPrendasView()">◀ Atrás</button>
+    <button class="btn-primary" onclick="confirmarAsignar()">✓ ENVIAR A COSTURA</button>
+  `);
+}
+
+async function confirmarAsignar() {
+  try {
+    const r = await fetch('/api/costura/asignar', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        pedido_id: asignarState.pedidoId,
+        costurera_slug: asignarState.costureraSlug,
+        prendas: asignarState.prendas,
+        notas: asignarState.notas,
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    toast(`Asignado a ${d.costurera} ✓`);
+    cerrarModalDirecto();
+    cargarDashboard();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+// ──────────── DEVOLVER ────────────
+async function abrirDevolver(pedidoId) {
+  try {
+    const r = await fetch(`/api/costura/pedido/${pedidoId}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    pedidoActual = d.pedido;
+    const movs = (d.movimientosCostura || []).filter(m => !m.fecha_recepcion);
+    devolverState = {
+      pedidoId,
+      tarifas: d.tarifas,
+      devoluciones: movs.map(m => ({movimiento_id: m.id, prenda: m.prenda, cantidad_recibida: m.cantidad_enviada, cantidad_enviada: m.cantidad_enviada, costurera: m.costurera_nombre})),
+      notas: '',
+    };
+    renderDevolver();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+function renderDevolver() {
+  const tarifas = devolverState.tarifas || {};
+  let totalEnv = 0, totalRec = 0, totalPag = 0;
+  const filas = devolverState.devoluciones.map((d, i) => {
+    totalEnv += d.cantidad_enviada;
+    totalRec += d.cantidad_recibida;
+    totalPag += (tarifas[(d.prenda||'').toLowerCase()] || 0) * d.cantidad_recibida;
+    return `
+      <div class="prenda-row">
+        <div style="flex:1;">
+          <div style="font-weight:600; text-transform:capitalize;">${esc(d.prenda || 'prendas')}</div>
+          <div style="font-size:0.74rem; color:var(--muted);">Enviadas: ${d.cantidad_enviada}</div>
+        </div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="setRecibido(${i}, ${d.cantidad_recibida - 1})">−</button>
+          <div class="qty-val">${d.cantidad_recibida}</div>
+          <button class="qty-btn" onclick="setRecibido(${i}, ${d.cantidad_recibida + 1})">+</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const todoOk = totalRec === totalEnv;
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Marcar devolución</h2>
+        <div class="sub">${esc(pedidoActual.equipo)} · ${esc(devolverState.devoluciones[0]?.costurera || '')}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div style="background:var(--panel-2); padding:12px; border-radius:10px; margin-bottom:14px; text-align:center;">
+      <div style="font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px;">Hoy</div>
+      <div style="font-size:0.88rem; font-weight:700;">${new Date().toLocaleDateString('es-CO', {day:'numeric', month:'short', year:'numeric'})}</div>
+    </div>
+    ${filas}
+    <div class="resumen-total" style="background:${todoOk ? 'var(--green-soft)' : 'var(--red-soft)'}; border-color:${todoOk ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'};">
+      <div>
+        <div class="key">Recibidas / Enviadas</div>
+        <div class="val">${totalRec} / ${totalEnv} ${todoOk ? '✓' : '⚠'}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="key">A pagar</div>
+        <div class="val">${money(totalPag)}</div>
+      </div>
+    </div>
+    <textarea id="notas-devolver" placeholder="Notas (opcional)" style="width:100%; background:var(--panel-3); border:1px solid var(--line); color:var(--text); padding:10px; border-radius:10px; resize:vertical; min-height:50px; font-family:inherit; margin-bottom:6px;"></textarea>
+    <button class="btn-green" onclick="confirmarDevolver()">✓ MARCAR DEVUELTO</button>
+  `);
+}
+function setRecibido(i, val) {
+  const max = devolverState.devoluciones[i].cantidad_enviada;
+  devolverState.devoluciones[i].cantidad_recibida = Math.max(0, Math.min(max, val));
+  renderDevolver();
+}
+
+async function confirmarDevolver() {
+  try {
+    devolverState.notas = $('notas-devolver')?.value || '';
+    const r = await fetch('/api/costura/devolver', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        pedido_id: devolverState.pedidoId,
+        devoluciones: devolverState.devoluciones.map(d => ({movimiento_id: d.movimiento_id, cantidad_recibida: d.cantidad_recibida})),
+        notas: devolverState.notas,
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    toast(`Devuelto: ${d.totalRecibido}/${d.totalEnviado} ${d.totalFaltante ? `(faltan ${d.totalFaltante})` : '✓'}`);
+    cerrarModalDirecto();
+    cargarDashboard();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+// ──────────── PAGOS DEL DOMINGO ────────────
 function verPagos() {
   const d = dashboardData;
-  $('modal-content').innerHTML = `
-    <h2 style="margin-bottom:12px;">Pagos del domingo</h2>
-    <div style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">Semana ${esc(d.semanaInicio)}</div>
-    ${d.pagosSemana.map(p => `
-      <div style="background:var(--panel-2); padding:12px; border-radius:10px; margin-bottom:8px;">
-        <div style="font-weight:700;">${esc(p.nombre)}</div>
-        <div style="color:var(--muted); font-size:0.85rem;">${p.count} pedidos</div>
-        <div style="color:#4ade80; font-weight:800; font-size:1.15rem; margin-top:4px;">${money(p.monto)}</div>
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>💰 Pagos del domingo</h2>
+        <div class="sub">Semana ${esc(d.semanaInicio)}</div>
       </div>
-    `).join('')}
-    <button style="margin-top:14px; padding:12px 18px; background:var(--purple); color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer; width:100%;" onclick="cerrarModal({target:$('modal')})">Cerrar</button>
-  `;
-  $('modal').classList.add('show');
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    ${(d.pagosSemana || []).map(p => `
+      <div style="background:var(--panel-2); padding:14px; border-radius:12px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
+          <div>
+            <div style="font-weight:700; font-size:1.05rem;">${esc(p.nombre)}</div>
+            <div style="color:var(--muted); font-size:0.78rem;">${p.count} ${p.count === 1 ? 'pedido devuelto' : 'pedidos devueltos'}</div>
+          </div>
+          <div style="color:var(--green-bright); font-weight:800; font-size:1.2rem; font-variant-numeric:tabular-nums;">${money(p.monto)}</div>
+        </div>
+        <button class="btn-green" style="margin-top:4px; padding:10px; font-size:0.88rem;" onclick="pagarSemana('${p.slug}', ${p.monto}, '${esc(p.nombre)}')">✓ Marcar pagado a ${esc(p.nombre)}</button>
+      </div>
+    `).join('') || '<div class="empty-state">Sin pagos pendientes esta semana</div>'}
+  `);
 }
 
-function cerrarModal(e) {
-  if (e.target.id === 'modal' || !e.target.closest('.modal')) {
-    $('modal').classList.remove('show');
-  }
+async function pagarSemana(slug, monto, nombre) {
+  if (!confirm(`Marcar ${money(monto)} como pagado a ${nombre}?`)) return;
+  try {
+    const r = await fetch('/api/costura/pagar', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({costurera_slug: slug, monto, metodo: 'Nequi'})
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    toast(`Pagado ${money(monto)} a ${nombre} ✓`);
+    cerrarModalDirecto();
+    cargarDashboard();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+// ──────────── TARIFAS ────────────
+async function abrirTarifas() {
+  try {
+    const r = await fetch('/api/costura/tarifas');
+    const d = await r.json();
+    const tarifasMap = Object.fromEntries((d.tarifas || []).map(t => [t.tipo, t.valor]));
+    const filas = TIPOS_PRENDA.map(tipo => `
+      <div class="tarifa-row">
+        <div class="tipo-name">${esc(tipo)}</div>
+        <input class="tarifa-input" type="number" min="0" step="100" value="${tarifasMap[tipo] || 0}" id="tarifa-${tipo}" placeholder="$">
+      </div>
+    `).join('');
+
+    abrirModal(`
+      <div class="modal-head">
+        <div>
+          <h2>💰 Tarifas de costura</h2>
+          <div class="sub">Cuánto pagás por prenda cosida</div>
+        </div>
+        <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+      </div>
+      ${filas}
+      <button class="btn-primary" style="margin-top:14px;" onclick="guardarTarifas()">💾 GUARDAR TARIFAS</button>
+    `);
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function guardarTarifas() {
+  const tarifas = TIPOS_PRENDA.map(tipo => ({
+    tipo,
+    valor: parseInt($(`tarifa-${tipo}`)?.value || 0, 10),
+  })).filter(t => t.valor > 0);
+
+  try {
+    const r = await fetch('/api/costura/tarifas', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({tarifas})
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    toast('Tarifas guardadas ✓');
+    cerrarModalDirecto();
+    cargarDashboard();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
 cargarDashboard();
