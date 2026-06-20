@@ -94,6 +94,89 @@
       font-weight: 700; font-size: 0.85rem; cursor: pointer;
     }
 
+    /* BOTON GRANDE: NUEVO ENVIO POR FOTO */
+    .cta-nuevo-envio {
+      width: 100%;
+      background: linear-gradient(135deg, var(--purple), #ec4899);
+      border: none; border-radius: 16px;
+      padding: 18px 18px; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 14px;
+      color: #fff; cursor: pointer; text-align: left;
+      box-shadow: 0 6px 20px rgba(139,92,246,0.35);
+      transition: transform 0.1s;
+    }
+    .cta-nuevo-envio:active { transform: scale(0.98); }
+    .cta-nuevo-envio .icon { font-size: 1.8rem; }
+    .cta-nuevo-envio .texto { display: flex; flex-direction: column; flex: 1; }
+    .cta-nuevo-envio .titulo { font-weight: 800; font-size: 1rem; letter-spacing: 0.02em; }
+    .cta-nuevo-envio .subtitulo { font-size: 0.78rem; opacity: 0.85; margin-top: 2px; }
+
+    /* Nuevo envio: upload de fotos */
+    .upload-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
+    }
+    .upload-slot {
+      aspect-ratio: 3/4;
+      background: var(--panel-2); border: 2px dashed var(--line-strong);
+      border-radius: 14px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px;
+      cursor: pointer; position: relative; overflow: hidden;
+    }
+    .upload-slot.lleno { border-style: solid; border-color: var(--purple); }
+    .upload-slot img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    .upload-slot .label-vista {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--muted); font-weight: 700;
+    }
+    .upload-slot .placeholder { font-size: 2rem; opacity: 0.4; }
+    .upload-slot .overlay-vista {
+      position: absolute; top: 8px; left: 8px;
+      background: rgba(0,0,0,0.6); color: #fff;
+      font-size: 0.65rem; padding: 3px 8px; border-radius: 6px;
+      text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+    }
+    .upload-slot .remove {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(0,0,0,0.7); color: #fff; border: none;
+      width: 26px; height: 26px; border-radius: 50%;
+      font-size: 0.9rem; cursor: pointer;
+    }
+    .btn-primary {
+      width: 100%; background: var(--purple); color: #fff; border: none;
+      padding: 14px; border-radius: 12px; font-weight: 800; font-size: 1rem;
+      cursor: pointer; margin-top: 8px;
+    }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary {
+      width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-strong);
+      padding: 12px; border-radius: 12px; font-weight: 700; font-size: 0.92rem;
+      cursor: pointer; margin-top: 8px;
+    }
+    .match-card {
+      background: linear-gradient(135deg, rgba(139,92,246,0.18), rgba(236,72,153,0.10));
+      border: 1px solid var(--purple); border-radius: 14px;
+      padding: 16px; margin-bottom: 12px; cursor: pointer;
+    }
+    .match-card.alta { border-color: var(--green-bright); background: linear-gradient(135deg, var(--green-soft), rgba(34,197,94,0.05)); }
+    .match-card .pill {
+      display: inline-block; background: rgba(0,0,0,0.4); color: #fff;
+      padding: 2px 8px; border-radius: 999px; font-size: 0.68rem;
+      text-transform: uppercase; letter-spacing: 1px; font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .match-card.alta .pill { background: var(--green-bright); color: #052e16; }
+    .match-card h3 { font-size: 1.05rem; font-weight: 800; margin-bottom: 4px; }
+    .match-card .meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+    .match-card .razon { font-size: 0.78rem; color: var(--text); opacity: 0.85; }
+    .tag-sin-erp {
+      display: inline-block; background: var(--red-soft); color: #fca5a5;
+      padding: 2px 8px; border-radius: 6px; font-size: 0.65rem;
+      font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+      border: 1px solid rgba(239,68,68,0.4); margin-left: 6px;
+    }
+
     /* Secciones */
     .section { margin-bottom: 24px; }
     .section-title {
@@ -359,6 +442,15 @@
 
 <div id="pago-banner-wrap"></div>
 
+<!-- BOTON GRANDE: NUEVO ENVIO POR FOTO -->
+<button class="cta-nuevo-envio" onclick="abrirNuevoEnvio()">
+  <span class="icon">📷</span>
+  <span class="texto">
+    <span class="titulo">+ NUEVO ENVÍO A COSTURA</span>
+    <span class="subtitulo">Subí frente + espalda y la app busca el pedido sola</span>
+  </span>
+</button>
+
 <!-- COSTURERAS -->
 <div class="section">
   <div class="section-title">
@@ -539,13 +631,14 @@ function render() {
     </div>
   `).join('') || '<div class="empty-state">Nada pendiente para enviar</div>';
 
-  // En costura
+  // En costura — ordenar: fantasmas (sinErp) primero
+  const enCosturaOrdenado = [...d.enCostura].sort((a, b) => (b.sinErp ? 1 : 0) - (a.sinErp ? 1 : 0));
   $('count-encostura').textContent = d.enCostura.length;
-  $('lista-encostura').innerHTML = d.enCostura.map(p => `
+  $('lista-encostura').innerHTML = enCosturaOrdenado.map(p => `
     <div class="ped-card" onclick="abrirFicha(${p.id})">
       <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${esc(getInitials(p.equipo))}';">` : esc(getInitials(p.equipo))}</div>
       <div class="ped-info">
-        <div class="ped-equipo">${esc(p.equipo)}</div>
+        <div class="ped-equipo">${esc(p.equipo)}${p.sinErp ? ' <span class="tag-sin-erp">⚠ SIN ERP</span>' : ''}</div>
         <div class="ped-meta">
           <span>${esc(p.costureraNombre || 'sin asignar')}</span>
           ${p.diasEnCostura != null ? `<span class="dot">·</span><span>${p.diasEnCostura}d</span>` : ''}
@@ -602,6 +695,312 @@ function abrirCosturera(slug) {
     <div class="section-title">EN COSTURA <span class="count">${sus.length}</span></div>
     ${pedidosHTML}
   `);
+}
+
+// ──────────── NUEVO ENVIO A COSTURA (POR FOTO) ────────────
+// Estado del flujo:
+let nuevoEnvioState = {
+  frente: null,    // { base64, mime, dataUrl }
+  espalda: null,
+  matchResult: null,
+  pedidoElegido: null, // { id, equipo, vendedora } o null si fantasma
+  nombreFantasma: '',
+  costurera_slug: null,
+  prendas: [],
+};
+
+function abrirNuevoEnvio() {
+  nuevoEnvioState = { frente: null, espalda: null, matchResult: null, pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
+  renderUploadFotos();
+}
+
+function renderUploadFotos() {
+  const tieneAmbas = nuevoEnvioState.frente && nuevoEnvioState.espalda;
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>📷 Nuevo envío a costura</h2>
+        <div class="sub">Subí frente + espalda. La app busca el pedido sola.</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div class="upload-grid">
+      ${renderUploadSlot('frente')}
+      ${renderUploadSlot('espalda')}
+    </div>
+    <button class="btn-primary" ${tieneAmbas ? '' : 'disabled'} onclick="buscarMatchDePedido()">
+      ${tieneAmbas ? '🔍 Buscar pedido (analizar fotos)' : 'Subí ambas fotos primero'}
+    </button>
+    <button class="btn-secondary" onclick="cerrarModalDirecto()">Cancelar</button>
+  `);
+}
+
+function renderUploadSlot(vista) {
+  const f = nuevoEnvioState[vista];
+  return `
+    <label class="upload-slot ${f ? 'lleno' : ''}" for="file-${vista}">
+      ${f ? `
+        <img src="${f.dataUrl}" alt="${vista}">
+        <span class="overlay-vista">${vista}</span>
+        <button class="remove" onclick="event.preventDefault(); quitarFoto('${vista}')">×</button>
+      ` : `
+        <span class="placeholder">📷</span>
+        <span class="label-vista">${vista}</span>
+        <span style="font-size:0.7rem; color:var(--muted-2);">tocar para tomar foto</span>
+      `}
+      <input type="file" id="file-${vista}" accept="image/*" capture="environment"
+             style="display:none;" onchange="archivarFoto('${vista}', this.files[0])">
+    </label>
+  `;
+}
+
+function quitarFoto(vista) {
+  nuevoEnvioState[vista] = null;
+  renderUploadFotos();
+}
+
+async function archivarFoto(vista, file) {
+  if (!file) return;
+  try {
+    // Resize a max 1280x1280 para no mandar 5MB cada foto
+    const dataUrl = await redimensionarImagen(file, 1280, 0.85);
+    const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) throw new Error('formato invalido');
+    nuevoEnvioState[vista] = { mime: m[1], base64: m[2], dataUrl };
+    renderUploadFotos();
+  } catch (e) {
+    toast('Error leyendo foto: ' + e.message, 'err');
+  }
+}
+
+function redimensionarImagen(file, maxLado, calidad) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxLado || h > maxLado) {
+          if (w > h) { h = Math.round(h * (maxLado / w)); w = maxLado; }
+          else { w = Math.round(w * (maxLado / h)); h = maxLado; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', calidad));
+      };
+      img.onerror = reject;
+      img.src = fr.result;
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+async function buscarMatchDePedido() {
+  const { frente, espalda } = nuevoEnvioState;
+  if (!frente || !espalda) return;
+  abrirModal(`
+    <div class="modal-head"><div><h2>Buscando pedido...</h2><div class="sub">Analizando frente + espalda con Gemini Vision</div></div></div>
+    <div style="text-align:center; padding:40px 20px;">
+      <div style="font-size:3rem; margin-bottom:14px;">🔍</div>
+      <div style="color:var(--muted); font-size:0.9rem;">Esto tarda 5-10 segundos...</div>
+    </div>
+  `);
+  try {
+    const r = await fetch('/api/costura/match-foto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        frenteBase64: frente.base64, frenteMime: frente.mime,
+        espaldaBase64: espalda.base64, espaldaMime: espalda.mime,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'error al matchear');
+    nuevoEnvioState.matchResult = d;
+    renderResultadoMatch();
+  } catch (e) {
+    toast('Error: ' + e.message, 'err');
+    renderUploadFotos(); // volver al upload
+  }
+}
+
+function renderResultadoMatch() {
+  const d = nuevoEnvioState.matchResult;
+  const matchesOrdenados = (d.matches || []).filter(m => m.coincide).sort((a, b) => {
+    const orden = { alta: 3, media: 2, baja: 1 };
+    return (orden[b.confianza] || 0) - (orden[a.confianza] || 0);
+  });
+  const hayMatch = matchesOrdenados.length > 0;
+  const mejor = matchesOrdenados[0];
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>${hayMatch ? '🎯 Pedido encontrado' : '⚠ Sin match en ERP'}</h2>
+        <div class="sub">
+          ${hayMatch ? `${matchesOrdenados.length} candidato${matchesOrdenados.length === 1 ? '' : 's'} · evaluamos ${d.totalCandidatosEvaluables || 0} de ${d.totalPedidosEnEstados || 0} pedidos activos`
+                     : `Ningún pedido del ERP coincide con estas fotos. Podés registrarlo igualmente.`}
+        </div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    ${hayMatch ? matchesOrdenados.map((m, i) => `
+      <div class="match-card ${m.confianza}" onclick="elegirPedidoMatch(${m.pedido_id})">
+        <span class="pill">Confianza ${esc(m.confianza)}${i === 0 ? ' · MEJOR' : ''}</span>
+        <h3>${esc(m.equipo)}</h3>
+        <div class="meta">Vendedora: ${esc(m.vendedora || '—')} · ID #${m.pedido_id}</div>
+        <div class="razon">${esc(m.porQue || '')}</div>
+      </div>
+    `).join('') : ''}
+    <button class="btn-secondary" onclick="elegirFantasma()">
+      ${hayMatch ? '➕ Ninguno coincide — registrar como fantasma (sin ERP)' : '➕ Registrar igualmente (sin ERP)'}
+    </button>
+    <button class="btn-secondary" onclick="renderUploadFotos()">← Volver a subir fotos</button>
+  `);
+}
+
+function elegirPedidoMatch(pedido_id) {
+  const m = (nuevoEnvioState.matchResult.matches || []).find(x => x.pedido_id === pedido_id);
+  if (!m) return;
+  nuevoEnvioState.pedidoElegido = m;
+  abrirElegirCostureraYPrendas();
+}
+
+function elegirFantasma() {
+  nuevoEnvioState.pedidoElegido = null;
+  abrirNombrarFantasma();
+}
+
+function abrirNombrarFantasma() {
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>⚠ Pedido sin ERP</h2>
+        <div class="sub">Poné un nombre para identificarlo después</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:8px;">Nombre del equipo / cliente</label>
+      <input type="text" id="input-nombre-fantasma" placeholder="ej: Tigres del Norte, Pepe Sanchez..."
+             style="width:100%; padding:14px; background:var(--panel-2); border:1px solid var(--line-strong); border-radius:10px; color:var(--text); font-size:1rem;"
+             autocomplete="off" autofocus
+             value="${esc(nuevoEnvioState.nombreFantasma || '')}">
+    </div>
+    <button class="btn-primary" onclick="confirmarNombreFantasma()">Continuar →</button>
+    <button class="btn-secondary" onclick="renderResultadoMatch()">← Volver</button>
+  `);
+}
+
+function confirmarNombreFantasma() {
+  const nombre = ($('input-nombre-fantasma')?.value || '').trim();
+  if (!nombre) return toast('Poné un nombre', 'err');
+  nuevoEnvioState.nombreFantasma = nombre;
+  abrirElegirCostureraYPrendas();
+}
+
+function abrirElegirCostureraYPrendas() {
+  const costureras = (dashboardData?.costureras || []);
+  const tipos = ['camiseta','pantaloneta','chaqueta','buzo','pantalon','peto','sudadera','licra'];
+  if (!nuevoEnvioState.prendas.length) nuevoEnvioState.prendas = [{tipo:'camiseta', cantidad:1}];
+  const nombreMostrar = nuevoEnvioState.pedidoElegido?.equipo || nuevoEnvioState.nombreFantasma || 'Pedido fantasma';
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Asignar a costurera</h2>
+        <div class="sub">${esc(nombreMostrar)} ${nuevoEnvioState.pedidoElegido ? '' : '<span class="tag-sin-erp">⚠ SIN ERP</span>'}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+
+    <div class="step-label">1. Elegí costurera</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap:8px; margin-bottom:16px;">
+      ${costureras.map(c => `
+        <button onclick="setCostuNuevoEnvio('${c.slug}')"
+                style="background:${nuevoEnvioState.costurera_slug === c.slug ? 'var(--purple-soft)' : 'var(--panel-2)'};
+                       border:2px solid ${nuevoEnvioState.costurera_slug === c.slug ? 'var(--purple)' : 'var(--line)'};
+                       border-radius:10px; padding:10px 6px; cursor:pointer; color:var(--text);">
+          <div style="font-size:1.2rem;">${esc(c.emoji)}</div>
+          <div style="font-weight:700; font-size:0.82rem; margin-top:2px;">${esc(c.nombre)}</div>
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="step-label">2. Prendas</div>
+    <div id="prendas-nuevoenvio">
+      ${nuevoEnvioState.prendas.map((p, i) => `
+        <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+          <select onchange="nuevoEnvioState.prendas[${i}].tipo=this.value"
+                  style="flex:1; padding:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; color:var(--text);">
+            ${tipos.map(t => `<option value="${t}" ${p.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <input type="number" min="1" value="${p.cantidad}"
+                 onchange="nuevoEnvioState.prendas[${i}].cantidad=parseInt(this.value)||1"
+                 style="width:80px; padding:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; color:var(--text); text-align:center;">
+          <button onclick="quitarPrendaNuevoEnvio(${i})"
+                  style="background:var(--red-soft); color:#fca5a5; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer;">✕</button>
+        </div>
+      `).join('')}
+    </div>
+    <button onclick="agregarPrendaNuevoEnvio()"
+            style="background:var(--panel-2); border:1px dashed var(--line-strong); color:var(--muted); padding:10px; border-radius:8px; width:100%; cursor:pointer; margin-bottom:16px;">
+      + Agregar prenda
+    </button>
+
+    <button class="btn-primary" ${nuevoEnvioState.costurera_slug ? '' : 'disabled'} onclick="confirmarNuevoEnvio()">
+      ✓ Confirmar envío a costura
+    </button>
+    <button class="btn-secondary" onclick="${nuevoEnvioState.pedidoElegido ? 'renderResultadoMatch()' : 'abrirNombrarFantasma()'}">← Volver</button>
+  `);
+}
+
+function setCostuNuevoEnvio(slug) {
+  nuevoEnvioState.costurera_slug = slug;
+  abrirElegirCostureraYPrendas();
+}
+
+function agregarPrendaNuevoEnvio() {
+  nuevoEnvioState.prendas.push({tipo: 'pantaloneta', cantidad: 1});
+  abrirElegirCostureraYPrendas();
+}
+
+function quitarPrendaNuevoEnvio(i) {
+  nuevoEnvioState.prendas.splice(i, 1);
+  if (!nuevoEnvioState.prendas.length) nuevoEnvioState.prendas = [{tipo:'camiseta', cantidad:1}];
+  abrirElegirCostureraYPrendas();
+}
+
+async function confirmarNuevoEnvio() {
+  const s = nuevoEnvioState;
+  if (!s.costurera_slug) return toast('Elegí costurera', 'err');
+  if (!s.prendas.length || s.prendas.every(p => !p.cantidad || p.cantidad < 1)) {
+    return toast('Cargá al menos una prenda', 'err');
+  }
+  try {
+    const r = await fetch('/api/costura/registrar-envio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pedido_id: s.pedidoElegido?.pedido_id || null,
+        equipo: s.pedidoElegido?.equipo || s.nombreFantasma || 'Sin nombre',
+        costurera_slug: s.costurera_slug,
+        prendas: s.prendas.filter(p => p.cantidad > 0),
+        frenteBase64: s.frente.base64, frenteMime: s.frente.mime,
+        espaldaBase64: s.espalda.base64, espaldaMime: s.espalda.mime,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'error');
+    toast(`✓ Enviado a ${getCostuName(s.costurera_slug)}${d.sin_erp ? ' (sin ERP)' : ''}`, 'ok');
+    cerrarModalDirecto();
+    cargarDashboard();
+  } catch (e) {
+    toast('Error: ' + e.message, 'err');
+  }
 }
 
 // ──────────── FICHA DE PEDIDO ────────────

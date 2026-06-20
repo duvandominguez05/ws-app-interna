@@ -1062,6 +1062,102 @@ async function compararDisenosConGemini(imgChat, pdfsCandidatos, nombreEquipo) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// MATCH /costura: compara FRENTE + ESPALDA del corte real (fotos tomadas
+// por Camilo) contra varios pedidos candidatos del ERP. Devuelve ranking.
+// fotosCorte: [{base64, mime, vista: "frente"|"espalda"}]
+// candidatos: [{ pedido_id, equipo, vendedora, base64, mime, fuente }]
+async function matchFotosCorteConPedidos(fotosCorte, candidatos) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { error: 'sin GEMINI_API_KEY' };
+    if (!fotosCorte || fotosCorte.length === 0) return { error: 'sin fotos del corte' };
+    if (!candidatos || candidatos.length === 0) return { error: 'sin candidatos del ERP', matches: [] };
+
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+
+    const cand = candidatos.slice(0, 4); // max 4 para no quemar tokens
+
+    const preamble = `Sos analista visual de W&S Enterprise (fabrica de uniformes deportivos sublimados, Colombia).\n\n` +
+      `Camilo (gerente) saco fotos de UN corte/prenda fisica que va a costura: una vista del FRENTE y otra de la ESPALDA.\n\n` +
+      `Te paso esas fotos primero, y despues te paso ${cand.length} imagenes de DISEÑOS de pedidos diferentes del ERP.\n` +
+      `Esas imagenes pueden ser: render 3D del uniforme, foto del PDF RIP de impresion, o foto que el cliente aprobo en WhatsApp.\n\n` +
+      `Tu tarea: determinar a CUAL de los ${cand.length} pedidos pertenece el corte fisico.\n` +
+      `Compara: colores, escudo/logo, tipografia, distribucion del diseno, frase/texto, numeros, prenda.\n` +
+      `IGNORA: el angulo de la foto, arrugas, sombras, calidad. El corte fisico puede verse "feo" pero el diseño es el mismo.\n\n` +
+      `Responde SOLO JSON (sin markdown):\n` +
+      `{\n` +
+      `  "mejorMatch": <numero del pedido 1..${cand.length}> o null si ninguno,\n` +
+      `  "confianza": "alta"|"media"|"baja"|"ninguna",\n` +
+      `  "razonamiento": "1 linea explicando elementos compartidos",\n` +
+      `  "scores": [\n` +
+      cand.map((c, i) => `    {"n": ${i+1}, "pedido_id": ${c.pedido_id}, "equipo": "${c.equipo || ''}", "coincide": true|false, "confianza": "alta"|"media"|"baja", "porQue": "..."}`).join(',\n') + `\n` +
+      `  ]\n` +
+      `}\n\n` +
+      `═══════════════════════════════════════════════════════════════\n` +
+      `FOTOS DEL CORTE FISICO (sacadas por Camilo):\n`;
+
+    const parts = [{ text: preamble }];
+    for (const f of fotosCorte) {
+      parts.push({ text: `\n[${(f.vista || '').toUpperCase()}]` });
+      parts.push({ inline_data: { mime_type: f.mime || 'image/jpeg', data: f.base64 } });
+    }
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nDISEÑOS DE PEDIDOS CANDIDATOS DEL ERP:\n` });
+    cand.forEach((c, i) => {
+      parts.push({ text: `\n[Pedido ${i+1}] equipo: "${c.equipo || 'sin nombre'}" — vendedora: "${c.vendedora || ''}"` });
+      parts.push({ inline_data: { mime_type: c.mime || 'image/jpeg', data: c.base64 } });
+    });
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
+
+    const body = {
+      contents: [{ parts }],
+      generationConfig: { temperature: 0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini-match-costura] HTTP', r.status, errText.slice(0, 200));
+      return { error: `HTTP ${r.status}: ${errText.slice(0, 200)}`, matches: [] };
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      const parsed = JSON.parse(limpio);
+      // Enriquecer scores con datos del candidato
+      const matches = (parsed.scores || []).map(s => {
+        const cn = cand[s.n - 1] || {};
+        return {
+          pedido_id: cn.pedido_id,
+          equipo: cn.equipo,
+          vendedora: cn.vendedora,
+          coincide: !!s.coincide,
+          confianza: s.confianza || 'baja',
+          porQue: s.porQue || '',
+        };
+      });
+      return {
+        ok: true,
+        mejorMatch: parsed.mejorMatch ? cand[parsed.mejorMatch - 1] : null,
+        confianzaGlobal: parsed.confianza || 'ninguna',
+        razonamiento: parsed.razonamiento || '',
+        matches,
+        candidatosEvaluados: cand.length,
+      };
+    } catch {
+      return { error: 'parse error', _raw: limpio.slice(0, 1000), matches: [] };
+    }
+  } catch (e) {
+    console.error('[match-costura error]', e.message);
+    return { error: e.message, matches: [] };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Extrae lista de jugadores de una imagen (foto del chat con tabla).
 // Soporta fotos de papel escrito a mano, Excel, capturas de pantalla.
 // Devuelve: { jugadores: [{ talla, nombre, numero, prendas: {...} }], errores: [...] }
@@ -10442,6 +10538,8 @@ setInterval(cargar, 15000);
           fechaEnvio,
           diasEnCostura,
           estado: p.estado,
+          sinErp: !!p.sin_erp,
+          origen: p.origen || null,
           thumbnail: (db.getFotoPedido(p.id)?.url) || (p.drive?.pdfRip?.thumbnail) || null,
           alerta: diasEnCostura !== null && diasEnCostura > 7,
         };
@@ -10807,6 +10905,199 @@ setInterval(cargar, 15000);
         return json(res, 200, { ok: true, pagoId, semana });
       } catch (e) {
         console.error('[costura pagar]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /api/costura/match-foto — Camilo sube frente+espalda del corte,
+  // Gemini Vision compara contra pedidos del ERP en estados relevantes.
+  // Body: { frenteBase64, frenteMime, espaldaBase64, espaldaMime }
+  // Devuelve: { ok, matches: [...], mejorMatch, confianzaGlobal, razonamiento, candidatosEvaluados }
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/costura/match-foto') {
+    let body = '';
+    req.on('data', d => {
+      body += d;
+      if (body.length > 20 * 1024 * 1024) { // 20MB max
+        req.destroy();
+      }
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { frenteBase64, frenteMime, espaldaBase64, espaldaMime } = data;
+        if (!frenteBase64 || !espaldaBase64) {
+          return json(res, 400, { error: 'faltan fotos: frente y espalda son obligatorias' });
+        }
+
+        // 1) Recolectar candidatos: pedidos en estados relevantes con foto disponible
+        const ESTADOS_CANDIDATOS = ['aprobado', 'enviado-calandra', 'calandra', 'llego-impresion', 'corte', 'tela-recibida'];
+        const peds = leerPedidos().filter(p => ESTADOS_CANDIDATOS.includes(p.estado));
+
+        const candidatos = [];
+        for (const p of peds) {
+          if (candidatos.length >= 4) break; // max 4 para Gemini
+          // Prioridad: 1) foto manual cacheada, 2) thumbnail PDF RIP, 3) skip
+          const fotoCache = db.getFotoPedido(p.id);
+          let imgBase64 = null, imgMime = null, fuente = null;
+
+          if (fotoCache?.url && fotoCache.url.startsWith('data:')) {
+            // Data URL base64
+            const m = fotoCache.url.match(/^data:([^;]+);base64,(.+)$/);
+            if (m) { imgMime = m[1]; imgBase64 = m[2]; fuente = 'cache-manual'; }
+          } else if (p.drive?.pdfRip?.fileId) {
+            // Descargar thumbnail desde Drive
+            try {
+              const th = await driveSync.descargarThumbnailBase64(p.drive.pdfRip.fileId, 800);
+              if (th?.base64) { imgBase64 = th.base64; imgMime = th.mime || 'image/jpeg'; fuente = 'drive-pdf-rip'; }
+            } catch {}
+          }
+          if (!imgBase64) continue;
+
+          candidatos.push({
+            pedido_id: p.id,
+            equipo: p.equipo || `Pedido #${p.id}`,
+            vendedora: p.vendedora || '',
+            estado: p.estado,
+            base64: imgBase64,
+            mime: imgMime,
+            fuente,
+          });
+        }
+
+        // 2) Llamar a Gemini
+        const fotosCorte = [
+          { base64: frenteBase64, mime: frenteMime || 'image/jpeg', vista: 'frente' },
+          { base64: espaldaBase64, mime: espaldaMime || 'image/jpeg', vista: 'espalda' },
+        ];
+        const resultado = await matchFotosCorteConPedidos(fotosCorte, candidatos);
+
+        // 3) Devolver
+        return json(res, 200, {
+          ok: true,
+          totalCandidatosEvaluables: candidatos.length,
+          totalPedidosEnEstados: peds.length,
+          ...resultado,
+        });
+      } catch (e) {
+        console.error('[match-foto error]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /api/costura/registrar-envio — registra envio a costura (con o sin pedido del ERP)
+  // Body: {
+  //   pedido_id: <id si matcheo con ERP, null si es fantasma>,
+  //   costurera_slug, prendas: [{tipo,cantidad}],
+  //   frenteBase64, frenteMime, espaldaBase64, espaldaMime,
+  //   equipo: <nombre si es fantasma>,
+  // }
+  // Si pedido_id es null → crea pedido fantasma con flag sin_erp=true
+  // Si pedido_id existe → usa flujo normal
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/costura/registrar-envio') {
+    let body = '';
+    req.on('data', d => {
+      body += d;
+      if (body.length > 20 * 1024 * 1024) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { costurera_slug, prendas, frenteBase64, frenteMime, espaldaBase64, espaldaMime } = data;
+        if (!costurera_slug) return json(res, 400, { error: 'falta costurera_slug' });
+        if (!prendas || !Array.isArray(prendas) || prendas.length === 0) {
+          return json(res, 400, { error: 'faltan prendas' });
+        }
+        if (!frenteBase64 || !espaldaBase64) {
+          return json(res, 400, { error: 'faltan fotos: frente y espalda son obligatorias' });
+        }
+        const costu = PERSONAS.find(x => x.slug === costurera_slug && x.roles.includes('costura'));
+        if (!costu) return json(res, 400, { error: 'costurera no encontrada' });
+
+        let pedido_id = data.pedido_id || null;
+        let pedido = null;
+
+        // Caso A: ya hay match con ERP → usar pedido existente
+        if (pedido_id) {
+          const todos = leerPedidos();
+          const idx = todos.findIndex(x => x.id === pedido_id);
+          if (idx < 0) return json(res, 404, { error: 'pedido del ERP no existe' });
+          pedido = todos[idx];
+          pedido.estado = 'costura';
+          pedido.ultimoMovimiento = new Date().toISOString();
+          pedido.historial = pedido.historial || [];
+          pedido.historial.push({
+            fecha: new Date().toISOString(),
+            por: 'app-costura',
+            accion: 'enviar-costura-match-foto',
+            nota: `Match por foto → ${costu.nombre}`,
+          });
+          todos[idx] = pedido;
+          db.guardarPedidos(todos);
+        } else {
+          // Caso B: pedido fantasma — crear nuevo en ERP con flag sin_erp
+          const nuevoId = db.leerNextId();
+          pedido = {
+            id: nuevoId,
+            tipo: 'pedido',
+            equipo: data.equipo || `Sin nombre #${nuevoId}`,
+            vendedora: data.vendedora || '',
+            estado: 'costura',
+            sin_erp: true, // FLAG IMPORTANTE: pedido creado desde /costura sin sticker
+            origen: 'foto-costura',
+            fechaVenta: new Date().toISOString(),
+            ultimoMovimiento: new Date().toISOString(),
+            numUniformes: prendas.reduce((s, p) => s + (parseInt(p.cantidad, 10) || 0), 0),
+            historial: [{
+              fecha: new Date().toISOString(),
+              por: 'app-costura',
+              accion: 'crear-fantasma',
+              nota: `Pedido fantasma creado desde /costura (sin match en ERP)`,
+            }],
+          };
+          db.upsertPedido(pedido);
+          pedido_id = nuevoId;
+        }
+
+        // Guardar fotos: usamos pedido_fotos con la del FRENTE como principal (la espalda
+        // queda en el historial del movimiento como observación de fuente).
+        const fotoUrl = `data:${frenteMime || 'image/jpeg'};base64,${frenteBase64}`;
+        try { db.setFotoPedido(pedido_id, fotoUrl, 'corte-frente'); } catch (e) { console.error('[setFotoPedido]', e); }
+
+        // Crear movimientos de costura (uno por tipo de prenda)
+        const movimientos = [];
+        for (const pr of prendas) {
+          const cant = parseInt(pr.cantidad, 10) || 0;
+          if (cant <= 0) continue;
+          const movId = db.crearMovimientoCostura({
+            pedido_id,
+            costurera_slug,
+            costurera_nombre: costu.nombre,
+            equipo: pedido.equipo,
+            prenda: pr.tipo,
+            cantidad_enviada: cant,
+            observaciones: pedido.sin_erp ? 'sin ERP (creado desde foto)' : 'match foto',
+            enviado_por: 'app-costura',
+          });
+          movimientos.push({ id: movId, prenda: pr.tipo, cantidad: cant });
+        }
+
+        return json(res, 200, {
+          ok: true,
+          pedido_id,
+          equipo: pedido.equipo,
+          sin_erp: !!pedido.sin_erp,
+          movimientos,
+        });
+      } catch (e) {
+        console.error('[registrar-envio error]', e);
         return json(res, 500, { error: e.message });
       }
     });
