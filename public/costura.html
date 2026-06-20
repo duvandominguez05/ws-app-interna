@@ -114,6 +114,12 @@
     .costu-card {
       background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
       padding: 12px 10px; text-align: center; position: relative;
+      cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+    }
+    .costu-card:active { transform: scale(0.97); }
+    .costu-card.tiene-activos {
+      border-color: rgba(139,92,246,0.45);
+      background: linear-gradient(145deg, var(--purple-soft), var(--panel));
     }
     .costu-card.alerta {
       border-color: rgba(239,68,68,0.4);
@@ -124,6 +130,11 @@
     .costu-stat { font-size: 0.74rem; color: var(--muted); }
     .costu-stat strong { color: var(--text); font-variant-numeric: tabular-nums; }
     .costu-stat .verde { color: var(--green-bright); font-weight: 700; }
+    .costu-pedido-actual {
+      font-size: 0.72rem; color: var(--text); font-weight: 600;
+      background: rgba(255,255,255,0.06); padding: 4px 6px; border-radius: 6px;
+      margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
 
     /* Pedido card (lista) */
     .ped-card {
@@ -483,16 +494,30 @@ function render() {
     $('pago-banner-wrap').innerHTML = '';
   }
 
-  // Costureras
+  // Costureras — agrupar pedidos en costura por costurera para mostrarlos en la card
+  const pedidosPorCostu = new Map();
+  (d.enCostura || []).forEach(p => {
+    if (!p.costureraSlug) return;
+    if (!pedidosPorCostu.has(p.costureraSlug)) pedidosPorCostu.set(p.costureraSlug, []);
+    pedidosPorCostu.get(p.costureraSlug).push(p);
+  });
+
   $('count-costureras').textContent = d.costureras.length;
-  $('costu-grid').innerHTML = d.costureras.map(c => `
-    <div class="costu-card ${c.alerta ? 'alerta' : ''}">
+  $('costu-grid').innerHTML = d.costureras.map(c => {
+    const sus = pedidosPorCostu.get(c.slug) || [];
+    const nombresEquipos = sus.map(p => p.equipo).slice(0, 2).join(', ');
+    const masDe2 = sus.length > 2 ? ` +${sus.length - 2}` : '';
+    return `
+    <div class="costu-card ${c.alerta ? 'alerta' : ''} ${c.pedidosActivos > 0 ? 'tiene-activos' : ''}" onclick="abrirCosturera('${esc(c.slug)}')">
       <div class="costu-emoji">${esc(c.emoji)}</div>
       <div class="costu-nombre">${esc(c.nombre)}</div>
-      <div class="costu-stat"><strong>${c.pedidosActivos}</strong> activos</div>
-      ${c.valorSemanaEstimado > 0 ? `<div class="costu-stat" style="margin-top:4px;"><span class="verde">${money(c.valorSemanaEstimado)}</span></div>` : ''}
+      ${c.pedidosActivos > 0
+        ? `<div class="costu-pedido-actual">${esc(nombresEquipos)}${masDe2}</div>`
+        : `<div class="costu-stat" style="opacity:0.5;">sin pedidos</div>`}
+      ${c.valorSemanaEstimado > 0 ? `<div class="costu-stat" style="margin-top:6px;"><span class="verde">${money(c.valorSemanaEstimado)}</span> esta semana</div>` : ''}
     </div>
-  `).join('') || '<div class="empty-state">Sin costureras</div>';
+  `;
+  }).join('') || '<div class="empty-state">Sin costureras</div>';
 
   // Para enviar — ordenar: con datos arriba, incompletos abajo
   const paraEnviarOrdenado = [...d.paraEnviar].sort((a,b) => (b.tieneDatos?1:0) - (a.tieneDatos?1:0));
@@ -509,8 +534,8 @@ function render() {
         </div>
       </div>
       ${p.tieneDatos === false
-        ? '<button class="ped-action" style="background:var(--panel-3); border:1px solid var(--line);" onclick="event.stopPropagation(); abrirFicha(' + p.id + ')">Ver</button>'
-        : '<button class="ped-action" onclick="event.stopPropagation(); abrirAsignar(' + p.id + ')">▶ Enviar</button>'}
+        ? '<button class="ped-action" style="background:var(--panel-3); border:1px solid var(--line);" onclick="event.stopPropagation(); abrirFicha(' + p.id + ')">▶ Asignar</button>'
+        : '<button class="ped-action" onclick="event.stopPropagation(); abrirAsignar(' + p.id + ')">▶ Asignar</button>'}
     </div>
   `).join('') || '<div class="empty-state">Nada pendiente para enviar</div>';
 
@@ -530,6 +555,53 @@ function render() {
       <button class="ped-action green" onclick="event.stopPropagation(); abrirDevolver(${p.id})">✓ Devuelto</button>
     </div>
   `).join('') || '<div class="empty-state">Nada en costura</div>';
+}
+
+// ──────────── DETALLE DE COSTURERA ────────────
+function abrirCosturera(slug) {
+  const d = dashboardData;
+  if (!d) return;
+  const c = (d.costureras || []).find(x => x.slug === slug);
+  if (!c) return;
+  const sus = (d.enCostura || []).filter(p => p.costureraSlug === slug);
+  const pagoSemana = (d.pagosSemana || []).find(x => x.slug === slug);
+
+  const pedidosHTML = sus.length === 0
+    ? `<div class="empty-state" style="padding:24px;">No tiene pedidos activos.<br><small style="color:var(--muted-2);">Asignale uno desde "Para enviar a costura".</small></div>`
+    : sus.map(p => `
+        <div class="ped-card" style="margin-bottom:10px;" onclick="cerrarModalDirecto(); setTimeout(()=>abrirFicha(${p.id}), 200);">
+          <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${esc(getInitials(p.equipo))}';">` : esc(getInitials(p.equipo))}</div>
+          <div class="ped-info">
+            <div class="ped-equipo">${esc(p.equipo)}</div>
+            <div class="ped-meta">
+              ${p.diasEnCostura != null ? `<span>${p.diasEnCostura} d en costura</span>` : ''}
+              ${p.alerta ? '<span class="dot">·</span><span class="alerta-tag">⚠ atrasado</span>' : ''}
+            </div>
+          </div>
+          <button class="ped-action green" onclick="event.stopPropagation(); cerrarModalDirecto(); setTimeout(()=>abrirDevolver(${p.id}), 200);">✓ Devuelto</button>
+        </div>
+      `).join('');
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>${esc(c.emoji)} ${esc(c.nombre)}</h2>
+        <div class="sub">${sus.length} pedido${sus.length === 1 ? '' : 's'} activo${sus.length === 1 ? '' : 's'}${pagoSemana ? ` · ${money(pagoSemana.monto)} esta semana` : ''}</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    ${pagoSemana ? `
+      <div class="pago-banner" style="margin-bottom:14px;">
+        <div>
+          <div class="label">Acumulado semana (a pagar domingo)</div>
+          <div class="amount">${money(pagoSemana.monto)}</div>
+          <small style="color:var(--muted); font-size:0.75rem;">${pagoSemana.count} prenda${pagoSemana.count === 1 ? '' : 's'} devuelta${pagoSemana.count === 1 ? '' : 's'}</small>
+        </div>
+      </div>
+    ` : ''}
+    <div class="section-title">EN COSTURA <span class="count">${sus.length}</span></div>
+    ${pedidosHTML}
+  `);
 }
 
 // ──────────── FICHA DE PEDIDO ────────────
