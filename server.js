@@ -10334,6 +10334,32 @@ setInterval(cargar, 15000);
     });
   }
 
+  // ── PWA mini-app costura: manifest + iconos ──
+  // Sirve los assets necesarios para que /costura sea instalable en el celular
+  // con su propio icono (carrete de hilo, fondo rosa/morado).
+  if (req.method === 'GET' && req.url === '/manifest-costura.json') {
+    return fs.readFile(path.join(__dirname, 'public', 'manifest-costura.json'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+      res.end(data);
+    });
+  }
+  if (req.method === 'GET' && (req.url === '/icon-costura-192.png' || req.url === '/icon-costura-512.png')) {
+    const fname = req.url.slice(1);
+    return fs.readFile(path.join(__dirname, 'public', fname), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      res.end(data);
+    });
+  }
+  if (req.method === 'GET' && req.url === '/icon-costura.svg') {
+    return fs.readFile(path.join(__dirname, 'public', 'icon-costura.svg'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+      res.end(data);
+    });
+  }
+
   // ── GET /api/personas — roster completo (slug, nombre, roles, color, vistaInicial) ──
   if (req.method === 'GET' && req.url === '/api/personas') {
     return json(res, 200, { personas: PERSONAS });

@@ -1,0 +1,38 @@
+{
+  "name": "W&S Costura",
+  "short_name": "Costura",
+  "description": "Control de costureras W&S Textil — uso interno",
+  "start_url": "/costura",
+  "id": "/costura",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#ec4899",
+  "scope": "/costura",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-costura-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-costura-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-costura-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-costura.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
