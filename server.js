@@ -11123,6 +11123,283 @@ setInterval(cargar, 15000);
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // /api/asistente/* — endpoints REST para el asistente personal de Camilo
+  // (OpenClaw self-hosted, conectado al WA dedicado 573214503950)
+  //
+  // Auth: header X-API-KEY = API_KEY del proceso (env API_KEY)
+  // Estilo: respuestas cortas y ejecutivas (el bot las usa para responder al WA)
+  // ═══════════════════════════════════════════════════════════════════
+  function authAsistente(req, res) {
+    const key = req.headers['x-api-key'];
+    if (!key || key !== API_KEY) {
+      json(res, 401, { error: 'unauthorized' });
+      return false;
+    }
+    return true;
+  }
+
+  // ── GET /api/asistente/consignaciones-huerfanas
+  // Lista comprobantes detectados que NO tienen pedido en ERP (esperan que vendedora
+  // o Camilo digan a que equipo van). TTL 48h.
+  if (req.method === 'GET' && req.url === '/api/asistente/consignaciones-huerfanas') {
+    if (!authAsistente(req, res)) return;
+    try {
+      const pagos = _leerPrimerPagos()
+        .filter(p => p.estado === 'esperando-equipo')
+        .filter(p => (Date.now() - new Date(p.creadoEn).getTime()) < 48 * 60 * 60 * 1000)
+        .sort((a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime());
+
+      return json(res, 200, {
+        ok: true,
+        total: pagos.length,
+        consignaciones: pagos.map(p => ({
+          id: p.id,
+          monto: p.monto,
+          banco: p.banco,
+          vendedora: p.vendedora,
+          cliente_telefono: p.telefono,
+          cliente_nombre: p.nombreCliente,
+          fecha: p.fecha,
+          horas_pendiente: Math.round((Date.now() - new Date(p.creadoEn).getTime()) / 36e5),
+        })),
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/asistente/consignaciones/:id/crear-pedido
+  // Body: { nombre_equipo }
+  // Crea el pedido a partir del primer-pago huerfano. Suma el monto al abonado.
+  if (req.method === 'POST' && req.url.match(/^\/api\/asistente\/consignaciones\/[^/]+\/crear-pedido$/)) {
+    if (!authAsistente(req, res)) return;
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const id = req.url.split('/')[4];
+        const { nombre_equipo } = JSON.parse(body || '{}');
+        if (!nombre_equipo || !nombre_equipo.trim()) {
+          return json(res, 400, { error: 'falta nombre_equipo' });
+        }
+        const pagos = _leerPrimerPagos();
+        const pendiente = pagos.find(p => p.id === id);
+        if (!pendiente) return json(res, 404, { error: 'consignacion no existe o ya atendida' });
+        if (pendiente.estado !== 'esperando-equipo') {
+          return json(res, 409, { error: `estado actual: ${pendiente.estado}` });
+        }
+        const pedidoNuevo = crearPedidoDesdePrimerPago(pendiente, nombre_equipo.trim());
+        if (!pedidoNuevo) return json(res, 500, { error: 'no se pudo crear pedido' });
+
+        return json(res, 200, {
+          ok: true,
+          pedido_id: pedidoNuevo.id,
+          equipo: pedidoNuevo.equipo,
+          vendedora: pedidoNuevo.vendedora,
+          abonado: pedidoNuevo.abonado,
+          mensaje: `Pedido #${pedidoNuevo.id} ${pedidoNuevo.equipo} creado. Abonado: $${pedidoNuevo.abonado}.`,
+        });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/asistente/consignaciones/:id/ignorar
+  // Marca una consignacion como descartada (no era de uniforme).
+  if (req.method === 'POST' && req.url.match(/^\/api\/asistente\/consignaciones\/[^/]+\/ignorar$/)) {
+    if (!authAsistente(req, res)) return;
+    try {
+      const id = req.url.split('/')[4];
+      const pagos = _leerPrimerPagos();
+      const idx = pagos.findIndex(p => p.id === id);
+      if (idx < 0) return json(res, 404, { error: 'consignacion no existe' });
+      pagos[idx].estado = 'ignorado';
+      pagos[idx].ignoradoEn = new Date().toISOString();
+      _guardarPrimerPagos(pagos);
+      return json(res, 200, { ok: true, mensaje: 'consignacion descartada' });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/asistente/pedido/buscar?q=texto
+  // Busca pedidos por nombre de equipo, telefono o cliente. Devuelve maximo 5.
+  if (req.method === 'GET' && req.url.startsWith('/api/asistente/pedido/buscar')) {
+    if (!authAsistente(req, res)) return;
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const q = (u.searchParams.get('q') || '').trim().toLowerCase();
+      if (!q || q.length < 2) return json(res, 400, { error: 'q debe tener al menos 2 caracteres' });
+      const tokens = q.split(/\s+/).filter(Boolean);
+      const peds = leerPedidos();
+      const matches = peds
+        .map(p => {
+          const haystack = [p.equipo, p.telefono, p.pushNameCliente, p.nombreCliente, p.vendedora]
+            .filter(Boolean).join(' ').toLowerCase();
+          let score = 0;
+          for (const t of tokens) {
+            if (haystack.includes(t)) score++;
+          }
+          return { p, score };
+        })
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(x => ({
+          id: x.p.id,
+          equipo: x.p.equipo,
+          vendedora: x.p.vendedora,
+          estado: x.p.estado,
+          telefono: x.p.telefono,
+          fechaVenta: x.p.fechaVenta,
+          numUniformes: x.p.numUniformes || null,
+          total: x.p.total || null,
+          abonado: x.p.abonado || 0,
+        }));
+      return json(res, 200, { ok: true, total: matches.length, pedidos: matches });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/asistente/pedido/:id/resumen
+  // Resumen ejecutivo de un pedido para responder al WA.
+  if (req.method === 'GET' && req.url.match(/^\/api\/asistente\/pedido\/\d+\/resumen$/)) {
+    if (!authAsistente(req, res)) return;
+    try {
+      const id = parseInt(req.url.split('/')[4], 10);
+      const p = leerPedidos().find(x => x.id === id);
+      if (!p) return json(res, 404, { error: 'pedido no existe' });
+
+      const ahora = Date.now();
+      const ultimoMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : null;
+      const diasSinMov = ultimoMov ? Math.floor((ahora - ultimoMov) / 86400000) : null;
+      const ultimas3 = (p.historial || []).slice(-3).map(h => ({
+        fecha: h.fecha, accion: h.accion, nota: h.nota, por: h.por,
+      }));
+
+      return json(res, 200, {
+        ok: true,
+        pedido: {
+          id: p.id,
+          equipo: p.equipo,
+          vendedora: p.vendedora,
+          estado: p.estado,
+          satelite: p.satelite || null,
+          numUniformes: p.numUniformes || null,
+          total: p.total || null,
+          abonado: p.abonado || 0,
+          saldo: (p.total || 0) - (p.abonado || 0),
+          fechaVenta: p.fechaVenta,
+          fechaEntrega: p.fechaEntrega || null,
+          ultimoMovimiento: p.ultimoMovimiento,
+          diasSinMovimiento: diasSinMov,
+          ultimas3Acciones: ultimas3,
+          sinErp: !!p.sin_erp,
+        },
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/asistente/pedidos-atascados
+  // Pedidos sin movimiento por mas de N dias (default 5). Para detectar problemas.
+  if (req.method === 'GET' && req.url.startsWith('/api/asistente/pedidos-atascados')) {
+    if (!authAsistente(req, res)) return;
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasMin = parseInt(u.searchParams.get('dias') || '5', 10);
+      const ahora = Date.now();
+      const peds = leerPedidos();
+      const atascados = peds
+        .filter(p => !['enviado-final', 'entregado', 'archivado', 'cancelado'].includes(p.estado))
+        .map(p => {
+          const ultimoMov = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : null;
+          const dias = ultimoMov ? Math.floor((ahora - ultimoMov) / 86400000) : null;
+          return { p, dias };
+        })
+        .filter(x => x.dias !== null && x.dias >= diasMin)
+        .sort((a, b) => b.dias - a.dias)
+        .slice(0, 30)
+        .map(x => ({
+          id: x.p.id,
+          equipo: x.p.equipo,
+          vendedora: x.p.vendedora,
+          estado: x.p.estado,
+          dias_sin_movimiento: x.dias,
+        }));
+      return json(res, 200, { ok: true, total: atascados.length, dias_minimo: diasMin, pedidos: atascados });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/asistente/costura/atascados?dias=7
+  // Pedidos enviados a costura hace >= N dias sin devolucion.
+  if (req.method === 'GET' && req.url.startsWith('/api/asistente/costura/atascados')) {
+    if (!authAsistente(req, res)) return;
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const diasMin = parseInt(u.searchParams.get('dias') || '7', 10);
+      const ahora = Date.now();
+      const movs = db.leerMovimientosCosturaPendientes() || [];
+      const atascados = movs
+        .map(m => {
+          const fe = m.fecha_envio ? new Date(m.fecha_envio).getTime() : null;
+          const dias = fe ? Math.floor((ahora - fe) / 86400000) : null;
+          return { m, dias };
+        })
+        .filter(x => x.dias !== null && x.dias >= diasMin)
+        .sort((a, b) => b.dias - a.dias)
+        .slice(0, 30)
+        .map(x => ({
+          pedido_id: x.m.pedido_id,
+          equipo: x.m.equipo,
+          costurera_slug: x.m.costurera_slug,
+          costurera_nombre: x.m.costurera_nombre,
+          prenda: x.m.prenda,
+          cantidad: x.m.cantidad_enviada,
+          dias_en_costura: x.dias,
+          fecha_envio: x.m.fecha_envio,
+        }));
+      return json(res, 200, { ok: true, total: atascados.length, dias_minimo: diasMin, movimientos: atascados });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/asistente/costura/dashboard
+  // Resumen ejecutivo para responder "como van las costureras".
+  if (req.method === 'GET' && req.url === '/api/asistente/costura/dashboard') {
+    if (!authAsistente(req, res)) return;
+    try {
+      const movsAbiertos = db.leerMovimientosCosturaPendientes() || [];
+      const costureraSlugs = PERSONAS.filter(p => p.roles.includes('costura'));
+      const resumen = costureraSlugs.map(p => {
+        const pedidosAbiertos = new Set(
+          movsAbiertos.filter(m => m.costurera_slug === p.slug).map(m => m.pedido_id)
+        );
+        return {
+          slug: p.slug,
+          nombre: p.nombre,
+          pedidos_activos: pedidosAbiertos.size,
+        };
+      });
+      return json(res, 200, {
+        ok: true,
+        total_costureras: resumen.length,
+        total_pedidos_activos: movsAbiertos.length,
+        por_costurera: resumen,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/costureras/envio — Lidermeyer registra envio a una costurera ──
   // Body: { pedido_id, costurera_slug, prenda, cantidad, observaciones, enviado_por }
   if (req.method === 'POST' && req.url === '/api/costureras/envio') {
