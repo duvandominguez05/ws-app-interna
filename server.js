@@ -10385,6 +10385,7 @@ setInterval(cargar, 15000);
         fechaVenta: p.fechaVenta || '',
         ultimoMov: p.ultimoMovimiento || '',
         thumbnail: (db.getFotoPedido(p.id)?.url) || (p.drive?.pdfRip?.thumbnail) || null,
+        tieneDatos: !!(p.numUniformes > 0 || (p.prendas && p.prendas.length) || p.total > 0 || p.abonado > 0),
       }));
 
       // Movimientos abiertos (sin recepcion)

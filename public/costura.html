@@ -396,6 +396,33 @@ function money(n) { return '$' + Math.round(n || 0).toLocaleString('es-CO'); }
 function getInitials(equipo) {
   return (equipo || '?').split(/\s+/).slice(0,2).map(w => (w[0]||'')).join('').toUpperCase().slice(0,2) || '?';
 }
+// "2026-06-15" -> "15 jun" / "2026-06-15T12:00:00Z" -> "15 jun"
+function formatFechaCorta(iso) {
+  if (!iso) return '';
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let m;
+  if ((m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/))) {
+    return `${parseInt(m[3],10)} ${meses[parseInt(m[2],10)-1]}`;
+  }
+  // formato dd/mm/yyyy
+  if ((m = String(iso).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) {
+    return `${parseInt(m[1],10)} ${meses[parseInt(m[2],10)-1]}`;
+  }
+  return iso;
+}
+// Detectar notas auto-generadas por el sistema (cron, bot, archivar, etc)
+function esNotaSistema(s) {
+  if (!s) return true;
+  const l = String(s).toLowerCase();
+  return l.startsWith('recuperado por cron')
+    || l.startsWith('auto-creado')
+    || l.startsWith('archivado por')
+    || l.startsWith('des-archivar')
+    || l.includes('cron-resolver')
+    || l.includes('cron-sticker-reprocesador')
+    || l.includes('comprobante-bot')
+    || l.includes('auto-aprobacion-bot');
+}
 function toast(msg, tipo = 'ok') {
   const t = $('toast');
   t.textContent = msg;
@@ -458,20 +485,23 @@ function render() {
     </div>
   `).join('') || '<div class="empty-state">Sin costureras</div>';
 
-  // Para enviar
+  // Para enviar — ordenar: con datos arriba, incompletos abajo
+  const paraEnviarOrdenado = [...d.paraEnviar].sort((a,b) => (b.tieneDatos?1:0) - (a.tieneDatos?1:0));
   $('count-paraenviar').textContent = d.paraEnviar.length;
-  $('lista-paraenviar').innerHTML = d.paraEnviar.map(p => `
+  $('lista-paraenviar').innerHTML = paraEnviarOrdenado.map(p => `
     <div class="ped-card" onclick="abrirFicha(${p.id})">
       <div class="ped-thumb">${p.thumbnail ? `<img src="${esc(p.thumbnail)}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${esc(getInitials(p.equipo))}';">` : esc(getInitials(p.equipo))}</div>
       <div class="ped-info">
-        <div class="ped-equipo">${esc(p.equipo)}</div>
+        <div class="ped-equipo">${esc(p.equipo)} ${p.tieneDatos === false ? '<span class="alerta-tag" style="background:var(--orange-soft); color:#fdba74; margin-left:4px;">⚠ sin datos</span>' : ''}</div>
         <div class="ped-meta">
           <span>${esc(p.vendedora)}</span>
           ${p.numUniformes ? `<span class="dot">·</span><span>${p.numUniformes} prendas</span>` : ''}
-          <span class="dot">·</span><span>${esc(p.estado)}</span>
+          ${p.fechaVenta ? `<span class="dot">·</span><span>${esc(formatFechaCorta(p.fechaVenta))}</span>` : ''}
         </div>
       </div>
-      <button class="ped-action" onclick="event.stopPropagation(); abrirAsignar(${p.id})">▶ Enviar</button>
+      ${p.tieneDatos === false
+        ? '<button class="ped-action" style="background:var(--panel-3); border:1px solid var(--line);" onclick="event.stopPropagation(); abrirFicha(' + p.id + ')">Ver</button>'
+        : '<button class="ped-action" onclick="event.stopPropagation(); abrirAsignar(' + p.id + ')">▶ Enviar</button>'}
     </div>
   `).join('') || '<div class="empty-state">Nada pendiente para enviar</div>';
 
@@ -522,7 +552,7 @@ function renderFicha(d) {
     <div class="modal-head">
       <div>
         <div class="ficha-title">${esc(p.equipo)}</div>
-        <div class="ficha-sub">${esc(p.vendedora || '')} ${p.cliente ? '· ' + esc(p.cliente) : ''} ${p.fechaVenta ? '· ' + esc(p.fechaVenta) : ''}</div>
+        <div class="ficha-sub">${esc(p.vendedora || '')} ${p.cliente ? '· ' + esc(p.cliente) : ''} ${p.fechaVenta ? '· ' + esc(formatFechaCorta(p.fechaVenta)) : ''}</div>
       </div>
       <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
     </div>
@@ -591,12 +621,12 @@ function renderFicha(d) {
       <div class="ficha-block" style="background:var(--purple-soft); border:1px solid rgba(139,92,246,0.3);">
         <div class="ficha-block-title">🪡 En costura</div>
         <div class="ficha-row"><span class="key">Costurera</span><span class="val">${esc(enCostu.costurera_nombre)}</span></div>
-        <div class="ficha-row"><span class="key">Desde</span><span class="val">${esc((enCostu.fecha_envio || '').slice(0,10))}</span></div>
+        <div class="ficha-row"><span class="key">Desde</span><span class="val">${esc(formatFechaCorta(enCostu.fecha_envio))}</span></div>
         <div class="ficha-row"><span class="key">Prendas</span><span class="val">${enCostu.cantidad_enviada} ${enCostu.prenda || ''}</span></div>
       </div>
     ` : ''}
 
-    ${p.notas && !p.notas.includes('Recuperado por cron') ? `
+    ${p.notas && !esNotaSistema(p.notas) ? `
       <div class="ficha-block">
         <div class="ficha-block-title">📝 Notas</div>
         <div style="font-size:0.88rem; color:var(--text); line-height:1.4;">${esc(p.notas)}</div>
@@ -973,6 +1003,16 @@ async function guardarTarifas() {
     cargarDashboard();
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
+
+// ESC cierra modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('modal').classList.contains('show')) cerrarModalDirecto();
+});
+
+// Auto-refresh cada 60 seg (no molesta si esta en modal)
+setInterval(() => {
+  if (!$('modal').classList.contains('show')) cargarDashboard();
+}, 60 * 1000);
 
 cargarDashboard();
 </script>
