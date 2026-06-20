@@ -10436,7 +10436,12 @@ setInterval(cargar, 15000);
 
       const resumenCostureras = costureraSlugs.map(p => {
         const movs = movsSemana.filter(m => m.costurera_slug === p.slug);
-        const activos = movsAbiertos.filter(m => m.costurera_slug === p.slug).length;
+        // Cuenta PEDIDOS unicos abiertos (no movimientos), porque un pedido
+        // puede tener N movimientos (uno por tipo de prenda).
+        const pedidosAbiertos = new Set(
+          movsAbiertos.filter(m => m.costurera_slug === p.slug).map(m => m.pedido_id)
+        );
+        const activos = pedidosAbiertos.size;
         // Valor estimado: cantidad recibida * tarifa del tipo
         let valorSemana = 0;
         movs.forEach(m => {
@@ -10848,15 +10853,9 @@ setInterval(cargar, 15000);
           observaciones: observaciones || null,
         });
 
-        // Notif WA a la costurera (si tiene numero configurado)
-        const link = `${process.env.APP_BASE_URL || 'https://ws-app-interna-production.up.railway.app'}/c/${costurera_slug}`;
-        const msg = `🧵 *Nuevo lote para ti*\n\n` +
-          (equipo ? `👕 Equipo: ${equipo}\n` : '') +
-          (prenda ? `🪡 Prenda: ${prenda}\n` : '') +
-          `📊 Cantidad: ${cantidad}\n` +
-          (observaciones ? `📝 Nota: ${observaciones}\n` : '') +
-          `\n👉 Ver tus lotes pendientes: ${link}`;
-        notificarWAPersona(costu.nombre, msg).catch(()=>{});
+        // NO se notifica a la costurera (regla 20-jun-2026 Camilo):
+        // costureras no usan app ni reciben mensajes del bot. Todo el flujo
+        // es fisico (entrega/devolucion) + registro interno por Camilo.
 
         return json(res, 200, { ok: true, id });
       } catch (e) {
