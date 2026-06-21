@@ -12277,6 +12277,8 @@ setInterval(cargar, 15000);
 
 }).listen(PORT, () => {
   console.log(`W&S App corriendo en puerto ${PORT}`);
+  console.log(`[startup] API_KEY env var: ${process.env.API_KEY ? 'OK (set)' : 'MISSING (using default)'}`);
+  console.log(`[startup] API_KEY first 8 chars: ${(process.env.API_KEY || 'ws-textil-2026').slice(0, 8)}...`);
   limpiezaAutomatica(); // al arrancar
 });
 
