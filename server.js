@@ -11392,7 +11392,7 @@ setInterval(cargar, 15000);
       return json(res, 200, {
         ok: true,
         total_costureras: resumen.length,
-        total_pedidos_activos: movsAbiertos.length,
+        total_pedidos_activos: new Set(movsAbiertos.map(m => m.pedido_id)).size,
         por_costurera: resumen,
       });
     } catch (e) {
