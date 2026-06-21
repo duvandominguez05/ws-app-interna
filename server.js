@@ -1388,6 +1388,40 @@ function _anadirPagoAPedido(p, pago) {
 // ═══════════════════════════════════════════════════════════════════
 const PRIMER_PAGOS_FILE = path.join(__dirname, 'data', 'primer-pagos-pendientes.json');
 
+// ═══════════════════════════════════════════════════════════════════
+// ALERTAS NOTIFICADAS — anti-spam para JARVIS
+// JARVIS hace polling cada 30 min. Para NO repetir la misma alerta,
+// cada vez que avisa a Camilo marca el alert_id como "visto" en este
+// JSON. TTL 7 dias (despues se borra solo).
+// ═══════════════════════════════════════════════════════════════════
+const ALERTAS_NOTIFICADAS_FILE = path.join(__dirname, 'data', 'alertas-notificadas.json');
+function _leerAlertasNotificadas() {
+  try {
+    const arr = JSON.parse(fs.readFileSync(ALERTAS_NOTIFICADAS_FILE, 'utf8'));
+    const ahora = Date.now();
+    const limite = 7 * 24 * 60 * 60 * 1000;
+    return arr.filter(a => (ahora - new Date(a.notificadoEn).getTime()) < limite);
+  } catch { return []; }
+}
+function _guardarAlertasNotificadas(arr) {
+  fs.mkdirSync(path.dirname(ALERTAS_NOTIFICADAS_FILE), { recursive: true });
+  fs.writeFileSync(ALERTAS_NOTIFICADAS_FILE, JSON.stringify(arr, null, 2));
+}
+function alertaYaNotificada(alertId) {
+  return _leerAlertasNotificadas().some(a => a.alert_id === alertId);
+}
+function marcarAlertasNotificadas(alertIds) {
+  if (!Array.isArray(alertIds) || alertIds.length === 0) return 0;
+  const existentes = _leerAlertasNotificadas();
+  const ahora = new Date().toISOString();
+  const nuevas = alertIds
+    .filter(id => !existentes.some(a => a.alert_id === id))
+    .map(id => ({ alert_id: id, notificadoEn: ahora }));
+  if (nuevas.length === 0) return 0;
+  _guardarAlertasNotificadas([...existentes, ...nuevas]);
+  return nuevas.length;
+}
+
 function _leerPrimerPagos() {
   try { return JSON.parse(fs.readFileSync(PRIMER_PAGOS_FILE, 'utf8')); }
   catch { return []; }
@@ -11398,6 +11432,151 @@ setInterval(cargar, 15000);
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /api/asistente/alertas-pendientes
+  // Endpoint que JARVIS pollea cada 30 min para detectar cosas urgentes.
+  // Devuelve SOLO alertas NO notificadas todavia (TTL 7 dias).
+  // Categorias: consignaciones huerfanas, costura atascada, pedidos parados,
+  // diseños sin asignar.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url === '/api/asistente/alertas-pendientes') {
+    if (!authAsistente(req, res)) return;
+    try {
+      const ahora = Date.now();
+      const peds = leerPedidos();
+
+      // ─── 1. Consignaciones huerfanas (pagos > 12h sin pedido) ───
+      const consignaciones = _leerPrimerPagos()
+        .filter(p => p.estado === 'esperando-equipo')
+        .filter(p => {
+          const horas = (ahora - new Date(p.creadoEn).getTime()) / 36e5;
+          return horas >= 12 && horas < 48; // 12h-48h. <12h no molesta, >48h ya expiro.
+        })
+        .map(p => ({
+          alert_id: `consignacion:${p.id}`,
+          categoria: 'consignaciones',
+          urgencia: 'media',
+          monto: p.monto,
+          banco: p.banco,
+          vendedora: p.vendedora,
+          cliente_telefono: p.telefono,
+          cliente_nombre: p.nombreCliente,
+          horas_pendiente: Math.round((ahora - new Date(p.creadoEn).getTime()) / 36e5),
+          accion_sugerida: `POST /api/asistente/consignaciones/${p.id}/crear-pedido o /ignorar`,
+        }))
+        .filter(a => !alertaYaNotificada(a.alert_id));
+
+      // ─── 2. Costura atascada (>7 dias sin devolver) ───
+      const movs = db.leerMovimientosCosturaPendientes() || [];
+      const costuraAtascada = movs
+        .map(m => {
+          const fe = m.fecha_envio ? new Date(m.fecha_envio).getTime() : null;
+          const dias = fe ? Math.floor((ahora - fe) / 86400000) : null;
+          return { m, dias };
+        })
+        .filter(x => x.dias !== null && x.dias >= 7)
+        .map(x => ({
+          alert_id: `costura:${x.m.id || `${x.m.pedido_id}:${x.m.costurera_slug}`}`,
+          categoria: 'costura_atascada',
+          urgencia: x.dias >= 14 ? 'alta' : 'media',
+          pedido_id: x.m.pedido_id,
+          equipo: x.m.equipo,
+          costurera: x.m.costurera_nombre,
+          prenda: x.m.prenda,
+          cantidad: x.m.cantidad_enviada,
+          dias_en_costura: x.dias,
+        }))
+        .filter(a => !alertaYaNotificada(a.alert_id));
+
+      // ─── 3. Pedidos parados (sin movimiento >5 dias, estados activos) ───
+      const ESTADOS_ACTIVOS_VISIBLES = ['hacer-diseno', 'aprobado', 'enviado-calandra', 'calandra', 'llego-impresion', 'corte', 'tela-recibida'];
+      const pedidosParados = peds
+        .filter(p => ESTADOS_ACTIVOS_VISIBLES.includes(p.estado))
+        .map(p => {
+          const ultimo = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : null;
+          const dias = ultimo ? Math.floor((ahora - ultimo) / 86400000) : null;
+          return { p, dias };
+        })
+        .filter(x => x.dias !== null && x.dias >= 5)
+        .sort((a, b) => b.dias - a.dias)
+        .slice(0, 15) // max 15 para no saturar
+        .map(x => ({
+          alert_id: `pedido_parado:${x.p.id}:${x.dias}`,
+          categoria: 'pedidos_parados',
+          urgencia: x.dias >= 10 ? 'alta' : 'media',
+          pedido_id: x.p.id,
+          equipo: x.p.equipo,
+          vendedora: x.p.vendedora,
+          estado: x.p.estado,
+          dias_sin_movimiento: x.dias,
+        }))
+        .filter(a => !alertaYaNotificada(a.alert_id));
+
+      // ─── 4. Diseños sin asignar (>24h en hacer-diseno sin disenador) ───
+      const disenosSinAsignar = peds
+        .filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado)
+        .map(p => {
+          const venta = p.fechaVenta ? new Date(p.fechaVenta).getTime() : null;
+          const horas = venta ? (ahora - venta) / 36e5 : null;
+          return { p, horas };
+        })
+        .filter(x => x.horas !== null && x.horas >= 24)
+        .sort((a, b) => b.horas - a.horas)
+        .slice(0, 10)
+        .map(x => ({
+          alert_id: `diseno_sin_asignar:${x.p.id}`,
+          categoria: 'disenos_sin_asignar',
+          urgencia: x.horas >= 48 ? 'alta' : 'media',
+          pedido_id: x.p.id,
+          equipo: x.p.equipo,
+          vendedora: x.p.vendedora,
+          horas_pendiente: Math.round(x.horas),
+        }))
+        .filter(a => !alertaYaNotificada(a.alert_id));
+
+      const totalNuevas = consignaciones.length + costuraAtascada.length + pedidosParados.length + disenosSinAsignar.length;
+
+      return json(res, 200, {
+        ok: true,
+        total_nuevas: totalNuevas,
+        timestamp: new Date().toISOString(),
+        categorias: {
+          consignaciones,
+          costura_atascada: costuraAtascada,
+          pedidos_parados: pedidosParados,
+          disenos_sin_asignar: disenosSinAsignar,
+        },
+        nota_jarvis: totalNuevas > 0
+          ? `Hay ${totalNuevas} alertas nuevas. Resumi para Camilo en WA y despues marcalas vistas via POST /api/asistente/alertas/marcar-vistas con los alert_id.`
+          : 'No hay alertas nuevas. NO mandes WA a Camilo, dejalo tranquilo.',
+      });
+    } catch (e) {
+      console.error('[alertas-pendientes]', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/asistente/alertas/marcar-vistas
+  // Body: { ids: ["consignacion:pp_xxx", "costura:...", ...] }
+  // JARVIS llama esto DESPUES de avisar a Camilo para no repetir.
+  if (req.method === 'POST' && req.url === '/api/asistente/alertas/marcar-vistas') {
+    if (!authAsistente(req, res)) return;
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const ids = Array.isArray(data.ids) ? data.ids : [];
+        if (ids.length === 0) return json(res, 400, { error: 'falta ids (array)' });
+        const marcadas = marcarAlertasNotificadas(ids);
+        return json(res, 200, { ok: true, marcadas, total_recibidas: ids.length });
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
   }
 
   // ── POST /api/costureras/envio — Lidermeyer registra envio a una costurera ──
