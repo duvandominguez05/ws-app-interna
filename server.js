@@ -1422,6 +1422,139 @@ function marcarAlertasNotificadas(alertIds) {
   return nuevas.length;
 }
 
+// Computa las 4 categorias de alertas NO notificadas todavia (TTL 7 dias).
+// Usado por el endpoint /api/asistente/alertas-pendientes Y por el cron interno cronAlertasJefe.
+// Si autoMarcar=true, marca todas las devueltas como notificadas (no se repiten).
+// Devuelve { ok, total_nuevas, timestamp, mensaje_wa, marcadas_auto, categorias, nota_jarvis }
+function _computarAlertas(autoMarcar) {
+  const ahora = Date.now();
+  const peds = leerPedidos();
+
+  const consignaciones = _leerPrimerPagos()
+    .filter(p => p.estado === 'esperando-equipo')
+    .filter(p => {
+      const horas = (ahora - new Date(p.creadoEn).getTime()) / 36e5;
+      return horas >= 12 && horas < 48;
+    })
+    .map(p => ({
+      alert_id: `consignacion:${p.id}`,
+      categoria: 'consignaciones',
+      urgencia: 'media',
+      monto: p.monto,
+      banco: p.banco,
+      vendedora: p.vendedora,
+      cliente_telefono: p.telefono,
+      cliente_nombre: p.nombreCliente,
+      horas_pendiente: Math.round((ahora - new Date(p.creadoEn).getTime()) / 36e5),
+      accion_sugerida: `POST /api/asistente/consignaciones/${p.id}/crear-pedido o /ignorar`,
+    }))
+    .filter(a => !alertaYaNotificada(a.alert_id));
+
+  const movs = (typeof db !== 'undefined' && db.leerMovimientosCosturaPendientes) ? (db.leerMovimientosCosturaPendientes() || []) : [];
+  const costuraAtascada = movs
+    .map(m => {
+      const fe = m.fecha_envio ? new Date(m.fecha_envio).getTime() : null;
+      const dias = fe ? Math.floor((ahora - fe) / 86400000) : null;
+      return { m, dias };
+    })
+    .filter(x => x.dias !== null && x.dias >= 7)
+    .map(x => ({
+      alert_id: `costura:${x.m.id || `${x.m.pedido_id}:${x.m.costurera_slug}`}`,
+      categoria: 'costura_atascada',
+      urgencia: x.dias >= 14 ? 'alta' : 'media',
+      pedido_id: x.m.pedido_id,
+      equipo: x.m.equipo,
+      costurera: x.m.costurera_nombre,
+      prenda: x.m.prenda,
+      cantidad: x.m.cantidad_enviada,
+      dias_en_costura: x.dias,
+    }))
+    .filter(a => !alertaYaNotificada(a.alert_id));
+
+  const ESTADOS_ACTIVOS_VISIBLES = ['hacer-diseno', 'aprobado', 'enviado-calandra', 'calandra', 'llego-impresion', 'corte', 'tela-recibida'];
+  const pedidosParados = peds
+    .filter(p => ESTADOS_ACTIVOS_VISIBLES.includes(p.estado))
+    .map(p => {
+      const ultimo = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : null;
+      const dias = ultimo ? Math.floor((ahora - ultimo) / 86400000) : null;
+      return { p, dias };
+    })
+    .filter(x => x.dias !== null && x.dias >= 5)
+    .sort((a, b) => b.dias - a.dias)
+    .slice(0, 15)
+    .map(x => ({
+      alert_id: `pedido_parado:${x.p.id}:${x.dias}`,
+      categoria: 'pedidos_parados',
+      urgencia: x.dias >= 10 ? 'alta' : 'media',
+      pedido_id: x.p.id,
+      equipo: x.p.equipo,
+      vendedora: x.p.vendedora,
+      estado: x.p.estado,
+      dias_sin_movimiento: x.dias,
+    }))
+    .filter(a => !alertaYaNotificada(a.alert_id));
+
+  const disenosSinAsignar = peds
+    .filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado)
+    .map(p => {
+      const venta = p.fechaVenta ? new Date(p.fechaVenta).getTime() : null;
+      const horas = venta ? (ahora - venta) / 36e5 : null;
+      return { p, horas };
+    })
+    .filter(x => x.horas !== null && x.horas >= 24)
+    .sort((a, b) => b.horas - a.horas)
+    .slice(0, 10)
+    .map(x => ({
+      alert_id: `diseno_sin_asignar:${x.p.id}`,
+      categoria: 'disenos_sin_asignar',
+      urgencia: x.horas >= 48 ? 'alta' : 'media',
+      pedido_id: x.p.id,
+      equipo: x.p.equipo,
+      vendedora: x.p.vendedora,
+      horas_pendiente: Math.round(x.horas),
+    }))
+    .filter(a => !alertaYaNotificada(a.alert_id));
+
+  const total_nuevas = consignaciones.length + costuraAtascada.length + pedidosParados.length + disenosSinAsignar.length;
+
+  let mensaje_wa = '';
+  if (total_nuevas > 0) {
+    const lineas = [`Camilo, ${total_nuevas} cosas para revisar:`];
+    if (consignaciones.length) lineas.push(`- ${consignaciones.length} consignacion(es) huerfana(s)`);
+    if (costuraAtascada.length) lineas.push(`- ${costuraAtascada.length} pedido(s) atascado(s) en costura`);
+    if (pedidosParados.length) lineas.push(`- ${pedidosParados.length} pedido(s) parado(s)`);
+    if (disenosSinAsignar.length) lineas.push(`- ${disenosSinAsignar.length} diseno(s) sin asignar`);
+    mensaje_wa = lineas.join('\n');
+  }
+
+  if (autoMarcar && total_nuevas > 0) {
+    const todosIds = [
+      ...consignaciones.map(a => a.alert_id),
+      ...costuraAtascada.map(a => a.alert_id),
+      ...pedidosParados.map(a => a.alert_id),
+      ...disenosSinAsignar.map(a => a.alert_id),
+    ];
+    marcarAlertasNotificadas(todosIds);
+  }
+
+  return {
+    ok: true,
+    total_nuevas,
+    timestamp: new Date().toISOString(),
+    mensaje_wa,
+    marcadas_auto: !!(autoMarcar && total_nuevas > 0),
+    categorias: {
+      consignaciones,
+      costura_atascada: costuraAtascada,
+      pedidos_parados: pedidosParados,
+      disenos_sin_asignar: disenosSinAsignar,
+    },
+    nota_jarvis: total_nuevas > 0
+      ? `Hay ${total_nuevas} alertas. El campo mensaje_wa ya esta formateado, mandalo TAL CUAL al WA de Camilo.`
+      : 'mensaje_wa vacio. NO mandes nada. Devolve "ok" y termina.',
+  };
+}
+
 function _leerPrimerPagos() {
   try { return JSON.parse(fs.readFileSync(PRIMER_PAGOS_FILE, 'utf8')); }
   catch { return []; }
@@ -11446,140 +11579,7 @@ setInterval(cargar, 15000);
     try {
       const qs = new URLSearchParams((req.url.split('?')[1] || ''));
       const autoMarcar = qs.get('auto_marcar') === '1';
-      const ahora = Date.now();
-      const peds = leerPedidos();
-
-      // ─── 1. Consignaciones huerfanas (pagos > 12h sin pedido) ───
-      const consignaciones = _leerPrimerPagos()
-        .filter(p => p.estado === 'esperando-equipo')
-        .filter(p => {
-          const horas = (ahora - new Date(p.creadoEn).getTime()) / 36e5;
-          return horas >= 12 && horas < 48; // 12h-48h. <12h no molesta, >48h ya expiro.
-        })
-        .map(p => ({
-          alert_id: `consignacion:${p.id}`,
-          categoria: 'consignaciones',
-          urgencia: 'media',
-          monto: p.monto,
-          banco: p.banco,
-          vendedora: p.vendedora,
-          cliente_telefono: p.telefono,
-          cliente_nombre: p.nombreCliente,
-          horas_pendiente: Math.round((ahora - new Date(p.creadoEn).getTime()) / 36e5),
-          accion_sugerida: `POST /api/asistente/consignaciones/${p.id}/crear-pedido o /ignorar`,
-        }))
-        .filter(a => !alertaYaNotificada(a.alert_id));
-
-      // ─── 2. Costura atascada (>7 dias sin devolver) ───
-      const movs = db.leerMovimientosCosturaPendientes() || [];
-      const costuraAtascada = movs
-        .map(m => {
-          const fe = m.fecha_envio ? new Date(m.fecha_envio).getTime() : null;
-          const dias = fe ? Math.floor((ahora - fe) / 86400000) : null;
-          return { m, dias };
-        })
-        .filter(x => x.dias !== null && x.dias >= 7)
-        .map(x => ({
-          alert_id: `costura:${x.m.id || `${x.m.pedido_id}:${x.m.costurera_slug}`}`,
-          categoria: 'costura_atascada',
-          urgencia: x.dias >= 14 ? 'alta' : 'media',
-          pedido_id: x.m.pedido_id,
-          equipo: x.m.equipo,
-          costurera: x.m.costurera_nombre,
-          prenda: x.m.prenda,
-          cantidad: x.m.cantidad_enviada,
-          dias_en_costura: x.dias,
-        }))
-        .filter(a => !alertaYaNotificada(a.alert_id));
-
-      // ─── 3. Pedidos parados (sin movimiento >5 dias, estados activos) ───
-      const ESTADOS_ACTIVOS_VISIBLES = ['hacer-diseno', 'aprobado', 'enviado-calandra', 'calandra', 'llego-impresion', 'corte', 'tela-recibida'];
-      const pedidosParados = peds
-        .filter(p => ESTADOS_ACTIVOS_VISIBLES.includes(p.estado))
-        .map(p => {
-          const ultimo = p.ultimoMovimiento ? new Date(p.ultimoMovimiento).getTime() : null;
-          const dias = ultimo ? Math.floor((ahora - ultimo) / 86400000) : null;
-          return { p, dias };
-        })
-        .filter(x => x.dias !== null && x.dias >= 5)
-        .sort((a, b) => b.dias - a.dias)
-        .slice(0, 15) // max 15 para no saturar
-        .map(x => ({
-          alert_id: `pedido_parado:${x.p.id}:${x.dias}`,
-          categoria: 'pedidos_parados',
-          urgencia: x.dias >= 10 ? 'alta' : 'media',
-          pedido_id: x.p.id,
-          equipo: x.p.equipo,
-          vendedora: x.p.vendedora,
-          estado: x.p.estado,
-          dias_sin_movimiento: x.dias,
-        }))
-        .filter(a => !alertaYaNotificada(a.alert_id));
-
-      // ─── 4. Diseños sin asignar (>24h en hacer-diseno sin disenador) ───
-      const disenosSinAsignar = peds
-        .filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado)
-        .map(p => {
-          const venta = p.fechaVenta ? new Date(p.fechaVenta).getTime() : null;
-          const horas = venta ? (ahora - venta) / 36e5 : null;
-          return { p, horas };
-        })
-        .filter(x => x.horas !== null && x.horas >= 24)
-        .sort((a, b) => b.horas - a.horas)
-        .slice(0, 10)
-        .map(x => ({
-          alert_id: `diseno_sin_asignar:${x.p.id}`,
-          categoria: 'disenos_sin_asignar',
-          urgencia: x.horas >= 48 ? 'alta' : 'media',
-          pedido_id: x.p.id,
-          equipo: x.p.equipo,
-          vendedora: x.p.vendedora,
-          horas_pendiente: Math.round(x.horas),
-        }))
-        .filter(a => !alertaYaNotificada(a.alert_id));
-
-      const totalNuevas = consignaciones.length + costuraAtascada.length + pedidosParados.length + disenosSinAsignar.length;
-
-      // mensaje_wa: texto ya formateado listo para mandar al WA de Camilo.
-      // Si no hay alertas, queda vacio -> JARVIS no manda nada.
-      let mensaje_wa = '';
-      if (totalNuevas > 0) {
-        const lineas = [`Camilo, ${totalNuevas} cosas para revisar:`];
-        if (consignaciones.length) lineas.push(`- ${consignaciones.length} consignacion(es) huerfana(s)`);
-        if (costuraAtascada.length) lineas.push(`- ${costuraAtascada.length} pedido(s) atascado(s) en costura`);
-        if (pedidosParados.length) lineas.push(`- ${pedidosParados.length} pedido(s) parado(s)`);
-        if (disenosSinAsignar.length) lineas.push(`- ${disenosSinAsignar.length} diseno(s) sin asignar`);
-        mensaje_wa = lineas.join('\n');
-      }
-
-      // Si auto_marcar=1 y hay alertas, marcarlas como notificadas internamente.
-      // Esto evita que JARVIS tenga que hacer un POST aparte (escape hell de comillas en Windows shell).
-      if (autoMarcar && totalNuevas > 0) {
-        const todosIds = [
-          ...consignaciones.map(a => a.alert_id),
-          ...costuraAtascada.map(a => a.alert_id),
-          ...pedidosParados.map(a => a.alert_id),
-          ...disenosSinAsignar.map(a => a.alert_id),
-        ];
-        marcarAlertasNotificadas(todosIds);
-      }
-
-      return json(res, 200, {
-        ok: true,
-        total_nuevas: totalNuevas,
-        timestamp: new Date().toISOString(),
-        mensaje_wa,
-        marcadas_auto: autoMarcar && totalNuevas > 0,
-        categorias: {
-          consignaciones,
-          costura_atascada: costuraAtascada,
-          pedidos_parados: pedidosParados,
-          disenos_sin_asignar: disenosSinAsignar,
-        },
-        nota_jarvis: totalNuevas > 0
-          ? `Hay ${totalNuevas} alertas. El campo mensaje_wa ya esta formateado, mandalo TAL CUAL al WA de Camilo.`
-          : 'mensaje_wa vacio. NO mandes nada. Devolve "ok" y termina.',
-      });
+      return json(res, 200, _computarAlertas(autoMarcar));
     } catch (e) {
       console.error('[alertas-pendientes]', e);
       return json(res, 500, { error: e.message });
@@ -12723,6 +12723,28 @@ setInterval(cron8pmTick, 60 * 1000);
 // Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
 setTimeout(cron8pmTick, 30 * 1000);
 console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON ALERTAS JEFE — cada 30 min en horario laboral (8 AM - 8 PM Bogotá)
+// Computa _computarAlertas(true). Si hay alertas nuevas, manda UN WA a Camilo
+// via notificarJefes. Si no, silencio. Reemplaza al cron de OpenClaw que
+// peleaba con escapes de shell de Windows.
+// ═══════════════════════════════════════════════════════════════════
+async function cronAlertasJefeTick() {
+  try {
+    const horaBogota = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota', hour: '2-digit', hour12: false }), 10);
+    if (horaBogota < 8 || horaBogota >= 20) return; // solo 8 AM - 8 PM Bogota
+    const r = _computarAlertas(true);
+    if (!r.mensaje_wa) return; // sin alertas -> silencio
+    if (typeof notificarJefes === 'function') {
+      await notificarJefes(r.mensaje_wa, { soloJefe: true, dedupeKey: `alertas-jefe:${new Date().toISOString().slice(0,13)}` });
+      console.log(`[cron-alertas-jefe] enviado WA con ${r.total_nuevas} alertas`);
+    }
+  } catch (e) { console.error('[cron-alertas-jefe error]', e.message); }
+}
+setInterval(cronAlertasJefeTick, 30 * 60 * 1000); // cada 30 min
+setTimeout(cronAlertasJefeTick, 90 * 1000); // primer tick 90s despues de arrancar
+console.log('[cron-alertas-jefe] activado — cada 30 min, 8 AM - 8 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON SILENCIOSO 10 PM Bogotá — revisa TODOS los pedidos activos y los
