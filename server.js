@@ -11441,9 +11441,11 @@ setInterval(cargar, 15000);
   // Categorias: consignaciones huerfanas, costura atascada, pedidos parados,
   // diseños sin asignar.
   // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'GET' && req.url === '/api/asistente/alertas-pendientes') {
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/asistente/alertas-pendientes') {
     if (!authAsistente(req, res)) return;
     try {
+      const qs = new URLSearchParams((req.url.split('?')[1] || ''));
+      const autoMarcar = qs.get('auto_marcar') === '1';
       const ahora = Date.now();
       const peds = leerPedidos();
 
@@ -11538,10 +11540,36 @@ setInterval(cargar, 15000);
 
       const totalNuevas = consignaciones.length + costuraAtascada.length + pedidosParados.length + disenosSinAsignar.length;
 
+      // mensaje_wa: texto ya formateado listo para mandar al WA de Camilo.
+      // Si no hay alertas, queda vacio -> JARVIS no manda nada.
+      let mensaje_wa = '';
+      if (totalNuevas > 0) {
+        const lineas = [`Camilo, ${totalNuevas} cosas para revisar:`];
+        if (consignaciones.length) lineas.push(`- ${consignaciones.length} consignacion(es) huerfana(s)`);
+        if (costuraAtascada.length) lineas.push(`- ${costuraAtascada.length} pedido(s) atascado(s) en costura`);
+        if (pedidosParados.length) lineas.push(`- ${pedidosParados.length} pedido(s) parado(s)`);
+        if (disenosSinAsignar.length) lineas.push(`- ${disenosSinAsignar.length} diseno(s) sin asignar`);
+        mensaje_wa = lineas.join('\n');
+      }
+
+      // Si auto_marcar=1 y hay alertas, marcarlas como notificadas internamente.
+      // Esto evita que JARVIS tenga que hacer un POST aparte (escape hell de comillas en Windows shell).
+      if (autoMarcar && totalNuevas > 0) {
+        const todosIds = [
+          ...consignaciones.map(a => a.alert_id),
+          ...costuraAtascada.map(a => a.alert_id),
+          ...pedidosParados.map(a => a.alert_id),
+          ...disenosSinAsignar.map(a => a.alert_id),
+        ];
+        marcarAlertasNotificadas(todosIds);
+      }
+
       return json(res, 200, {
         ok: true,
         total_nuevas: totalNuevas,
         timestamp: new Date().toISOString(),
+        mensaje_wa,
+        marcadas_auto: autoMarcar && totalNuevas > 0,
         categorias: {
           consignaciones,
           costura_atascada: costuraAtascada,
@@ -11549,8 +11577,8 @@ setInterval(cargar, 15000);
           disenos_sin_asignar: disenosSinAsignar,
         },
         nota_jarvis: totalNuevas > 0
-          ? `Hay ${totalNuevas} alertas nuevas. Resumi para Camilo en WA y despues marcalas vistas via POST /api/asistente/alertas/marcar-vistas con los alert_id.`
-          : 'No hay alertas nuevas. NO mandes WA a Camilo, dejalo tranquilo.',
+          ? `Hay ${totalNuevas} alertas. El campo mensaje_wa ya esta formateado, mandalo TAL CUAL al WA de Camilo.`
+          : 'mensaje_wa vacio. NO mandes nada. Devolve "ok" y termina.',
       });
     } catch (e) {
       console.error('[alertas-pendientes]', e);
