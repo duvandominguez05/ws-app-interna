@@ -6083,10 +6083,10 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
 
       const INSTANCIAS = [
-        { slug: 'ws-ventas', urlPath: 'ws-ventas',  vendedora: 'Betty', token: process.env.EVO_KEY_VENTAS || '5DC08B336216-404C-BE94-A95B4A9A0528', labelsConfirmado: ['En Proceso','PAGO EN CASA'] },
-        { slug: 'ws-wendy',  urlPath: 'ws%20wendy', vendedora: 'Wendy', token: process.env.EVO_KEY_WENDY  || 'D26BB7CE0FF8-4BAC-877D-B874BCF86890', labelsConfirmado: ['CONSIGNADO'] },
-        { slug: 'ws-ney',    urlPath: 'ws-ney',     vendedora: 'Ney',   token: process.env.EVO_KEY_NEY    || '81851853FF36-444A-A76E-6C167CF14073', labelsConfirmado: ['Pagado'] },
-        { slug: 'ws-paola',  urlPath: 'ws-paola',   vendedora: 'Paola', token: process.env.EVO_KEY_PAOLA  || 'A297362F7EC2-4BD2-8DE9-35A8ECCCF6B1', labelsConfirmado: ['Pendiente abono'] },
+        { slug: 'ws-ventas', urlPath: 'ws-ventas',  vendedora: 'Betty', token: process.env.EVO_KEY_VENTAS || '5DC08B336216-404C-BE94-A95B4A9A0528', labelsConfirmado: ['En Proceso','PAGO EN CASA'],         labelsEntregado: ['entregado'] },
+        { slug: 'ws-wendy',  urlPath: 'ws%20wendy', vendedora: 'Wendy', token: process.env.EVO_KEY_WENDY  || 'D26BB7CE0FF8-4BAC-877D-B874BCF86890', labelsConfirmado: ['CONSIGNADO'],                       labelsEntregado: ['Pedido finalizado'] },
+        { slug: 'ws-ney',    urlPath: 'ws-ney',     vendedora: 'Ney',   token: process.env.EVO_KEY_NEY    || '81851853FF36-444A-A76E-6C167CF14073', labelsConfirmado: ['Pagado'],                            labelsEntregado: ['Venta'] },
+        { slug: 'ws-paola',  urlPath: 'ws-paola',   vendedora: 'Paola', token: process.env.EVO_KEY_PAOLA  || 'A297362F7EC2-4BD2-8DE9-35A8ECCCF6B1', labelsConfirmado: ['Pendiente abono','Pendiente abono '], labelsEntregado: ['Entregado'] },
       ];
       const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
       const limiteMs = Date.now() - dias * 24 * 60 * 60 * 1000;
@@ -6114,12 +6114,13 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
               continue;
             }
             const idsConf = labels.filter(l => inst.labelsConfirmado.includes(l.name)).map(l => String(l.id));
+            const idsEntregado = labels.filter(l => (inst.labelsEntregado || []).includes(l.name)).map(l => String(l.id));
             if (idsConf.length === 0) {
               porInstancia.push({ instancia: inst.slug, error: 'no se encontraron labels de venta confirmada', labelsBuscadas: inst.labelsConfirmado });
               continue;
             }
 
-            // 2. findChats con esas etiquetas
+            // 2. findChats con etiquetas de venta confirmada
             const rChats = await fetch(`${evoUrl}/chat/findChats/${inst.urlPath}`, {
               method: 'POST',
               headers: { apikey: apiKey, 'Content-Type': 'application/json' },
@@ -6132,8 +6133,23 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
             }
             chatsTotal = chats.length;
 
-            // 3. Filtrar por actividad reciente
+            // 2b. Listar chats YA ENTREGADOS para excluirlos (solo VIGENTES)
+            const jidsEntregados = new Set();
+            if (idsEntregado.length > 0) {
+              try {
+                const rE = await fetch(`${evoUrl}/chat/findChats/${inst.urlPath}`, {
+                  method: 'POST',
+                  headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ where: { labels: idsEntregado } }),
+                });
+                const chatsE = await rE.json();
+                if (Array.isArray(chatsE)) chatsE.forEach(c => c.remoteJid && jidsEntregados.add(c.remoteJid));
+              } catch {}
+            }
+
+            // 3. Filtrar: VIGENTES = (etiqueta confirmado) AND (NO etiqueta entregado) AND (actividad reciente)
             const chatsRec = chats.filter(c => {
+              if (jidsEntregados.has(c.remoteJid)) return false; // ya entregado, excluir
               const ts = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
               return ts >= limiteMs;
             });
@@ -6207,9 +6223,11 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
             porInstancia.push({
               instancia: inst.slug,
               vendedora: inst.vendedora,
-              etiquetas_buscadas: inst.labelsConfirmado,
-              chats_total: chatsTotal,
-              chats_recientes: recientes,
+              etiquetas_confirmado: inst.labelsConfirmado,
+              etiquetas_entregado_excluidas: inst.labelsEntregado || [],
+              chats_total_confirmados: chatsTotal,
+              chats_excluidos_por_entregado: jidsEntregados.size,
+              chats_vigentes_recientes: recientes,
               ya_existen_en_erp: yaExisten,
               [modo === 'dry-run' ? 'crearia' : 'creados']: creados,
               saltados,
