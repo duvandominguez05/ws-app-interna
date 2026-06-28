@@ -848,6 +848,101 @@ async function analizarChatMultimediaConGemini(mensajes, nombreEquipo) {
 // mejor que Gemini en chats complejos.
 // Recibe: mensajesEnriquecidos (con base64), datosPedido, analisisGemini
 // Devuelve: {estadoVeredicto, confianza, razonamiento, pedidoActualResumen, hayPedidoAdicional, ...}
+// ─────────────────────────────────────────────────────────────────
+// DETECCION DE VENTA CONFIRMADA — usado cuando llega evento de etiqueta WA
+// Manda los ultimos mensajes a Gemini con prompt especifico de venta.
+// Devuelve { hayVenta: bool, confianza, evidencia, monto, fechaPago, razon }
+// ─────────────────────────────────────────────────────────────────
+async function iaDetectarVentaEnChat(mensajes, contexto = {}) {
+  const { telefono = '', vendedora = '', etiquetaTrigger = '' } = contexto;
+  global._geminiUltimoError = null;
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) { global._geminiUltimoError = 'no api key'; return null; }
+    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+
+    const preamble = `Sos analista de W&S Enterprise (uniformes deportivos sublimados, Bogota Colombia).\n` +
+      `Vendedora: ${vendedora || '?'}. Cliente tel: ${telefono || '?'}.\n` +
+      (etiquetaTrigger ? `La vendedora etiqueto este chat como "${etiquetaTrigger}" hace poco. Usa eso como pista pero NO como prueba unica.\n` : '') +
+      `\nTu unica tarea: determinar SI HAY VENTA CONFIRMADA. Una venta confirmada en W&S es CUALQUIERA de:\n` +
+      `  a) Cliente envio COMPROBANTE de pago (imagen de transferencia, Nequi, Bancolombia, Daviplata, recibo bancario), o\n` +
+      `  b) Cliente declaro explicitamente PAGO: "ya te transferi", "ya consigne", "ya pague", "ya quedo el abono", "te envie el comprobante", etc.\n` +
+      `Y ADEMAS hay aceptacion de la vendedora o continuidad del flujo post-pago.\n\n` +
+      `IMPORTANTE — NO ES VENTA:\n` +
+      `  - "te voy a transferir", "ahora te pago", "deja consigno" → futuro, no venta confirmada.\n` +
+      `  - Cotizaciones, dudas, conversaciones iniciales sin pago.\n` +
+      `  - Pago a otro proveedor mencionado de pasada.\n` +
+      `  - Imagen sin comprobante claro (foto de tela, jugadores, talla).\n\n` +
+      `Si hay multiples pedidos en el chat, enfocate en el MAS RECIENTE.\n\n` +
+      `Responde SOLO JSON valido (sin markdown):\n` +
+      `{"hayVenta": true|false,\n` +
+      ` "confianza": "alta"|"media"|"baja",\n` +
+      ` "evidencia": "frase exacta o descripcion del comprobante visto",\n` +
+      ` "monto": "monto detectado o null",\n` +
+      ` "fechaPago": "fecha del pago o null",\n` +
+      ` "razon": "explicacion en una linea"}\n\n` +
+      `═══════════════════════════════════════════════════════════════\n` +
+      `CONVERSACION:\n`;
+
+    const parts = [{ text: preamble }];
+    let idxMsg = 0;
+    let imagenesUsadas = 0, audiosUsados = 0;
+    const MAX_IMG = 8, MAX_AUDIO = 4;
+    for (const m of mensajes) {
+      idxMsg++;
+      const cabecera = `\n[msg ${idxMsg} | ${m.quien} | ${m.fecha || ''}]${m.texto ? ' ' + m.texto.slice(0, 400) : ''}`;
+      parts.push({ text: cabecera });
+      for (const a of (m.attachments || [])) {
+        if (!a || !a.base64 || !a.mime) continue;
+        const isImg = a.mime.startsWith('image/');
+        const isAud = a.mime.startsWith('audio/');
+        if (isImg && imagenesUsadas < MAX_IMG) {
+          parts.push({ text: `[IMG de ${m.quien}]:` });
+          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
+          imagenesUsadas++;
+        } else if (isAud && audiosUsados < MAX_AUDIO) {
+          parts.push({ text: `[AUDIO de ${m.quien}]:` });
+          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
+          audiosUsados++;
+        }
+      }
+    }
+    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
+
+    const body = {
+      contents: [{ parts }],
+      generationConfig: { temperature: 0, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[gemini-venta] HTTP', r.status, errText.slice(0, 200));
+      global._geminiUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
+      return null;
+    }
+    const data = await r.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
+    try {
+      const parsed = JSON.parse(limpio);
+      parsed._meta = { imagenesUsadas, audiosUsados, mensajesAnalizados: idxMsg };
+      return parsed;
+    } catch {
+      global._geminiUltimoError = `parse error: ${limpio.slice(0, 300)}`;
+      return { hayVenta: false, confianza: 'baja', razon: 'parse error', _raw: limpio.slice(0, 500) };
+    }
+  } catch (e) {
+    console.error('[gemini-venta error]', e.message);
+    global._geminiUltimoError = `exception: ${e.message}`;
+    return null;
+  }
+}
+
 async function analizarChatConClaude(mensajesEnriquecidos, datosPedido, analisisGemini) {
   global._claudeUltimoError = null;
   try {
@@ -5201,6 +5296,91 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         cronologia: mensajesResumen,
         errorGemini: global._geminiUltimoError || null,
         errorClaude: global._claudeUltimoError || null,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /api/admin/test-deteccion-venta?telefono=573XXX&vendedora=Wendy&etiqueta=CONSIGNADO
+  // Toma los ultimos mensajes del chat (Chatwoot), descarga imagenes y audios,
+  // y manda a Gemini con prompt especifico de "hay venta?".
+  // No escribe nada. Devuelve veredicto + URL chatwoot para verificar manual.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/test-deteccion-venta')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const telefono = (u.searchParams.get('telefono') || '').replace(/\D/g, '');
+      const vendedora = u.searchParams.get('vendedora') || '';
+      const etiquetaTrigger = u.searchParams.get('etiqueta') || '';
+      const limit = Math.min(parseInt(u.searchParams.get('limit') || '30', 10), 50);
+      if (!telefono || telefono.length < 8) {
+        return json(res, 400, { error: 'falta telefono valido' });
+      }
+
+      const contacto = await buscarContactoChatwoot(telefono);
+      if (!contacto?.id) return json(res, 200, { error: 'sin contacto chatwoot', telefono });
+
+      const cwUrl = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const cwApiKey = process.env.CHATWOOT_API_KEY;
+      const rConv = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, {
+        headers: { 'api_access_token': cwApiKey },
+      });
+      const dataConv = await rConv.json();
+      const conv = (dataConv.payload || [])[0];
+      if (!conv?.id) return json(res, 200, { error: 'sin conversacion', telefono });
+      const rMsg = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, {
+        headers: { 'api_access_token': cwApiKey },
+      });
+      const dataMsg = await rMsg.json();
+      const todosMensajes = dataMsg.payload || dataMsg || [];
+      const recientes = todosMensajes.slice(-limit);
+
+      const mensajesEnriquecidos = [];
+      let imgsTotal = 0, audsTotal = 0;
+      const MAX_IMG_TOTAL = 8, MAX_AUDIO_TOTAL = 4;
+      for (const m of recientes) {
+        const quien = (m.message_type === 0) ? 'cliente' : 'vendedora';
+        const fecha = m.created_at ? (new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' })) : '';
+        const adj = [];
+        for (const a of (m.attachments || [])) {
+          if (a.file_type === 'image' && imgsTotal < MAX_IMG_TOTAL) {
+            const dl = await descargarAttachmentChatwootBase64(a.data_url);
+            if (dl) { adj.push({ ...dl, kind: 'image' }); imgsTotal++; }
+          } else if (a.file_type === 'audio' && audsTotal < MAX_AUDIO_TOTAL) {
+            const dl = await descargarAttachmentChatwootBase64(a.data_url);
+            if (dl) { adj.push({ ...dl, kind: 'audio' }); audsTotal++; }
+          }
+        }
+        mensajesEnriquecidos.push({
+          quien, fecha, texto: (m.content || '').slice(0, 600), attachments: adj,
+        });
+      }
+
+      const veredicto = await iaDetectarVentaEnChat(mensajesEnriquecidos, {
+        telefono, vendedora, etiquetaTrigger,
+      });
+
+      const mensajesResumen = mensajesEnriquecidos.map(m => ({
+        quien: m.quien,
+        fecha: m.fecha,
+        texto: m.texto,
+        adjuntos: m.attachments.map(a => `${a.kind}(${a.mime}, ${a.kb}KB)`),
+      }));
+
+      return json(res, 200, {
+        ok: true,
+        telefono,
+        vendedora,
+        etiqueta_trigger: etiquetaTrigger,
+        chatwoot_url: `${cwUrl}/app/accounts/${accountId}/conversations/${conv.id}`,
+        mensajes_analizados: mensajesEnriquecidos.length,
+        adjuntos_descargados: { imagenes: imgsTotal, audios: audsTotal },
+        veredicto,
+        cronologia: mensajesResumen,
+        errorGemini: global._geminiUltimoError || null,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
