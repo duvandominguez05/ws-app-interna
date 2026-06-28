@@ -8449,45 +8449,152 @@ setInterval(cargar, 15000);
         const eventType = payload.event;
         const eventData = payload.data || payload;
 
-        // LÓGICA DE ETIQUETAS (LABELS)
-        // Buscamos cuando se añade una etiqueta
-        if (eventType === 'labels.association' || eventType === 'presence.update' || eventData?.action === 'add') {
-            
-            // Adaptamos según cómo venga la estructura (lo confirmaremos con los logs)
-            const action = eventData.action; 
-            const labelName = eventData.label?.name || eventData.labelName || '';
-            const remoteJid = eventData.chat?.id || eventData.remoteJid || eventData.number || '';
-            const pushName = eventData.chat?.contact?.pushName || eventData.pushName || 'Cliente WA';
-
-            // Detectar la etiqueta objetivo "En proceso"
-            if (action === 'add' && labelName.includes('En proceso')) {
-                 const telefono = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, ''); // Limpiar a solo números
-                 const vendedora = 'Betty'; // Asignación automática a Betty
-
-                 // Deduplicación: no crear si ya hay un pedido "confirmado" de este número hoy/este mes
-                 const pedidos = leerPedidos();
-                 const mesActual = new Date().toLocaleDateString('es-CO').slice(-7);
-                 const pdExistente = pedidos.find(p => p.telefono.replace(/\D/g, '') === telefono && (p.creadoEn || '').slice(-7) === mesActual && p.estado === 'confirmado');
-                 
-                 if (!pdExistente && telefono.length > 5) {
-                     resultadoApi = crearVentaInterna('pedido', vendedora, telefono, null, pushName);
-                     
-                     if (resultadoApi.ok) {
-                         // Forzamos el estado a 'confirmado' para asegurar que salte a producción
-                         const pedidosPost = leerPedidos();
-                         const nuevoPd = pedidosPost.find(p => p.id === resultadoApi.id);
-                         if (nuevoPd) {
-                             nuevoPd.estado = 'confirmado';
-                             nuevoPd.ultimoMovimiento = new Date().toISOString();
-                             guardarPedidos(pedidosPost, leerNextId());
-                         }
-                     }
-                     accionRealizada = true;
-                     console.log(`[evolution-webhook] Etiqueta 'En proceso' detectada. Pedido #${resultadoApi.id || 'N/A'} creado para ${telefono}`);
-                 } else if (pdExistente) {
-                     console.log(`[evolution-webhook] Etiqueta ignorada, el pedido para ${telefono} ya existe en estado confirmado.`);
-                 }
+        // ═══════════════════════════════════════════════════════════════
+        // LABELS WA (listas de WhatsApp) — mapeo etiqueta → estado ERP
+        // Cada vendedora tiene su set de etiquetas; el ERP las reconoce y
+        // avanza el pedido sin que nadie toque la app.
+        // Evento: labels.association con action 'add' (al poner etiqueta).
+        // 'remove' se ignora — el pedido no retrocede.
+        // ═══════════════════════════════════════════════════════════════
+        if (eventType === 'labels.association') {
+          try {
+            const instance = (payload.instance || '').toLowerCase();
+            const action = eventData.association?.type || eventData.type || eventData.action || '';
+            if (action !== 'add') {
+              // Solo procesamos cuando AGREGAN etiqueta. Quitarla no retrocede el pedido.
+              return json(res, 200, { ok: true, ignorado: 'action no es add', action });
             }
+
+            const labelName = String(eventData.label?.name || eventData.labelName || eventData.name || '').trim();
+            const BASURA = new Set(['Transferencia de la IA', 'Favoritos', 'No ledos', 'Grupos', 'Respondidos por la IA', '.', '']);
+            if (BASURA.has(labelName) || labelName === '') {
+              return json(res, 200, { ok: true, ignorado: 'etiqueta basura', labelName });
+            }
+
+            // Mapeo etiqueta → estado ERP, por instancia.
+            const ETIQUETAS_POR_INSTANCIA = {
+              'ws-ventas': {
+                'En Proceso':            'confirmado',
+                'PAGO EN CASA':          'confirmado',
+                'diseo confirmado':      'aprobado',
+                'Pedido en tela':        'tela-recibida',
+                'en tela y en costura':  'costura',
+                'entregado':             'entregado',
+              },
+              'ws wendy': {
+                'CONSIGNADO':            'confirmado',
+                'Pendiente para diseo':  'hacer-diseno',
+                'Pedido finalizado':     'entregado',
+              },
+              'ws-wendy': { // por si llega sin espacio
+                'CONSIGNADO':            'confirmado',
+                'Pendiente para diseo':  'hacer-diseno',
+                'Pedido finalizado':     'entregado',
+              },
+              'ws-ney': {
+                'Pagado':                'confirmado',
+                'Nuevo pedido':          'hacer-diseno',
+                'Venta':                 'entregado',
+              },
+              'ws-paola': {
+                'Pendiente abono':       'confirmado',
+                'Pedido en proceso':     'hacer-diseno',
+                'En Impresin':           'calandra',
+                'Entregado':             'entregado',
+              },
+            };
+            const VENDEDORA_POR_INSTANCIA = {
+              'ws-ventas': 'Betty',
+              'ws wendy':  'Wendy',
+              'ws-wendy':  'Wendy',
+              'ws-ney':    'Ney',
+              'ws-paola':  'Paola',
+            };
+
+            const mapeo = ETIQUETAS_POR_INSTANCIA[instance];
+            if (!mapeo) {
+              return json(res, 200, { ok: true, ignorado: 'instancia desconocida', instance });
+            }
+            const estadoNuevo = mapeo[labelName];
+            if (!estadoNuevo) {
+              console.log(`[labels-wa] ${instance}/"${labelName}" sin mapeo — ignorado`);
+              return json(res, 200, { ok: true, ignorado: 'etiqueta sin mapeo', labelName });
+            }
+
+            const remoteJid = eventData.chatId || eventData.chat?.id || eventData.remoteJid || eventData.number || '';
+            // Ignorar grupos y @lid (no son clientes individuales)
+            if (remoteJid.includes('@g.us') || remoteJid.includes('@lid')) {
+              return json(res, 200, { ok: true, ignorado: 'jid no-cliente', remoteJid });
+            }
+            const telefono = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            if (telefono.length < 7) {
+              return json(res, 200, { ok: true, ignorado: 'telefono invalido', telefono });
+            }
+
+            const vendedora = VENDEDORA_POR_INSTANCIA[instance] || 'Betty';
+            const pedidos = leerPedidos();
+            const normTel = (t) => {
+              const d = String(t || '').replace(/\D/g, '');
+              return d.startsWith('57') ? d.slice(2) : d;
+            };
+            const telLimpio = normTel(telefono);
+
+            // Buscar pedido ACTIVO (no entregado/archivado/cancelado) de este telefono
+            const ESTADOS_INACTIVOS = new Set(['entregado', 'archivado', 'cancelado', 'descartado']);
+            const pdActivo = pedidos.find(p =>
+              normTel(p.telefono) === telLimpio &&
+              !ESTADOS_INACTIVOS.has(p.estado || '')
+            );
+
+            if (pdActivo) {
+              if (pdActivo.estado === estadoNuevo) {
+                console.log(`[labels-wa] ${instance}/"${labelName}": pedido #${pdActivo.id} ya en ${estadoNuevo}`);
+                return json(res, 200, { ok: true, sin_cambio: true, pedido_id: pdActivo.id });
+              }
+              const estadoPrev = pdActivo.estado;
+              pdActivo.estado = estadoNuevo;
+              pdActivo.ultimoMovimiento = new Date().toISOString();
+              pdActivo.historial = pdActivo.historial || [];
+              pdActivo.historial.push({
+                ts: new Date().toISOString(),
+                evento: `Etiqueta WA "${labelName}" (${instance}) → ${estadoNuevo}`,
+                automatico: true,
+              });
+              guardarPedidos(pedidos, leerNextId());
+              console.log(`[labels-wa] ${instance}/"${labelName}": pedido #${pdActivo.id} ${estadoPrev}→${estadoNuevo}`);
+              return json(res, 200, { ok: true, accion: 'avanzar', pedido_id: pdActivo.id, estadoPrev, estadoNuevo });
+            }
+
+            if (estadoNuevo === 'confirmado') {
+              // No hay pedido + etiqueta de venta confirmada → crear nuevo
+              const pushName = eventData.pushName || eventData.chat?.contact?.pushName || 'Cliente WA';
+              const r = crearVentaInterna('pedido', vendedora, telefono, null, pushName);
+              if (r.ok && !r.duplicado) {
+                const peds2 = leerPedidos();
+                const np = peds2.find(p => p.id === r.id);
+                if (np) {
+                  np.estado = 'confirmado';
+                  np.ultimoMovimiento = new Date().toISOString();
+                  np.historial = np.historial || [];
+                  np.historial.push({
+                    ts: new Date().toISOString(),
+                    evento: `Pedido creado por etiqueta WA "${labelName}" (${instance})`,
+                    automatico: true,
+                  });
+                  guardarPedidos(peds2, leerNextId());
+                }
+                console.log(`[labels-wa] ${instance}/"${labelName}": pedido #${r.id} CREADO (${vendedora}, ${telefono})`);
+                return json(res, 200, { ok: true, accion: 'crear', pedido_id: r.id, vendedora, telefono });
+              }
+              return json(res, 200, { ok: true, accion: 'crear-skip', resultado: r });
+            }
+
+            console.log(`[labels-wa] ${instance}/"${labelName}": sin pedido activo para ${telefono} y etiqueta no crea venta — ignorado`);
+            return json(res, 200, { ok: true, ignorado: 'sin pedido activo y etiqueta no crea venta' });
+          } catch (e) {
+            console.error('[labels-wa error]', e.message, e.stack);
+            return json(res, 500, { error: e.message });
+          }
         }
 
         // ─────────────────────────────────────────────────────────────
