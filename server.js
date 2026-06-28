@@ -850,17 +850,19 @@ async function analizarChatMultimediaConGemini(mensajes, nombreEquipo) {
 // Devuelve: {estadoVeredicto, confianza, razonamiento, pedidoActualResumen, hayPedidoAdicional, ...}
 // ─────────────────────────────────────────────────────────────────
 // DETECCION DE VENTA CONFIRMADA — usado cuando llega evento de etiqueta WA
-// Manda los ultimos mensajes a Gemini con prompt especifico de venta.
+// Usa Anthropic Claude Haiku 4.5 (el modelo mas barato de Claude, ideal para clasificacion)
+// porque Camilo ya paga creditos Anthropic y Gemini se quedo sin saldo.
 // Devuelve { hayVenta: bool, confianza, evidencia, monto, fechaPago, razon }
 // ─────────────────────────────────────────────────────────────────
 async function iaDetectarVentaEnChat(mensajes, contexto = {}) {
   const { telefono = '', vendedora = '', etiquetaTrigger = '' } = contexto;
   global._geminiUltimoError = null;
+  global._claudeUltimoError = null;
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) { global._geminiUltimoError = 'no api key'; return null; }
-    const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { global._claudeUltimoError = 'no api key Anthropic'; return null; }
+    const modelo = process.env.CLAUDE_MODEL_VENTA || 'claude-haiku-4-5-20251001';
+    const url = 'https://api.anthropic.com/v1/messages';
 
     const preamble = `Sos analista de W&S Enterprise (uniformes deportivos sublimados, Bogota Colombia).\n` +
       `Vendedora: ${vendedora || '?'}. Cliente tel: ${telefono || '?'}.\n` +
@@ -891,60 +893,67 @@ async function iaDetectarVentaEnChat(mensajes, contexto = {}) {
       `═══════════════════════════════════════════════════════════════\n` +
       `CONVERSACION:\n`;
 
-    const parts = [{ text: preamble }];
+    // Claude Haiku 4.5 acepta imagenes en formato {type:'image', source:{type:'base64',...}}
+    // y NO procesa audios directamente. Los audios los pasamos como texto descriptivo.
+    const contentParts = [{ type: 'text', text: preamble }];
     let idxMsg = 0;
-    let imagenesUsadas = 0, audiosUsados = 0;
-    const MAX_IMG = 8, MAX_AUDIO = 4;
+    let imagenesUsadas = 0;
+    const MAX_IMG = 8;
     for (const m of mensajes) {
       idxMsg++;
       const cabecera = `\n[msg ${idxMsg} | ${m.quien} | ${m.fecha || ''}]${m.texto ? ' ' + m.texto.slice(0, 400) : ''}`;
-      parts.push({ text: cabecera });
+      contentParts.push({ type: 'text', text: cabecera });
       for (const a of (m.attachments || [])) {
         if (!a || !a.base64 || !a.mime) continue;
         const isImg = a.mime.startsWith('image/');
-        const isAud = a.mime.startsWith('audio/');
         if (isImg && imagenesUsadas < MAX_IMG) {
-          parts.push({ text: `[IMG de ${m.quien}]:` });
-          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
+          contentParts.push({ type: 'text', text: `[IMG de ${m.quien}]:` });
+          contentParts.push({
+            type: 'image',
+            source: { type: 'base64', media_type: a.mime, data: a.base64 },
+          });
           imagenesUsadas++;
-        } else if (isAud && audiosUsados < MAX_AUDIO) {
-          parts.push({ text: `[AUDIO de ${m.quien}]:` });
-          parts.push({ inline_data: { mime_type: a.mime, data: a.base64 } });
-          audiosUsados++;
         }
+        // audios omitidos: Haiku no los procesa nativos
       }
     }
-    parts.push({ text: `\n═══════════════════════════════════════════════════════════════\nResponde JSON:` });
+    contentParts.push({ type: 'text', text: `\n═══════════════════════════════════════════════════════════════\nResponde SOLO el JSON pedido, sin markdown:` });
 
     const body = {
-      contents: [{ parts }],
-      generationConfig: { temperature: 0, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
+      model: modelo,
+      max_tokens: 500,
+      temperature: 0,
+      messages: [{ role: 'user', content: contentParts }],
     };
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify(body),
     });
     if (!r.ok) {
       const errText = await r.text();
-      console.error('[gemini-venta] HTTP', r.status, errText.slice(0, 200));
-      global._geminiUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
+      console.error('[claude-venta] HTTP', r.status, errText.slice(0, 200));
+      global._claudeUltimoError = `HTTP ${r.status}: ${errText.slice(0, 300)}`;
       return null;
     }
     const data = await r.json();
-    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const texto = data?.content?.[0]?.text || '';
     const limpio = texto.replace(/```json\s*|\s*```/g, '').trim();
     try {
       const parsed = JSON.parse(limpio);
-      parsed._meta = { imagenesUsadas, audiosUsados, mensajesAnalizados: idxMsg };
+      parsed._meta = { imagenesUsadas, audiosUsados: 0, mensajesAnalizados: idxMsg, modelo };
       return parsed;
     } catch {
-      global._geminiUltimoError = `parse error: ${limpio.slice(0, 300)}`;
+      global._claudeUltimoError = `parse error: ${limpio.slice(0, 300)}`;
       return { hayVenta: false, confianza: 'baja', razon: 'parse error', _raw: limpio.slice(0, 500) };
     }
   } catch (e) {
-    console.error('[gemini-venta error]', e.message);
-    global._geminiUltimoError = `exception: ${e.message}`;
+    console.error('[claude-venta error]', e.message);
+    global._claudeUltimoError = `exception: ${e.message}`;
     return null;
   }
 }
