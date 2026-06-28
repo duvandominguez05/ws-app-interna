@@ -5303,6 +5303,123 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // GET /api/admin/verificar-detector-ventas?limit=8&dias=15
+  // Toma los ULTIMOS N pedidos confirmados/activos del ERP (= ground truth:
+  // sabemos que SI son ventas) y por cada uno corre iaDetectarVentaEnChat.
+  // Si la IA acierta en la mayoria, el detector es confiable y se puede
+  // integrar al handler de etiquetas WA.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/verificar-detector-ventas')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const limit = Math.min(parseInt(u.searchParams.get('limit') || '8', 10), 20);
+      const dias = Math.max(1, parseInt(u.searchParams.get('dias') || '15', 10));
+      const limiteMs = Date.now() - dias * 86400 * 1000;
+
+      const peds = leerPedidos();
+      const ESTADOS_OK = new Set(['confirmado','aprobado','hacer-diseno','tela-recibida','calandra','corte','costura','enviado-calandra','llego-impresion']);
+      const candidatos = peds
+        .filter(p => ESTADOS_OK.has(p.estado))
+        .filter(p => p.telefono && String(p.telefono).replace(/\D/g,'').length >= 8)
+        .filter(p => p.ultimoMovimiento && new Date(p.ultimoMovimiento).getTime() >= limiteMs)
+        .sort((a,b) => new Date(b.ultimoMovimiento).getTime() - new Date(a.ultimoMovimiento).getTime())
+        .slice(0, limit);
+
+      if (candidatos.length === 0) {
+        return json(res, 200, { ok: true, total: 0, mensaje: 'no hay pedidos confirmados recientes para probar' });
+      }
+
+      const cwUrl = process.env.CHATWOOT_URL;
+      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+      const cwApiKey = process.env.CHATWOOT_API_KEY;
+      const resultados = [];
+
+      for (const p of candidatos) {
+        try {
+          const tel = String(p.telefono).replace(/\D/g,'');
+          const contacto = await buscarContactoChatwoot(tel);
+          if (!contacto?.id) {
+            resultados.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora, tel, error: 'sin contacto chatwoot', acierto: null });
+            continue;
+          }
+          const rConv = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, { headers: { 'api_access_token': cwApiKey } });
+          const dataConv = await rConv.json();
+          const conv = (dataConv.payload || [])[0];
+          if (!conv?.id) {
+            resultados.push({ id: p.id, equipo: p.equipo, vendedora: p.vendedora, tel, error: 'sin conv chatwoot', acierto: null });
+            continue;
+          }
+          const rMsg = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, { headers: { 'api_access_token': cwApiKey } });
+          const dataMsg = await rMsg.json();
+          const todos = dataMsg.payload || dataMsg || [];
+          const recientes = todos.slice(-25);
+
+          const mEnr = [];
+          let imgs=0, auds=0;
+          for (const m of recientes) {
+            const adj = [];
+            for (const a of (m.attachments || [])) {
+              if (a.file_type === 'image' && imgs < 8) {
+                const dl = await descargarAttachmentChatwootBase64(a.data_url);
+                if (dl) { adj.push({ ...dl, kind: 'image' }); imgs++; }
+              } else if (a.file_type === 'audio' && auds < 3) {
+                const dl = await descargarAttachmentChatwootBase64(a.data_url);
+                if (dl) { adj.push({ ...dl, kind: 'audio' }); auds++; }
+              }
+            }
+            mEnr.push({
+              quien: m.message_type === 0 ? 'cliente' : 'vendedora',
+              fecha: m.created_at ? new Date(m.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '',
+              texto: (m.content || '').slice(0, 400),
+              attachments: adj,
+            });
+          }
+
+          const ver = await iaDetectarVentaEnChat(mEnr, { telefono: tel, vendedora: p.vendedora });
+          resultados.push({
+            id: p.id,
+            equipo: p.equipo,
+            vendedora: p.vendedora,
+            tel,
+            estado_erp: p.estado,
+            ia_dice_venta: ver?.hayVenta,
+            confianza: ver?.confianza,
+            evidencia: ver?.evidencia,
+            razon: ver?.razon,
+            acierto: ver?.hayVenta === true,
+            mensajes_analizados: mEnr.length,
+            imgs_audios: { imgs, auds },
+            chatwoot_url: `${cwUrl}/app/accounts/${accountId}/conversations/${conv.id}`,
+          });
+        } catch (eRow) {
+          resultados.push({ id: p.id, equipo: p.equipo, error: eRow.message, acierto: null });
+        }
+      }
+
+      const aciertos = resultados.filter(r => r.acierto === true).length;
+      const fallos = resultados.filter(r => r.acierto === false).length;
+      const noProcesados = resultados.filter(r => r.acierto === null).length;
+      const tasaAcierto = (resultados.length - noProcesados) > 0
+        ? Math.round(100 * aciertos / (resultados.length - noProcesados))
+        : 0;
+
+      return json(res, 200, {
+        ok: true,
+        total_pedidos_probados: resultados.length,
+        ground_truth: 'pedidos confirmados/activos del ERP (deberian ser TODOS ventas)',
+        aciertos_ia: aciertos,
+        fallos_ia: fallos,
+        sin_chatwoot: noProcesados,
+        tasa_acierto_porcentaje: tasaAcierto,
+        nota: tasaAcierto >= 80 ? 'IA confiable, listo para integrar al handler' : (tasaAcierto >= 60 ? 'IA aceptable, revisar fallos antes de integrar' : 'IA NO confiable todavia, revisar prompt'),
+        resultados,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // GET /api/admin/test-deteccion-venta?telefono=573XXX&vendedora=Wendy&etiqueta=CONSIGNADO
   // Toma los ultimos mensajes del chat (Chatwoot), descarga imagenes y audios,
   // y manda a Gemini con prompt especifico de "hay venta?".
