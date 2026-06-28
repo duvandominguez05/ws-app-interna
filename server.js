@@ -5513,6 +5513,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
         veredicto,
         cronologia: mensajesResumen,
         errorGemini: global._geminiUltimoError || null,
+        errorClaude: global._claudeUltimoError || null,
+        anthropicKeyPresente: !!process.env.ANTHROPIC_API_KEY,
       });
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
