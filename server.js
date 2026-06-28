@@ -6058,6 +6058,199 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /api/admin/backfill-etiquetas?dias=60&modo=dry-run|ejecutar&instancia=ws-wendy
+  //
+  // Procesa los chats que YA estan etiquetados como "venta confirmada"
+  // (anteriores al webhook LABELS_ASSOCIATION). Solo chats con actividad
+  // en los ultimos N dias.
+  //
+  // modo=dry-run: cuenta cuantos pedidos crearia, sin escribir nada.
+  // modo=ejecutar: crea los pedidos en el ERP via crearVentaInterna.
+  //
+  // Resuelve @lid mirando lastMessage.key.remoteJidAlt.
+  // Ignora grupos (@g.us) y @lid sin resolucion.
+  // Usa deduplicacion natural de crearVentaInterna (telefono+mes).
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/admin/backfill-etiquetas') {
+    try {
+      const qs = new URLSearchParams((req.url.split('?')[1] || ''));
+      const dias = Math.max(1, parseInt(qs.get('dias') || '60', 10));
+      const modo = (qs.get('modo') || 'dry-run').toLowerCase();
+      const instanciaFiltro = qs.get('instancia') || null;
+      if (modo !== 'dry-run' && modo !== 'ejecutar') {
+        return json(res, 400, { error: 'modo debe ser dry-run o ejecutar' });
+      }
+
+      const INSTANCIAS = [
+        { slug: 'ws-ventas', urlPath: 'ws-ventas',  vendedora: 'Betty', token: process.env.EVO_KEY_VENTAS || '5DC08B336216-404C-BE94-A95B4A9A0528', labelsConfirmado: ['En Proceso','PAGO EN CASA'] },
+        { slug: 'ws-wendy',  urlPath: 'ws%20wendy', vendedora: 'Wendy', token: process.env.EVO_KEY_WENDY  || 'D26BB7CE0FF8-4BAC-877D-B874BCF86890', labelsConfirmado: ['CONSIGNADO'] },
+        { slug: 'ws-ney',    urlPath: 'ws-ney',     vendedora: 'Ney',   token: process.env.EVO_KEY_NEY    || '81851853FF36-444A-A76E-6C167CF14073', labelsConfirmado: ['Pagado'] },
+        { slug: 'ws-paola',  urlPath: 'ws-paola',   vendedora: 'Paola', token: process.env.EVO_KEY_PAOLA  || 'A297362F7EC2-4BD2-8DE9-35A8ECCCF6B1', labelsConfirmado: ['Pendiente abono'] },
+      ];
+      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const limiteMs = Date.now() - dias * 24 * 60 * 60 * 1000;
+      const normTel = (t) => {
+        const d = String(t || '').replace(/\D/g, '');
+        return d.startsWith('57') ? d.slice(2) : d;
+      };
+
+      (async () => {
+        const porInstancia = [];
+        let totCreados = 0, totYaExisten = 0, totSaltados = 0, totLidSinResolver = 0;
+
+        for (const inst of INSTANCIAS) {
+          if (instanciaFiltro && instanciaFiltro !== inst.slug) continue;
+          const apiKey = inst.token;
+          const ejemplos = [];
+          let chatsTotal = 0, recientes = 0, yaExisten = 0, creados = 0, saltados = 0, lidSinResolver = 0;
+
+          try {
+            // 1. findLabels para mapear nombre→id
+            const rLab = await fetch(`${evoUrl}/label/findLabels/${inst.urlPath}`, { headers: { apikey: apiKey } });
+            const labels = await rLab.json();
+            if (!Array.isArray(labels)) {
+              porInstancia.push({ instancia: inst.slug, error: 'no se pudo listar labels', detalle: labels });
+              continue;
+            }
+            const idsConf = labels.filter(l => inst.labelsConfirmado.includes(l.name)).map(l => String(l.id));
+            if (idsConf.length === 0) {
+              porInstancia.push({ instancia: inst.slug, error: 'no se encontraron labels de venta confirmada', labelsBuscadas: inst.labelsConfirmado });
+              continue;
+            }
+
+            // 2. findChats con esas etiquetas
+            const rChats = await fetch(`${evoUrl}/chat/findChats/${inst.urlPath}`, {
+              method: 'POST',
+              headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ where: { labels: idsConf } }),
+            });
+            const chats = await rChats.json();
+            if (!Array.isArray(chats)) {
+              porInstancia.push({ instancia: inst.slug, error: 'no se pudo listar chats', detalle: chats });
+              continue;
+            }
+            chatsTotal = chats.length;
+
+            // 3. Filtrar por actividad reciente
+            const chatsRec = chats.filter(c => {
+              const ts = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
+              return ts >= limiteMs;
+            });
+            recientes = chatsRec.length;
+
+            // 4. Procesar cada chat
+            for (const c of chatsRec) {
+              const jid = c.remoteJid || '';
+              if (jid.includes('@g.us')) { saltados++; continue; }
+
+              let tel = '';
+              if (jid.endsWith('@s.whatsapp.net')) {
+                tel = jid.replace('@s.whatsapp.net','').replace(/\D/g,'');
+              } else if (jid.endsWith('@lid')) {
+                const alt = c.lastMessage?.key?.remoteJidAlt || c.remoteJidAlt;
+                if (alt && String(alt).endsWith('@s.whatsapp.net')) {
+                  tel = String(alt).replace('@s.whatsapp.net','').replace(/\D/g,'');
+                } else {
+                  lidSinResolver++;
+                  continue;
+                }
+              } else {
+                saltados++;
+                continue;
+              }
+
+              if (tel.length < 8) { saltados++; continue; }
+              const telLimpio = normTel(tel);
+
+              // Verificar si ya existe pedido para este telefono
+              const pedidos = leerPedidos();
+              const pdExiste = pedidos.find(p => normTel(p.telefono) === telLimpio);
+              if (pdExiste) {
+                yaExisten++;
+                if (ejemplos.length < 5) ejemplos.push({ tel, accion: 'ya_existe', pedido_id: pdExiste.id, estado: pdExiste.estado });
+                continue;
+              }
+
+              if (modo === 'dry-run') {
+                creados++;
+                if (ejemplos.length < 5) ejemplos.push({ tel, accion: 'crearia', cliente: c.pushName || c.contact?.pushName || '' });
+                continue;
+              }
+
+              // modo=ejecutar
+              const pushName = c.pushName || c.contact?.pushName || 'Cliente WA (backfill)';
+              const r = crearVentaInterna('pedido', inst.vendedora, tel, null, pushName);
+              if (r.ok && !r.duplicado) {
+                const peds2 = leerPedidos();
+                const np = peds2.find(p => p.id === r.id);
+                if (np) {
+                  np.estado = 'confirmado';
+                  np.ultimoMovimiento = new Date().toISOString();
+                  np.historial = np.historial || [];
+                  np.historial.push({
+                    ts: new Date().toISOString(),
+                    evento: `Backfill etiqueta WA ${inst.slug}`,
+                    automatico: true,
+                  });
+                  guardarPedidos(peds2, leerNextId());
+                  creados++;
+                  if (ejemplos.length < 5) ejemplos.push({ tel, accion: 'creado', pedido_id: r.id });
+                }
+              } else if (r.duplicado) {
+                yaExisten++;
+              } else {
+                saltados++;
+              }
+            }
+
+            porInstancia.push({
+              instancia: inst.slug,
+              vendedora: inst.vendedora,
+              etiquetas_buscadas: inst.labelsConfirmado,
+              chats_total: chatsTotal,
+              chats_recientes: recientes,
+              ya_existen_en_erp: yaExisten,
+              [modo === 'dry-run' ? 'crearia' : 'creados']: creados,
+              saltados,
+              lid_sin_resolver: lidSinResolver,
+              ejemplos,
+            });
+            totCreados += creados;
+            totYaExisten += yaExisten;
+            totSaltados += saltados;
+            totLidSinResolver += lidSinResolver;
+          } catch (e) {
+            porInstancia.push({ instancia: inst.slug, error: e.message });
+          }
+        }
+
+        json(res, 200, {
+          ok: true,
+          modo,
+          dias_filtro: dias,
+          resumen_total: {
+            [modo === 'dry-run' ? 'crearia' : 'creados']: totCreados,
+            ya_existen: totYaExisten,
+            saltados: totSaltados,
+            lid_sin_resolver: totLidSinResolver,
+          },
+          por_instancia: porInstancia,
+          nota: modo === 'dry-run'
+            ? 'DRY-RUN: nada se escribio. Revisa los numeros y si pintan bien, vuelve a llamar con modo=ejecutar.'
+            : 'EJECUTADO: pedidos creados en el ERP. Visibles en /pedidos.',
+        });
+      })().catch(e => {
+        console.error('[backfill-etiquetas]', e);
+        try { json(res, 500, { error: e.message, stack: e.stack }); } catch {}
+      });
+      return; // respuesta async
+    } catch (e) {
+      console.error('[backfill-etiquetas sync]', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // DEBUG: ver mensajes en Evolution directo (no Chatwoot)
   // GET /api/admin/debug-eventos-recientes?tipo=LABELS&limit=10
   // Lista los ultimos N eventos crudos guardados en evolution_events.
