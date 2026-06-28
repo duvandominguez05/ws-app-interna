@@ -865,16 +865,22 @@ async function iaDetectarVentaEnChat(mensajes, contexto = {}) {
     const preamble = `Sos analista de W&S Enterprise (uniformes deportivos sublimados, Bogota Colombia).\n` +
       `Vendedora: ${vendedora || '?'}. Cliente tel: ${telefono || '?'}.\n` +
       (etiquetaTrigger ? `La vendedora etiqueto este chat como "${etiquetaTrigger}" hace poco. Usa eso como pista pero NO como prueba unica.\n` : '') +
-      `\nTu unica tarea: determinar SI HAY VENTA CONFIRMADA. Una venta confirmada en W&S es CUALQUIERA de:\n` +
-      `  a) Cliente envio COMPROBANTE de pago (imagen de transferencia, Nequi, Bancolombia, Daviplata, recibo bancario), o\n` +
-      `  b) Cliente declaro explicitamente PAGO: "ya te transferi", "ya consigne", "ya pague", "ya quedo el abono", "te envie el comprobante", etc.\n` +
-      `Y ADEMAS hay aceptacion de la vendedora o continuidad del flujo post-pago.\n\n` +
-      `IMPORTANTE — NO ES VENTA:\n` +
-      `  - "te voy a transferir", "ahora te pago", "deja consigno" → futuro, no venta confirmada.\n` +
-      `  - Cotizaciones, dudas, conversaciones iniciales sin pago.\n` +
-      `  - Pago a otro proveedor mencionado de pasada.\n` +
-      `  - Imagen sin comprobante claro (foto de tela, jugadores, talla).\n\n` +
-      `Si hay multiples pedidos en el chat, enfocate en el MAS RECIENTE.\n\n` +
+      `\nTu tarea: determinar SI ESTE CHAT REPRESENTA UN PEDIDO/VENTA CONFIRMADA (no necesariamente RECIENTE).\n\n` +
+      `EVIDENCIA POSITIVA DE VENTA (cualquiera basta):\n` +
+      `  a) Cliente envio COMPROBANTE de pago en imagen (transferencia, Nequi, Bancolombia, Daviplata, recibo bancario), o\n` +
+      `  b) Cliente declaro PAGO: "ya te transferi", "ya consigne", "ya pague", "ya quedo el abono", "te envie el comprobante", o\n` +
+      `  c) Seguimiento post-pago: vendedora muestra DISENO/MOCKUP del pedido del cliente, hay lista de jugadores con tallas, datos de envio/conductor, foto del producto terminado, fecha de entrega acordada, o\n` +
+      `  d) Cliente y vendedora hablan de DETALLES de produccion (escudo, numeros, colores, fecha de entrega) — eso prueba que ya hay pedido.\n\n` +
+      `IMPORTANTE — INTERPRETACION TEMPORAL:\n` +
+      `  - El chat puede tener semanas. El pago puede estar al inicio, NO al final. Mira TODO el chat, no solo lo reciente.\n` +
+      `  - Aunque los ultimos msgs sean seguimiento o entrega, ESO ES UN PEDIDO CONFIRMADO.\n` +
+      `  - El cliente raramente repite "ya te pague" en mensajes recientes — sola ves fue al inicio.\n\n` +
+      `NO ES VENTA:\n` +
+      `  - "te voy a transferir", "ahora te pago" sin que despues haya seguimiento de produccion → futuro, no venta.\n` +
+      `  - Solo COTIZACIONES, dudas, conversaciones iniciales sin diseno ni pago.\n` +
+      `  - Chat de SALUDO sin contexto de pedido.\n` +
+      `  - Pago a otro proveedor mencionado de pasada.\n\n` +
+      `Si hay multiples pedidos en el chat, asume que SI hay venta (al menos UNO confirmado).\n\n` +
       `Responde SOLO JSON valido (sin markdown):\n` +
       `{"hayVenta": true|false,\n` +
       ` "confianza": "alta"|"media"|"baja",\n` +
@@ -5352,7 +5358,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
           const rMsg = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, { headers: { 'api_access_token': cwApiKey } });
           const dataMsg = await rMsg.json();
           const todos = dataMsg.payload || dataMsg || [];
-          const recientes = todos.slice(-25);
+          const recientes = todos.slice(-60);
 
           const mEnr = [];
           let imgs=0, auds=0;
