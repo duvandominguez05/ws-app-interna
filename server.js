@@ -1499,44 +1499,61 @@ async function intentarNombrarPedidoPorDiseno(pedidoId) {
     }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score); // minimo 2 tokens match
 
     if (scoreados.length === 0) {
-      // Igual guardamos el textoPrincipal como nombre tentativo (mejor que pushName)
+      // Solo guardamos textoPrincipal si el nombre actual ES tentativo
       const peds2 = leerPedidos();
       const p2 = peds2.find(x => x.id === pedidoId);
-      if (p2 && textoDiseno.textoPrincipal && textoDiseno.textoPrincipal.length > 3) {
+      if (p2 && p2.nombreEsTentativo === true && textoDiseno.textoPrincipal && textoDiseno.textoPrincipal.length > 3) {
         const nombreTentativo = textoDiseno.textoPrincipal.slice(0, 80);
         p2.equipo = nombreTentativo;
-        p2.nombreEsTentativo = true;
+        // sigue siendo tentativo (no encontramos PDF), proximo run puede mejorar
         p2.ultimoMovimiento = new Date().toISOString();
         p2.historial = p2.historial || [];
         p2.historial.push({ ts: new Date().toISOString(), evento: `Nombre tentativo extraido de diseno: "${nombreTentativo}"`, automatico: true });
         guardarPedidos(peds2, leerNextId());
         return { exito: true, fuente: 'texto-diseno-sin-pdf-match', nombreNuevo: nombreTentativo, textoDiseno };
       }
-      return { exito: false, motivo: 'tokens no matchean PDFs ni hay textoPrincipal usable' };
+      return { exito: false, motivo: 'tokens no matchean PDFs (pedido ya tiene nombre humano, no se toca)', textoDiseno };
     }
 
     // Tomar el mejor match. Sacar nombre del archivo (sin extension).
     const ganador = scoreados[0];
     const nombreSinExt = ganador.archivo.name.replace(/\.pdf$/i, '').trim();
 
-    // Renombrar el pedido
+    // Decision IMPORTANTE: solo renombrar si el pedido NO tiene nombre humano todavia.
+    // - nombreEsTentativo=true → se creo por etiqueta (nombre temporal) → renombrar OK
+    // - nombreEsTentativo=false o undefined → alguien (vendedora/jefe) ya lo nombro → SOLO guardar referencia al PDF, NO tocar el nombre
     const peds3 = leerPedidos();
     const p3 = peds3.find(x => x.id === pedidoId);
     if (!p3) return { exito: false, motivo: 'pedido desaparecio' };
     const nombreViejo = p3.equipo;
-    p3.equipo = nombreSinExt;
-    p3.nombreEsTentativo = false;
     p3.drive = p3.drive || {};
     p3.drive.pdfRip = { fileId: ganador.archivo.id, name: ganador.archivo.name, matchScore: ganador.score };
-    p3.ultimoMovimiento = new Date().toISOString();
-    p3.historial = p3.historial || [];
-    p3.historial.push({
-      ts: new Date().toISOString(),
-      evento: `Renombrado de "${nombreViejo}" a "${nombreSinExt}" (PDF match score=${ganador.score} tokens=${ganador.hits.join(',')})`,
-      automatico: true,
-    });
-    guardarPedidos(peds3, leerNextId());
-    return { exito: true, fuente: 'pdf-match-drive', nombreViejo, nombreNuevo: nombreSinExt, pdfMatch: ganador.archivo.name, score: ganador.score, textoDiseno };
+
+    if (p3.nombreEsTentativo === true) {
+      // Renombrar (era pedido nuevo con nombre temporal)
+      p3.equipo = nombreSinExt;
+      p3.nombreEsTentativo = false;
+      p3.ultimoMovimiento = new Date().toISOString();
+      p3.historial = p3.historial || [];
+      p3.historial.push({
+        ts: new Date().toISOString(),
+        evento: `Renombrado automatico de "${nombreViejo}" a "${nombreSinExt}" (PDF match score=${ganador.score})`,
+        automatico: true,
+      });
+      guardarPedidos(peds3, leerNextId());
+      return { exito: true, fuente: 'pdf-match-drive-renombrado', nombreViejo, nombreNuevo: nombreSinExt, pdfMatch: ganador.archivo.name, score: ganador.score, textoDiseno };
+    } else {
+      // Solo vincular referencia PDF, NO renombrar (el pedido ya tiene nombre humano)
+      p3.ultimoMovimiento = new Date().toISOString();
+      p3.historial = p3.historial || [];
+      p3.historial.push({
+        ts: new Date().toISOString(),
+        evento: `PDF Drive vinculado: "${ganador.archivo.name}" (score=${ganador.score}). Nombre del pedido conservado.`,
+        automatico: true,
+      });
+      guardarPedidos(peds3, leerNextId());
+      return { exito: true, fuente: 'pdf-match-drive-solo-vinculado', nombreActual: nombreViejo, pdfMatch: ganador.archivo.name, score: ganador.score, textoDiseno };
+    }
   } catch (e) {
     console.error('[intentarNombrarPedidoPorDiseno error]', e.message, e.stack);
     return { exito: false, motivo: 'exception: ' + e.message };
