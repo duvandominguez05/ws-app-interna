@@ -1404,6 +1404,145 @@ async function extraerTextoDeDisenoConGemini(imgBase64, imgMime) {
 
 
 // Descarga la imagen base64 desde Evolution API.
+// ─────────────────────────────────────────────────────────────────
+// INTENTAR NOMBRAR pedido por diseño: cuando llega etiqueta CONSIGNADO,
+// el pedido se crea con pushName del cliente (temporal). Esta funcion
+// busca imagenes recientes del chat, extrae texto del diseno con Gemini
+// y matchea con PDFs en Drive para sacar el nombre real del equipo.
+//
+// Devuelve { exito: bool, nombreNuevo, fuente, pdfMatch, textoDiseno }
+// Si falla silencioso (no se renombra el pedido y queda el temporal).
+// ─────────────────────────────────────────────────────────────────
+async function intentarNombrarPedidoPorDiseno(pedidoId) {
+  try {
+    const peds = leerPedidos();
+    const p = peds.find(x => x.id === pedidoId);
+    if (!p || !p.telefono) return { exito: false, motivo: 'sin pedido o sin telefono' };
+
+    // 1. Buscar contacto Chatwoot y traer mensajes recientes (50)
+    const contacto = await buscarContactoChatwoot(p.telefono);
+    if (!contacto?.id) return { exito: false, motivo: 'sin contacto chatwoot' };
+    const cwUrl = process.env.CHATWOOT_URL;
+    const accountId = process.env.CHATWOOT_ACCOUNT_ID;
+    const cwApiKey = process.env.CHATWOOT_API_KEY;
+    const rConv = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/contacts/${contacto.id}/conversations`, { headers: { 'api_access_token': cwApiKey } });
+    const dataConv = await rConv.json();
+    const conv = (dataConv.payload || [])[0];
+    if (!conv?.id) return { exito: false, motivo: 'sin conversacion' };
+    const rMsg = await fetch(`${cwUrl}/api/v1/accounts/${accountId}/conversations/${conv.id}/messages`, { headers: { 'api_access_token': cwApiKey } });
+    const dataMsg = await rMsg.json();
+    const todos = dataMsg.payload || dataMsg || [];
+    const recientes = todos.slice(-60);
+
+    // 2. Encontrar las imagenes que mando la VENDEDORA (renders del uniforme).
+    // Las del cliente suelen ser comprobantes/fotos personales — descartar.
+    const imagenesVendedora = [];
+    for (const m of recientes) {
+      if (m.message_type !== 1) continue; // solo vendedora (1=outgoing)
+      for (const a of (m.attachments || [])) {
+        if (a.file_type !== 'image') continue;
+        imagenesVendedora.push({ url: a.data_url, fecha: m.created_at });
+      }
+    }
+    if (imagenesVendedora.length === 0) return { exito: false, motivo: 'sin imagenes de vendedora' };
+
+    // 3. Intentar con las ULTIMAS 3 imagenes (mas probables de ser el diseño aprobado)
+    const ultimas = imagenesVendedora.slice(-3).reverse();
+    let textoDiseno = null;
+    let imgUsada = null;
+    for (const img of ultimas) {
+      const dl = await descargarAttachmentChatwootBase64(img.url);
+      if (!dl || !dl.base64) continue;
+      const r = await extraerTextoDeDisenoConGemini(dl.base64, dl.mime || 'image/jpeg');
+      if (r && r.textoPrincipal && r.textoPrincipal.length > 2 && r.hayEscudo !== false) {
+        textoDiseno = r;
+        imgUsada = img;
+        break;
+      }
+    }
+    if (!textoDiseno) return { exito: false, motivo: 'sin texto en disenos' };
+
+    // 4. Buscar PDF en Drive con esas palabras
+    const STOPW = new Set(['por','el','la','los','las','un','una','de','del','y','o','en','con','para']);
+    const tokens = new Set();
+    const addTokens = (texto) => {
+      if (!texto) return;
+      String(texto).toLowerCase().replace(/[^\w\sñáéíóú]/g, ' ').split(/\s+/)
+        .filter(t => t.length >= 3 && !STOPW.has(t)).forEach(t => tokens.add(t));
+    };
+    addTokens(textoDiseno.textoPrincipal);
+    addTokens(textoDiseno.textoSecundario);
+    (textoDiseno.palabrasClaveBusqueda || []).forEach(p => addTokens(p));
+    if (tokens.size === 0) return { exito: false, motivo: 'sin tokens' };
+
+    let archivos = [];
+    try {
+      archivos = await driveSync.listarArchivos(driveSync.FOLDER_PDFRIP, 200);
+    } catch (e) { return { exito: false, motivo: 'drive error: ' + e.message }; }
+    const limiteFecha = Date.now() - (60 * 24 * 60 * 60 * 1000);
+    const pdfs = archivos.filter(a => {
+      if (!/\.pdf$/i.test(a.name)) return false;
+      if (a.modifiedTime || a.createdTime) {
+        const ts = new Date(a.modifiedTime || a.createdTime).getTime();
+        if (!isNaN(ts) && ts < limiteFecha) return false;
+      }
+      return true;
+    });
+
+    // Scorear cada PDF por tokens hit
+    const scoreados = pdfs.map(a => {
+      const nameLow = a.name.toLowerCase();
+      let score = 0;
+      const hits = [];
+      for (const t of tokens) { if (nameLow.includes(t)) { score++; hits.push(t); } }
+      return { archivo: a, score, hits };
+    }).filter(x => x.score >= 2).sort((a,b) => b.score - a.score); // minimo 2 tokens match
+
+    if (scoreados.length === 0) {
+      // Igual guardamos el textoPrincipal como nombre tentativo (mejor que pushName)
+      const peds2 = leerPedidos();
+      const p2 = peds2.find(x => x.id === pedidoId);
+      if (p2 && textoDiseno.textoPrincipal && textoDiseno.textoPrincipal.length > 3) {
+        const nombreTentativo = textoDiseno.textoPrincipal.slice(0, 80);
+        p2.equipo = nombreTentativo;
+        p2.nombreEsTentativo = true;
+        p2.ultimoMovimiento = new Date().toISOString();
+        p2.historial = p2.historial || [];
+        p2.historial.push({ ts: new Date().toISOString(), evento: `Nombre tentativo extraido de diseno: "${nombreTentativo}"`, automatico: true });
+        guardarPedidos(peds2, leerNextId());
+        return { exito: true, fuente: 'texto-diseno-sin-pdf-match', nombreNuevo: nombreTentativo, textoDiseno };
+      }
+      return { exito: false, motivo: 'tokens no matchean PDFs ni hay textoPrincipal usable' };
+    }
+
+    // Tomar el mejor match. Sacar nombre del archivo (sin extension).
+    const ganador = scoreados[0];
+    const nombreSinExt = ganador.archivo.name.replace(/\.pdf$/i, '').trim();
+
+    // Renombrar el pedido
+    const peds3 = leerPedidos();
+    const p3 = peds3.find(x => x.id === pedidoId);
+    if (!p3) return { exito: false, motivo: 'pedido desaparecio' };
+    const nombreViejo = p3.equipo;
+    p3.equipo = nombreSinExt;
+    p3.nombreEsTentativo = false;
+    p3.drive = p3.drive || {};
+    p3.drive.pdfRip = { fileId: ganador.archivo.id, name: ganador.archivo.name, matchScore: ganador.score };
+    p3.ultimoMovimiento = new Date().toISOString();
+    p3.historial = p3.historial || [];
+    p3.historial.push({
+      ts: new Date().toISOString(),
+      evento: `Renombrado de "${nombreViejo}" a "${nombreSinExt}" (PDF match score=${ganador.score} tokens=${ganador.hits.join(',')})`,
+      automatico: true,
+    });
+    guardarPedidos(peds3, leerNextId());
+    return { exito: true, fuente: 'pdf-match-drive', nombreViejo, nombreNuevo: nombreSinExt, pdfMatch: ganador.archivo.name, score: ganador.score, textoDiseno };
+  } catch (e) {
+    console.error('[intentarNombrarPedidoPorDiseno error]', e.message, e.stack);
+    return { exito: false, motivo: 'exception: ' + e.message };
+  }
+}
+
 async function descargarImagenEvolution(instance, messageKey) {
   try {
     const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
@@ -5310,6 +5449,24 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // GET /api/admin/nombrar-pedido?id=X
+  // Dispara manual el flujo de extraer nombre del equipo desde el diseno
+  // (imagen render → Gemini → match PDF Drive). Util para nombrar pedidos
+  // que quedaron con nombre temporal.
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/nombrar-pedido')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const id = parseInt(u.searchParams.get('id'), 10);
+      if (!id) return json(res, 400, { error: 'falta id' });
+      const r = await intentarNombrarPedidoPorDiseno(id);
+      return json(res, 200, r);
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // GET /api/admin/verificar-detector-ventas?limit=8&dias=15
   // Toma los ULTIMOS N pedidos confirmados/activos del ERP (= ground truth:
   // sabemos que SI son ventas) y por cada uno corre iaDetectarVentaEnChat.
@@ -9087,6 +9244,7 @@ setInterval(cargar, 15000);
                 const np = peds2.find(p => p.id === r.id);
                 if (np) {
                   np.estado = 'confirmado';
+                  np.nombreEsTentativo = true; // marca: nombre se rellena async via diseño
                   np.ultimoMovimiento = new Date().toISOString();
                   np.historial = np.historial || [];
                   np.historial.push({
@@ -9097,7 +9255,21 @@ setInterval(cargar, 15000);
                   guardarPedidos(peds2, leerNextId());
                 }
                 console.log(`[labels-wa] ${instance}/"${labelName}": pedido #${r.id} CREADO (${vendedora}, ${telefono})`);
-                return json(res, 200, { ok: true, accion: 'crear', pedido_id: r.id, vendedora, telefono });
+
+                // Disparar nombrado async (no bloquea respuesta del webhook)
+                setImmediate(() => {
+                  intentarNombrarPedidoPorDiseno(r.id)
+                    .then(rr => {
+                      if (rr?.exito) {
+                        console.log(`[labels-wa nombrado] #${r.id} → "${rr.nombreNuevo}" (fuente: ${rr.fuente})`);
+                      } else {
+                        console.log(`[labels-wa nombrado] #${r.id} sin renombrar (${rr?.motivo || 'sin razon'})`);
+                      }
+                    })
+                    .catch(e => console.error('[labels-wa nombrado err]', e.message));
+                });
+
+                return json(res, 200, { ok: true, accion: 'crear', pedido_id: r.id, vendedora, telefono, nombrado_async: true });
               }
               return json(res, 200, { ok: true, accion: 'crear-skip', resultado: r });
             }
