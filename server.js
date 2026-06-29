@@ -13534,10 +13534,9 @@ async function cron8pmTick() {
     _marcar8pmHoy();
   } catch (e) { console.error('[cron-8pm error]', e.message); }
 }
-// Tick cada 60 segundos
-setInterval(cron8pmTick, 60 * 1000);
-// Tick inicial 30s después de arrancar (por si el server arranca a las 8 PM)
-setTimeout(cron8pmTick, 30 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cron8pmTick, 60 * 1000);
+// setTimeout(cron8pmTick, 30 * 1000);
 console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -13558,9 +13557,9 @@ async function cronAlertasJefeTick() {
     }
   } catch (e) { console.error('[cron-alertas-jefe error]', e.message); }
 }
-setInterval(cronAlertasJefeTick, 30 * 60 * 1000); // cada 30 min
-setTimeout(cronAlertasJefeTick, 90 * 1000); // primer tick 90s despues de arrancar
-console.log('[cron-alertas-jefe] activado — cada 30 min, 8 AM - 8 PM Bogotá');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAlertasJefeTick, 30 * 60 * 1000);
+// setTimeout(cronAlertasJefeTick, 90 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON SILENCIOSO 10 PM Bogotá — revisa TODOS los pedidos activos y los
@@ -14032,11 +14031,9 @@ async function tickSaldos() {
     }
   } catch (e) { console.error('[tick-saldos]', e.message); }
 }
-// Cada 6 horas
-setInterval(tickSaldos, 6 * 60 * 60 * 1000);
-// Primer chequeo 2 min despues de arrancar
-setTimeout(tickSaldos, 2 * 60 * 1000);
-console.log('[saldos] tick instalado — chequea Claude+Gemini cada 6 hs');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(tickSaldos, 6 * 60 * 60 * 1000);
+// setTimeout(tickSaldos, 2 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON 7 PM — snapshot de "Ventas por confirmar" al jefe (panel WA)
@@ -14068,8 +14065,9 @@ async function cron7pmTick() {
     _marcar7pmHoy();
   } catch (e) { console.error('[cron-7pm error]', e.message); }
 }
-setInterval(cron7pmTick, 60 * 1000);
-setTimeout(cron7pmTick, 45 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cron7pmTick, 60 * 1000);
+// setTimeout(cron7pmTick, 45 * 1000);
 console.log('[cron-7pm] activado — snapshot ventas-por-confirmar 7 PM Bogotá');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -14547,8 +14545,9 @@ async function cronAlertasCalandraTick() {
     await enviarAlertasCalandraSinDescargar();
   } catch (e) { console.error('[cron-alertas-cal err]', e.message); }
 }
-setInterval(cronAlertasCalandraTick, 60 * 60 * 1000); // cada hora
-setTimeout(cronAlertasCalandraTick, 90 * 1000); // primer tick 90s tras arrancar
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAlertasCalandraTick, 60 * 60 * 1000);
+// setTimeout(cronAlertasCalandraTick, 90 * 1000);
 console.log('[cron-alertas-cal] activado — chequea calandra +24h cada hora 8AM-7PM');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -14915,9 +14914,9 @@ async function cronAlertasCosturaEntregaTick() {
     console.log(`[alertas-costu-entrega] notif sobre ${aEnviar.length} lotes`);
   } catch (e) { console.error('[cron-alertas-costu-entrega err]', e.message); }
 }
-setInterval(cronAlertasCosturaEntregaTick, 60 * 60 * 1000); // cada hora
-setTimeout(cronAlertasCosturaEntregaTick, 120 * 1000);
-console.log('[cron-alertas-costu-entrega] activado — chequea costureras +48h sin entregar fisicamente');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAlertasCosturaEntregaTick, 60 * 60 * 1000);
+// setTimeout(cronAlertasCosturaEntregaTick, 120 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON DETECTAR APROBACION DEL CLIENTE EN CHATWOOT (Gemini)
@@ -15110,8 +15109,9 @@ async function cronAlertaAbandonadosTick() {
     console.error('[cron-abandonados err]', e.message);
   }
 }
-setInterval(cronAlertaAbandonadosTick, 60 * 60 * 1000); // chequea cada hora pero solo corre a las 8 AM
-setTimeout(cronAlertaAbandonadosTick, 2 * 60 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAlertaAbandonadosTick, 60 * 60 * 1000);
+// setTimeout(cronAlertaAbandonadosTick, 2 * 60 * 1000);
 console.log('[cron-abandonados] activado — corre 1 vez al dia (8 AM Bogota)');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -15443,11 +15443,9 @@ async function cronRecordatorioStickerTick() {
     console.error('[cron-90min error]', e.message);
   }
 }
-// Cada 15 minutos
-setInterval(cronRecordatorioStickerTick, 15 * 60 * 1000);
-// Tick inicial 2 min después de arrancar
-setTimeout(cronRecordatorioStickerTick, 2 * 60 * 1000);
-console.log('[cron-90min] activado — recordatorios sticker cada 15 min');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronRecordatorioStickerTick, 15 * 60 * 1000);
+// setTimeout(cronRecordatorioStickerTick, 2 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Recordatorio FACTURA — cada 1h chequea pedidos creados >24h
@@ -15547,10 +15545,9 @@ async function cronRecordatorioFacturaTick() {
     console.error('[cron-fact error]', e.message);
   }
 }
-// Cada 1 hora
-setInterval(cronRecordatorioFacturaTick, 60 * 60 * 1000);
-// Tick inicial 5 min después de arrancar
-setTimeout(cronRecordatorioFacturaTick, 5 * 60 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronRecordatorioFacturaTick, 60 * 60 * 1000);
+// setTimeout(cronRecordatorioFacturaTick, 5 * 60 * 1000);
 console.log('[cron-fact] activado — recordatorios factura cada 1h');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -15634,8 +15631,9 @@ async function cronResumenAtascosTick() {
     console.error('[cron-atascos error]', e.message);
   }
 }
-setInterval(cronResumenAtascosTick, 60 * 60 * 1000); // chequea cada hora, dispara a las 10
-setTimeout(cronResumenAtascosTick, 10 * 60 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronResumenAtascosTick, 60 * 60 * 1000);
+// setTimeout(cronResumenAtascosTick, 10 * 60 * 1000);
 console.log('[cron-atascos] activado — resumen 10 AM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -15749,11 +15747,9 @@ async function cronInstanciasZombiTick() {
     console.error('[cron-zombi]', e.message);
   }
 }
-// Cada 30 min
-setInterval(cronInstanciasZombiTick, 30 * 60 * 1000);
-// Primer tick 3 min despues de arrancar
-setTimeout(cronInstanciasZombiTick, 3 * 60 * 1000);
-console.log('[cron-zombi] activado — verifica instancias Evolution cada 30 min');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronInstanciasZombiTick, 30 * 60 * 1000);
+// setTimeout(cronInstanciasZombiTick, 3 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON #1 — CAZADOR DE DISENADORES ATRASADOS (cada 6h)
@@ -15853,8 +15849,9 @@ async function cronCazarDisenadoresTick() {
     if (avisados) console.log(`[cazar-dis] ${avisados} disenadores avisados, ${jefeUrgentes.length} urgentes al jefe`);
   } catch (e) { console.error('[cazar-dis]', e.message); }
 }
-setInterval(cronCazarDisenadoresTick, 6 * 60 * 60 * 1000); // cada 6h
-setTimeout(cronCazarDisenadoresTick, 8 * 60 * 1000); // primer tick a los 8min
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronCazarDisenadoresTick, 6 * 60 * 60 * 1000);
+// setTimeout(cronCazarDisenadoresTick, 8 * 60 * 1000);
 console.log('[cazar-dis] activado — empuja disenadores atrasados cada 6h');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -15902,9 +15899,9 @@ async function cronAuditarArreglosTick() {
     console.log(`[auditar-arreglos] reporte enviado: ${abiertos.length} abiertos`);
   } catch (e) { console.error('[auditar-arreglos]', e.message); }
 }
-setInterval(cronAuditarArreglosTick, 12 * 60 * 60 * 1000); // cada 12h
-setTimeout(cronAuditarArreglosTick, 11 * 60 * 1000); // primer tick 11min
-console.log('[auditar-arreglos] activado — reporte arreglos sin cerrar cada 12h');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAuditarArreglosTick, 12 * 60 * 60 * 1000);
+// setTimeout(cronAuditarArreglosTick, 11 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON #3 — ALERTA CALANDRA +24H SIN DESCARGAR (cada 4h)
@@ -15947,9 +15944,9 @@ async function cronAlertaCalandraTick() {
     console.log(`[alerta-calandra] ${atrasados.length} pedidos atrasados reportados`);
   } catch (e) { console.error('[alerta-calandra]', e.message); }
 }
-setInterval(cronAlertaCalandraTick, 4 * 60 * 60 * 1000); // cada 4h
-setTimeout(cronAlertaCalandraTick, 9 * 60 * 1000);
-console.log('[alerta-calandra] activado — pedidos calandra +24h cada 4h');
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronAlertaCalandraTick, 4 * 60 * 60 * 1000);
+// setTimeout(cronAlertaCalandraTick, 9 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON #4 — DETECTOR DE APROBACION DEL CLIENTE (cada 8h)
@@ -16228,8 +16225,9 @@ async function cronCostureras7DiasTick() {
     console.error('[cron-cost-7d error]', e.message);
   }
 }
-setInterval(cronCostureras7DiasTick, 6 * 60 * 60 * 1000);
-setTimeout(cronCostureras7DiasTick, 3 * 60 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronCostureras7DiasTick, 6 * 60 * 60 * 1000);
+// setTimeout(cronCostureras7DiasTick, 3 * 60 * 1000);
 console.log('[cron-cost-7d] activado — avisa lotes +7d cada 6 horas (horario laboral)');
 
 // ═══════════════════════════════════════════════════════════════════
@@ -16307,8 +16305,9 @@ async function cronCuadreCostuTick() {
     console.error('[cuadre-cost error]', e.message);
   }
 }
-setInterval(cronCuadreCostuTick, 30 * 60 * 1000);
-setTimeout(cronCuadreCostuTick, 60 * 1000);
+// [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
+// setInterval(cronCuadreCostuTick, 30 * 60 * 1000);
+// setTimeout(cronCuadreCostuTick, 60 * 1000);
 console.log('[cuadre-cost] activado — cuadre semanal domingo 8 PM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
