@@ -8997,34 +8997,30 @@ setInterval(cargar, 15000);
             }
 
             // Mapeo etiqueta → estado ERP, por instancia.
+            // CONFIRMADO por Camilo 2026-06-22: cada vendedora usa SOLO la de
+            // venta confirmada de forma confiable. Las de avance casi nunca se
+            // usan, asi que el avance posterior se detecta por OTROS triggers
+            // (PDFs Drive, WeTransfer Gmail, etc).
             const ETIQUETAS_POR_INSTANCIA = {
               'ws-ventas': {
                 'En Proceso':            'confirmado',
-                'PAGO EN CASA':          'confirmado',
-                'diseo confirmado':      'aprobado',
-                'Pedido en tela':        'tela-recibida',
-                'en tela y en costura':  'costura',
-                'entregado':             'entregado',
+                'PAGO EN CASA':          'confirmado', // pago efectivo en local
+                'entregado':             'entregado',  // si SI la usan al cerrar
               },
               'ws wendy': {
                 'CONSIGNADO':            'confirmado',
-                'Pendiente para diseo':  'hacer-diseno',
                 'Pedido finalizado':     'entregado',
               },
               'ws-wendy': { // por si llega sin espacio
                 'CONSIGNADO':            'confirmado',
-                'Pendiente para diseo':  'hacer-diseno',
                 'Pedido finalizado':     'entregado',
               },
               'ws-ney': {
                 'Pagado':                'confirmado',
-                'Nuevo pedido':          'hacer-diseno',
                 'Venta':                 'entregado',
               },
               'ws-paola': {
-                'Pendiente abono':       'confirmado',
-                'Pedido en proceso':     'hacer-diseno',
-                'En Impresin':           'calandra',
+                'Pedido en proceso':     'confirmado', // CORRECCION: era 'Pendiente abono' (mal)
                 'Entregado':             'entregado',
               },
             };
