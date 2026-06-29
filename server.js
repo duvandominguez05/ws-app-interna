@@ -1187,9 +1187,13 @@ async function matchFotosCorteConPedidos(fotosCorte, candidatos) {
 
     const cand = candidatos.slice(0, 4); // max 4 para no quemar tokens
 
+    const nFotos = fotosCorte.length;
+    const descFotos = nFotos === 1
+      ? `Camilo (gerente) saco UNA foto de un corte/prenda fisica que va a costura.`
+      : `Camilo (gerente) saco ${nFotos} fotos (${fotosCorte.map(f => (f.vista||'').toUpperCase()).filter(Boolean).join(', ') || 'distintas vistas'}) de un corte/prenda fisica que va a costura.`;
     const preamble = `Sos analista visual de W&S Enterprise (fabrica de uniformes deportivos sublimados, Colombia).\n\n` +
-      `Camilo (gerente) saco fotos de UN corte/prenda fisica que va a costura: una vista del FRENTE y otra de la ESPALDA.\n\n` +
-      `Te paso esas fotos primero, y despues te paso ${cand.length} imagenes de DISEÑOS de pedidos diferentes del ERP.\n` +
+      `${descFotos}\n\n` +
+      `Te paso esa(s) foto(s) primero, y despues te paso ${cand.length} imagenes de DISEÑOS de pedidos diferentes del ERP.\n` +
       `Esas imagenes pueden ser: render 3D del uniforme, foto del PDF RIP de impresion, o foto que el cliente aprobo en WhatsApp.\n\n` +
       `Tu tarea: determinar a CUAL de los ${cand.length} pedidos pertenece el corte fisico.\n` +
       `Compara: colores, escudo/logo, tipografia, distribucion del diseno, frase/texto, numeros, prenda.\n` +
@@ -11537,6 +11541,15 @@ setInterval(cargar, 15000);
         const promedio = slug ? tiempoPromedioMap[slug] : null;
         const umbral = promedio ? Math.max(promedio * 1.5, 5) : 7;
         const alertaAtipico = diasEnCostura !== null && diasEnCostura > umbral;
+        // Piezas: agrupar movimientos abiertos por prenda
+        const piezasMap = {};
+        movs.forEach(m => {
+          const tipo = (m.prenda || 'pieza').toLowerCase();
+          if (!piezasMap[tipo]) piezasMap[tipo] = 0;
+          piezasMap[tipo] += Number(m.cantidad_envio || 0);
+        });
+        const piezas = Object.entries(piezasMap).map(([prenda, cantidad]) => ({ prenda, cantidad }));
+        const totalPiezas = piezas.reduce((a, b) => a + (b.cantidad || 0), 0);
         return {
           id: p.id,
           equipo: p.equipo || `Pedido #${p.id}`,
@@ -11547,6 +11560,8 @@ setInterval(cargar, 15000);
           diasEnCostura,
           tiempoPromedioCostu: promedio ? Math.round(promedio * 10) / 10 : null,
           umbralAlerta: Math.round(umbral * 10) / 10,
+          piezas,
+          totalPiezas,
           estado: p.estado,
           sinErp: !!p.sin_erp,
           origen: p.origen || null,
@@ -11958,14 +11973,35 @@ setInterval(cargar, 15000);
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        const { frenteBase64, frenteMime, espaldaBase64, espaldaMime } = data;
-        if (!frenteBase64 || !espaldaBase64) {
-          return json(res, 400, { error: 'faltan fotos: frente y espalda son obligatorias' });
+        // Acepta 3 formatos:
+        //   a) { fotoBase64, fotoMime }                          ← 1-shot (preferido nuevo)
+        //   b) { fotos: [{ base64, mime, vista? }, ...] }        ← lista
+        //   c) { frenteBase64, frenteMime, espaldaBase64, espaldaMime } ← legacy frente+espalda
+        const { frenteBase64, frenteMime, espaldaBase64, espaldaMime, fotoBase64, fotoMime, fotos } = data;
+        const fotosCorte = [];
+        if (Array.isArray(fotos) && fotos.length > 0) {
+          for (const f of fotos) {
+            if (f?.base64) fotosCorte.push({ base64: f.base64, mime: f.mime || 'image/jpeg', vista: f.vista || 'foto' });
+          }
+        } else if (fotoBase64) {
+          fotosCorte.push({ base64: fotoBase64, mime: fotoMime || 'image/jpeg', vista: 'foto' });
+        } else {
+          if (frenteBase64) fotosCorte.push({ base64: frenteBase64, mime: frenteMime || 'image/jpeg', vista: 'frente' });
+          if (espaldaBase64) fotosCorte.push({ base64: espaldaBase64, mime: espaldaMime || 'image/jpeg', vista: 'espalda' });
+        }
+        if (fotosCorte.length === 0) {
+          return json(res, 400, { error: 'falta al menos 1 foto (fotoBase64 o fotos[] o frenteBase64/espaldaBase64)' });
         }
 
         // 1) Recolectar candidatos: pedidos en estados relevantes con foto disponible
         const ESTADOS_CANDIDATOS = ['aprobado', 'enviado-calandra', 'calandra', 'llego-impresion', 'corte', 'tela-recibida'];
-        const peds = leerPedidos().filter(p => ESTADOS_CANDIDATOS.includes(p.estado));
+        const peds = leerPedidos()
+          .filter(p => ESTADOS_CANDIDATOS.includes(p.estado))
+          .sort((a, b) => {
+            const ta = new Date(a.ultimoMovimiento || a.fechaCreacion || 0).getTime();
+            const tb = new Date(b.ultimoMovimiento || b.fechaCreacion || 0).getTime();
+            return tb - ta;
+          });
 
         const candidatos = [];
         for (const p of peds) {
@@ -11999,10 +12035,6 @@ setInterval(cargar, 15000);
         }
 
         // 2) Llamar a Gemini
-        const fotosCorte = [
-          { base64: frenteBase64, mime: frenteMime || 'image/jpeg', vista: 'frente' },
-          { base64: espaldaBase64, mime: espaldaMime || 'image/jpeg', vista: 'espalda' },
-        ];
         const resultado = await matchFotosCorteConPedidos(fotosCorte, candidatos);
 
         // 3) Devolver
@@ -12040,13 +12072,25 @@ setInterval(cargar, 15000);
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        const { costurera_slug, prendas, frenteBase64, frenteMime, espaldaBase64, espaldaMime } = data;
+        const { costurera_slug, prendas, frenteBase64, frenteMime, espaldaBase64, espaldaMime, fotoBase64, fotoMime, fotos } = data;
         if (!costurera_slug) return json(res, 400, { error: 'falta costurera_slug' });
         if (!prendas || !Array.isArray(prendas) || prendas.length === 0) {
           return json(res, 400, { error: 'faltan prendas' });
         }
-        if (!frenteBase64 || !espaldaBase64) {
-          return json(res, 400, { error: 'faltan fotos: frente y espalda son obligatorias' });
+        // Tomar la PRIMERA foto disponible en cualquiera de los formatos aceptados
+        let fotoPrincipalBase64 = null, fotoPrincipalMime = null;
+        if (Array.isArray(fotos) && fotos.length > 0 && fotos[0]?.base64) {
+          fotoPrincipalBase64 = fotos[0].base64;
+          fotoPrincipalMime = fotos[0].mime || 'image/jpeg';
+        } else if (fotoBase64) {
+          fotoPrincipalBase64 = fotoBase64;
+          fotoPrincipalMime = fotoMime || 'image/jpeg';
+        } else if (frenteBase64) {
+          fotoPrincipalBase64 = frenteBase64;
+          fotoPrincipalMime = frenteMime || 'image/jpeg';
+        }
+        if (!fotoPrincipalBase64) {
+          return json(res, 400, { error: 'falta foto (fotos[]/fotoBase64/frenteBase64)' });
         }
         const costu = PERSONAS.find(x => x.slug === costurera_slug && x.roles.includes('costura'));
         if (!costu) return json(res, 400, { error: 'costurera no encontrada' });
@@ -12096,10 +12140,9 @@ setInterval(cargar, 15000);
           pedido_id = nuevoId;
         }
 
-        // Guardar fotos: usamos pedido_fotos con la del FRENTE como principal (la espalda
-        // queda en el historial del movimiento como observación de fuente).
-        const fotoUrl = `data:${frenteMime || 'image/jpeg'};base64,${frenteBase64}`;
-        try { db.setFotoPedido(pedido_id, fotoUrl, 'corte-frente'); } catch (e) { console.error('[setFotoPedido]', e); }
+        // Guardar foto principal del lote como referencia del pedido en costura
+        const fotoUrl = `data:${fotoPrincipalMime};base64,${fotoPrincipalBase64}`;
+        try { db.setFotoPedido(pedido_id, fotoUrl, 'lote-costura'); } catch (e) { console.error('[setFotoPedido]', e); }
 
         // Crear movimientos de costura (uno por tipo de prenda)
         const movimientos = [];

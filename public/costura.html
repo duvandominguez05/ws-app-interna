@@ -642,6 +642,7 @@ function render() {
         <div class="ped-equipo">${esc(p.equipo)}${p.sinErp ? ' <span class="tag-sin-erp">⚠ SIN ERP</span>' : ''}</div>
         <div class="ped-meta">
           <span>${esc(p.costureraNombre || 'sin asignar')}</span>
+          ${p.totalPiezas ? `<span class="dot">·</span><span>${p.totalPiezas} pz${p.piezas && p.piezas.length ? ` (${p.piezas.map(x=>`${x.cantidad} ${x.prenda}`).join(', ')})` : ''}</span>` : ''}
           ${p.diasEnCostura != null ? `<span class="dot">·</span><span>${p.diasEnCostura}d${p.tiempoPromedioCostu ? ` (prom ${p.tiempoPromedioCostu}d)` : ''}</span>` : ''}
           ${p.alerta ? `<span class="alerta-tag">⚠ atrasado${p.tiempoPromedioCostu ? ` (esperado ≤${p.umbralAlerta}d)` : ''}</span>` : ''}
         </div>
@@ -668,6 +669,7 @@ function abrirCosturera(slug) {
           <div class="ped-info">
             <div class="ped-equipo">${esc(p.equipo)}</div>
             <div class="ped-meta">
+              ${p.totalPiezas ? `<span>${p.totalPiezas} pz${p.piezas && p.piezas.length ? ` (${p.piezas.map(x=>`${x.cantidad} ${x.prenda}`).join(', ')})` : ''}</span><span class="dot">·</span>` : ''}
               ${p.diasEnCostura != null ? `<span>${p.diasEnCostura} d en costura</span>` : ''}
               ${p.alerta ? '<span class="dot">·</span><span class="alerta-tag">⚠ atrasado</span>' : ''}
             </div>
@@ -701,8 +703,7 @@ function abrirCosturera(slug) {
 // ──────────── NUEVO ENVIO A COSTURA (POR FOTO) ────────────
 // Estado del flujo:
 let nuevoEnvioState = {
-  frente: null,    // { base64, mime, dataUrl }
-  espalda: null,
+  fotos: [],       // [{ base64, mime, dataUrl }]
   matchResult: null,
   pedidoElegido: null, // { id, equipo, vendedora } o null si fantasma
   nombreFantasma: '',
@@ -711,63 +712,61 @@ let nuevoEnvioState = {
 };
 
 function abrirNuevoEnvio() {
-  nuevoEnvioState = { frente: null, espalda: null, matchResult: null, pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
+  nuevoEnvioState = { fotos: [], matchResult: null, pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
   renderUploadFotos();
 }
 
 function renderUploadFotos() {
-  const tieneAmbas = nuevoEnvioState.frente && nuevoEnvioState.espalda;
+  const fotos = nuevoEnvioState.fotos || [];
+  const tieneFoto = fotos.length > 0;
+  const slotsLlenos = fotos.map((f, i) => `
+    <div class="upload-slot lleno">
+      <img src="${f.dataUrl}" alt="foto ${i+1}">
+      <span class="overlay-vista">foto ${i+1}</span>
+      <button class="remove" onclick="quitarFoto(${i})">×</button>
+    </div>
+  `).join('');
+  const slotAdd = `
+    <label class="upload-slot" for="file-add">
+      <span class="placeholder">📷</span>
+      <span class="label-vista">${tieneFoto ? '+ otra' : 'foto del lote'}</span>
+      <span style="font-size:0.7rem; color:var(--muted-2);">tocar para tomar foto</span>
+      <input type="file" id="file-add" accept="image/*" capture="environment"
+             style="display:none;" onchange="archivarFoto(this.files[0])">
+    </label>
+  `;
   abrirModal(`
     <div class="modal-head">
       <div>
         <h2>📷 Nuevo envío a costura</h2>
-        <div class="sub">Subí frente + espalda. La app busca el pedido sola.</div>
+        <div class="sub">Tomá una foto del lote. La app busca el pedido sola. Podés agregar más fotos si querés.</div>
       </div>
       <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
     </div>
     <div class="upload-grid">
-      ${renderUploadSlot('frente')}
-      ${renderUploadSlot('espalda')}
+      ${slotsLlenos}
+      ${slotAdd}
     </div>
-    <button class="btn-primary" ${tieneAmbas ? '' : 'disabled'} onclick="buscarMatchDePedido()">
-      ${tieneAmbas ? '🔍 Buscar pedido (analizar fotos)' : 'Subí ambas fotos primero'}
+    <button class="btn-primary" ${tieneFoto ? '' : 'disabled'} onclick="buscarMatchDePedido()">
+      ${tieneFoto ? `🔍 Buscar pedido (${fotos.length} foto${fotos.length===1?'':'s'})` : 'Tomá una foto primero'}
     </button>
     <button class="btn-secondary" onclick="cerrarModalDirecto()">Cancelar</button>
   `);
 }
 
-function renderUploadSlot(vista) {
-  const f = nuevoEnvioState[vista];
-  return `
-    <label class="upload-slot ${f ? 'lleno' : ''}" for="file-${vista}">
-      ${f ? `
-        <img src="${f.dataUrl}" alt="${vista}">
-        <span class="overlay-vista">${vista}</span>
-        <button class="remove" onclick="event.preventDefault(); quitarFoto('${vista}')">×</button>
-      ` : `
-        <span class="placeholder">📷</span>
-        <span class="label-vista">${vista}</span>
-        <span style="font-size:0.7rem; color:var(--muted-2);">tocar para tomar foto</span>
-      `}
-      <input type="file" id="file-${vista}" accept="image/*" capture="environment"
-             style="display:none;" onchange="archivarFoto('${vista}', this.files[0])">
-    </label>
-  `;
-}
-
-function quitarFoto(vista) {
-  nuevoEnvioState[vista] = null;
+function quitarFoto(idx) {
+  nuevoEnvioState.fotos.splice(idx, 1);
   renderUploadFotos();
 }
 
-async function archivarFoto(vista, file) {
+async function archivarFoto(file) {
   if (!file) return;
   try {
     // Resize a max 1280x1280 para no mandar 5MB cada foto
     const dataUrl = await redimensionarImagen(file, 1280, 0.85);
     const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!m) throw new Error('formato invalido');
-    nuevoEnvioState[vista] = { mime: m[1], base64: m[2], dataUrl };
+    nuevoEnvioState.fotos.push({ mime: m[1], base64: m[2], dataUrl });
     renderUploadFotos();
   } catch (e) {
     toast('Error leyendo foto: ' + e.message, 'err');
@@ -800,10 +799,10 @@ function redimensionarImagen(file, maxLado, calidad) {
 }
 
 async function buscarMatchDePedido() {
-  const { frente, espalda } = nuevoEnvioState;
-  if (!frente || !espalda) return;
+  const fotos = nuevoEnvioState.fotos || [];
+  if (fotos.length === 0) return;
   abrirModal(`
-    <div class="modal-head"><div><h2>Buscando pedido...</h2><div class="sub">Analizando frente + espalda con Gemini Vision</div></div></div>
+    <div class="modal-head"><div><h2>Buscando pedido...</h2><div class="sub">Analizando ${fotos.length} foto${fotos.length===1?'':'s'} con Gemini Vision</div></div></div>
     <div style="text-align:center; padding:40px 20px;">
       <div style="font-size:3rem; margin-bottom:14px;">🔍</div>
       <div style="color:var(--muted); font-size:0.9rem;">Esto tarda 5-10 segundos...</div>
@@ -814,8 +813,7 @@ async function buscarMatchDePedido() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        frenteBase64: frente.base64, frenteMime: frente.mime,
-        espaldaBase64: espalda.base64, espaldaMime: espalda.mime,
+        fotos: fotos.map((f, i) => ({ base64: f.base64, mime: f.mime, vista: `foto ${i+1}` })),
       }),
     });
     const d = await r.json();
@@ -990,8 +988,7 @@ async function confirmarNuevoEnvio() {
         equipo: s.pedidoElegido?.equipo || s.nombreFantasma || 'Sin nombre',
         costurera_slug: s.costurera_slug,
         prendas: s.prendas.filter(p => p.cantidad > 0),
-        frenteBase64: s.frente.base64, frenteMime: s.frente.mime,
-        espaldaBase64: s.espalda.base64, espaldaMime: s.espalda.mime,
+        fotos: (s.fotos || []).map((f, i) => ({ base64: f.base64, mime: f.mime, vista: `foto ${i+1}` })),
       }),
     });
     const d = await r.json();
