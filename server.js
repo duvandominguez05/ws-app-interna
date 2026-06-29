@@ -255,7 +255,14 @@ async function notificarWhatsappTrabajoFamilia(texto) {
 // Helper unificado para avisos importantes. Acepta dedupeKey opcional
 // para evitar repetir el mismo aviso (key:pedidoId:dia).
 async function notificarJefes(texto, opciones = {}) {
-  const { dedupeKey = null, soloJefe = false } = opciones;
+  const { dedupeKey = null, soloJefe = false, forzar = false } = opciones;
+  // CAMILO 2026-06-29: env var JEFE_SILENCIO=1 silencia TODOS los notificarJefes
+  // (spam de crones). El resumen semanal usa responderJefe que sigue activo.
+  // Para emergencias forzar:true bypasea el silencio.
+  if (process.env.JEFE_SILENCIO === '1' && !forzar) {
+    console.log('[notif-jefes] silenciado por JEFE_SILENCIO=1 (texto:', String(texto).slice(0,60), ')');
+    return;
+  }
   if (dedupeKey && typeof waPuedeEnviar === 'function' && !waPuedeEnviar(dedupeKey)) {
     return; // ya se envio hoy
   }
