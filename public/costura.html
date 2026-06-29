@@ -607,6 +607,7 @@ function render() {
         ? `<div class="costu-pedido-actual">${esc(nombresEquipos)}${masDe2}</div>`
         : `<div class="costu-stat" style="opacity:0.5;">sin pedidos</div>`}
       ${c.valorSemanaEstimado > 0 ? `<div class="costu-stat" style="margin-top:6px;"><span class="verde">${money(c.valorSemanaEstimado)}</span> esta semana</div>` : ''}
+      ${c.tiempoPromedioDias != null ? `<div class="costu-stat" style="margin-top:4px; opacity:0.75;">⏱ ${c.tiempoPromedioDias}d prom</div>` : ''}
     </div>
   `;
   }).join('') || '<div class="empty-state">Sin costureras</div>';
@@ -641,8 +642,8 @@ function render() {
         <div class="ped-equipo">${esc(p.equipo)}${p.sinErp ? ' <span class="tag-sin-erp">⚠ SIN ERP</span>' : ''}</div>
         <div class="ped-meta">
           <span>${esc(p.costureraNombre || 'sin asignar')}</span>
-          ${p.diasEnCostura != null ? `<span class="dot">·</span><span>${p.diasEnCostura}d</span>` : ''}
-          ${p.alerta ? '<span class="alerta-tag">⚠ atrasado</span>' : ''}
+          ${p.diasEnCostura != null ? `<span class="dot">·</span><span>${p.diasEnCostura}d${p.tiempoPromedioCostu ? ` (prom ${p.tiempoPromedioCostu}d)` : ''}</span>` : ''}
+          ${p.alerta ? `<span class="alerta-tag">⚠ atrasado${p.tiempoPromedioCostu ? ` (esperado ≤${p.umbralAlerta}d)` : ''}</span>` : ''}
         </div>
       </div>
       <button class="ped-action green" onclick="event.stopPropagation(); abrirDevolver(${p.id})">✓ Devuelto</button>

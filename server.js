@@ -11501,6 +11501,26 @@ setInterval(cargar, 15000);
         movsPorPedido.get(m.pedido_id).push(m);
       });
 
+      // Tiempo promedio historico por costurera (90 dias de movs cerrados).
+      // Lo usamos para alerta adaptativa en enCostura y stats en resumenCostureras.
+      const tiempoPromedioMap = {};
+      for (const p of costureraSlugs) {
+        try {
+          const historicos = db.leerMovimientosCostureraPorSlug(p.slug, 100) || [];
+          const limite = Date.now() - 90 * 86400 * 1000;
+          const cerrados = historicos.filter(m =>
+            m.fecha_recepcion && m.fecha_envio &&
+            new Date(m.fecha_envio).getTime() >= limite
+          );
+          if (cerrados.length > 0) {
+            const dias = cerrados.map(m =>
+              (new Date(m.fecha_recepcion).getTime() - new Date(m.fecha_envio).getTime()) / 86400000
+            );
+            tiempoPromedioMap[p.slug] = dias.reduce((a,b) => a+b, 0) / dias.length;
+          }
+        } catch {}
+      }
+
       const enCostura = peds.filter(p =>
         ESTADOS_EN_COSTURA.includes(p.estado) ||
         movsPorPedido.has(p.id)
@@ -11512,6 +11532,11 @@ setInterval(cargar, 15000);
         const diasEnCostura = fechaEnvio
           ? Math.floor((Date.now() - new Date(fechaEnvio).getTime()) / (24*60*60*1000))
           : null;
+        // Alerta adaptativa: compara contra promedio historico de la costurera
+        // Si no hay data historica, fallback a 7 dias fijo.
+        const promedio = slug ? tiempoPromedioMap[slug] : null;
+        const umbral = promedio ? Math.max(promedio * 1.5, 5) : 7;
+        const alertaAtipico = diasEnCostura !== null && diasEnCostura > umbral;
         return {
           id: p.id,
           equipo: p.equipo || `Pedido #${p.id}`,
@@ -11520,11 +11545,13 @@ setInterval(cargar, 15000);
           costureraNombre: costuNombre,
           fechaEnvio,
           diasEnCostura,
+          tiempoPromedioCostu: promedio ? Math.round(promedio * 10) / 10 : null,
+          umbralAlerta: Math.round(umbral * 10) / 10,
           estado: p.estado,
           sinErp: !!p.sin_erp,
           origen: p.origen || null,
           thumbnail: (db.getFotoPedido(p.id)?.url) || (p.drive?.pdfRip?.thumbnail) || null,
-          alerta: diasEnCostura !== null && diasEnCostura > 7,
+          alerta: alertaAtipico,
         };
       });
 
@@ -11557,6 +11584,7 @@ setInterval(cargar, 15000);
             valorSemana += tarifa * m.cantidad_recibida;
           }
         });
+        const promedio = tiempoPromedioMap[p.slug];
         return {
           slug: p.slug,
           nombre: p.nombre,
@@ -11564,6 +11592,7 @@ setInterval(cargar, 15000);
           color: p.color || '#888',
           pedidosActivos: activos,
           valorSemanaEstimado: valorSemana,
+          tiempoPromedioDias: promedio ? Math.round(promedio * 10) / 10 : null,
           alerta: activos > 3,
         };
       });
