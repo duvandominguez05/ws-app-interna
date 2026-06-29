@@ -11820,11 +11820,14 @@ setInterval(cargar, 15000);
   // - Si faltan: registra faltante (el flujo de arreglo automatico se mantiene)
   if (req.method === 'POST' && req.url === '/api/costura/devolver') {
     let body = '';
-    req.on('data', d => body += d);
+    req.on('data', d => {
+      body += d;
+      if (body.length > 20 * 1024 * 1024) req.destroy(); // 20MB max (foto opcional)
+    });
     req.on('end', () => {
       try {
         const data = JSON.parse(body || '{}');
-        const { pedido_id, devoluciones, notas } = data;
+        const { pedido_id, devoluciones, notas, fotoLoteBase64, fotoLoteMime } = data;
         if (!pedido_id || !Array.isArray(devoluciones) || !devoluciones.length) {
           return json(res, 400, { error: 'falta pedido_id o devoluciones[]' });
         }
@@ -11854,6 +11857,20 @@ setInterval(cargar, 15000);
           totalFaltante += faltante;
         }
 
+        // Guardar foto del lote terminado (proof visual) si vino
+        let fotoLoteGuardada = false;
+        if (fotoLoteBase64 && fotoLoteMime) {
+          try {
+            const fotoDataUrl = `data:${fotoLoteMime};base64,${fotoLoteBase64}`;
+            // Reusa la cache de fotos por pedido (sobreescribe la del corte si habia,
+            // pero para el lote terminado es lo que importa visualmente al final).
+            db.setFotoPedido(pedido_id, fotoDataUrl, 'lote-terminado-devolver');
+            fotoLoteGuardada = true;
+          } catch (eFoto) {
+            console.error('[devolver foto]', eFoto.message);
+          }
+        }
+
         // Avanzar estado del pedido
         const estadoAnterior = p.estado;
         if (totalFaltante === 0) {
@@ -11869,7 +11886,7 @@ setInterval(cargar, 15000);
           accion: 'marcar-devuelto-costura',
           de: estadoAnterior,
           a: p.estado,
-          nota: `Recibido ${totalRecibido}/${totalEnviado}${totalFaltante > 0 ? ` (faltan ${totalFaltante})` : ''}`,
+          nota: `Recibido ${totalRecibido}/${totalEnviado}${totalFaltante > 0 ? ` (faltan ${totalFaltante})` : ''}${fotoLoteGuardada ? ' [foto lote guardada]' : ''}`,
         });
         peds[idx] = p;
         db.guardarPedidos(peds);
@@ -11880,6 +11897,7 @@ setInterval(cargar, 15000);
           totalRecibido,
           totalFaltante,
           nuevoEstado: p.estado,
+          fotoLoteGuardada,
         });
       } catch (e) {
         console.error('[costura devolver]', e);

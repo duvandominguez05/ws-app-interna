@@ -1370,8 +1370,26 @@ function renderDevolver() {
       </div>
     </div>
     <textarea id="notas-devolver" placeholder="Notas (opcional)" style="width:100%; background:var(--panel-3); border:1px solid var(--line); color:var(--text); padding:10px; border-radius:10px; resize:vertical; min-height:50px; font-family:inherit; margin-bottom:6px;"></textarea>
+    <div style="background:var(--panel-3); border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
+      <div style="font-size:0.85rem; color:var(--muted); margin-bottom:8px;">📷 Foto del lote terminado (opcional, sirve como respaldo del conteo)</div>
+      <input type="file" id="foto-lote-devolver" accept="image/*" capture="environment" style="font-size:0.85rem;">
+      <div id="foto-lote-preview" style="margin-top:8px;"></div>
+    </div>
     <button class="btn-green" onclick="confirmarDevolver()">✓ MARCAR DEVUELTO</button>
   `);
+  // Preview foto si seleccionan
+  setTimeout(() => {
+    const fi = $('foto-lote-devolver');
+    if (fi) fi.onchange = (e) => {
+      const f = e.target.files?.[0];
+      if (!f) { $('foto-lote-preview').innerHTML = ''; return; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        $('foto-lote-preview').innerHTML = `<img src="${ev.target.result}" style="max-width:100%; max-height:160px; border-radius:8px;">`;
+      };
+      reader.readAsDataURL(f);
+    };
+  }, 50);
 }
 function setRecibido(i, val) {
   const max = devolverState.devoluciones[i].cantidad_enviada;
@@ -1382,17 +1400,33 @@ function setRecibido(i, val) {
 async function confirmarDevolver() {
   try {
     devolverState.notas = $('notas-devolver')?.value || '';
+    // Foto opcional del lote terminado
+    let fotoLoteBase64 = null, fotoLoteMime = null;
+    const fi = $('foto-lote-devolver');
+    const file = fi?.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      const dataUrl = await new Promise((resolve, reject) => {
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) { fotoLoteMime = m[1]; fotoLoteBase64 = m[2]; }
+    }
     const r = await fetch('/api/costura/devolver', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         pedido_id: devolverState.pedidoId,
         devoluciones: devolverState.devoluciones.map(d => ({movimiento_id: d.movimiento_id, cantidad_recibida: d.cantidad_recibida})),
         notas: devolverState.notas,
+        fotoLoteBase64,
+        fotoLoteMime,
       })
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error);
-    toast(`Devuelto: ${d.totalRecibido}/${d.totalEnviado} ${d.totalFaltante ? `(faltan ${d.totalFaltante})` : '✓'}`);
+    toast(`Devuelto: ${d.totalRecibido}/${d.totalEnviado} ${d.totalFaltante ? `(faltan ${d.totalFaltante})` : '✓'}${d.fotoLoteGuardada ? ' 📷' : ''}`);
     cerrarModalDirecto();
     cargarDashboard();
   } catch (e) { toast('Error: ' + e.message, 'err'); }
