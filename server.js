@@ -2,6 +2,7 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 const { webcrypto } = require('crypto');
+const { Pool: PgPool } = require('pg'); // para leer DB de Evolution (campo JSON labels)
 if (!global.crypto) global.crypto = webcrypto;
 const db   = require('./db');
 const { PERSONAS, getPersona, manifestParaPersona } = require('./personas');
@@ -11666,6 +11667,174 @@ setInterval(cargar, 15000);
       console.error('[costura dashboard]', e);
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /api/admin/sync-etiquetas-wa
+  // Lee la DB Postgres de Evolution directo (necesita EVOLUTION_DB_URL).
+  // Bypasea el bug de Evolution v2.3.7 donde findChats ignora filtro labels.
+  // Para cada chat con label mapeada, crea pedido en ERP si no existe o
+  // actualiza el estado del existente.
+  // Body (opcional): { soloPreview: true } -> reporta sin escribir
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/sync-etiquetas-wa') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1024*1024) req.destroy(); });
+    req.on('end', async () => {
+      const dbUrl = process.env.EVOLUTION_DB_URL;
+      if (!dbUrl) {
+        return json(res, 500, { error: 'falta EVOLUTION_DB_URL en env vars' });
+      }
+      const data = (() => { try { return JSON.parse(body || '{}'); } catch { return {}; } })();
+      const soloPreview = !!data.soloPreview;
+
+      // Mapeo etiqueta WA (por instancia y nombre normalizado) -> estado ERP
+      // Coincide con ETIQUETAS_POR_INSTANCIA del handler labels.association.
+      const MAPEO = {
+        'ws-ventas': { 'en proceso': 'confirmado', 'en tela y en costura': 'costura', 'hecho': 'listo', 'entregado': 'entregado' },
+        'ws wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-ney':    { 'pagado': 'confirmado', 'venta': 'entregado' },
+        'ws-paola':  { 'pedido en proceso': 'confirmado', 'entregado': 'entregado' },
+      };
+      const VENDEDORA = { 'ws-ventas':'Betty', 'ws wendy':'Wendy', 'ws-wendy':'Wendy', 'ws-ney':'Ney', 'ws-paola':'Paola' };
+      const ESTADOS_INACTIVOS = new Set(['entregado', 'archivado', 'cancelado', 'descartado', 'enviado-final']);
+
+      let pool = null;
+      try {
+        pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+        // 1) Leer instancias para obtener instanceId por nombre
+        const instRes = await pool.query(`SELECT id, name FROM "Instance"`);
+        const instById = {};
+        const instByName = {};
+        for (const r of instRes.rows) { instById[r.id] = r.name; instByName[r.name] = r.id; }
+
+        // 2) Leer TODOS los chats que tengan campo labels NO vacio.
+        //    El campo es JSONB; los chats sin labels lo tienen null o '[]'.
+        const chatRes = await pool.query(`
+          SELECT "instanceId", "remoteJid", labels
+          FROM "Chat"
+          WHERE labels IS NOT NULL
+            AND labels::text NOT IN ('null', '[]', '""')
+        `);
+
+        const reporte = {
+          ts: new Date().toISOString(),
+          soloPreview,
+          totalChatsConLabels: chatRes.rows.length,
+          porInstancia: {},
+          creados: [],
+          actualizados: [],
+          ignorados: { sinMapeo: 0, jidNoIndiv: 0, telInvalido: 0 },
+        };
+
+        const pedidos = leerPedidos();
+        const normTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.startsWith('57') ? d.slice(2) : d; };
+        const ahora = new Date().toISOString();
+
+        for (const row of chatRes.rows) {
+          const instName = (instById[row.instanceId] || '').toLowerCase();
+          if (!instName) continue;
+          const mapeo = MAPEO[instName];
+          if (!mapeo) continue;
+
+          // El campo labels en Evolution v2 viene como array de label IDs (strings)
+          // o como array de objetos {id, name}. Soportamos ambos.
+          let labelsRaw = row.labels;
+          if (typeof labelsRaw === 'string') {
+            try { labelsRaw = JSON.parse(labelsRaw); } catch { labelsRaw = []; }
+          }
+          const labelsArr = Array.isArray(labelsRaw) ? labelsRaw : [];
+          // Resolver nombres: si los items son objetos con name, usarlo; si son
+          // ids (strings/numbers), buscar en la tabla Label.
+          let labelNames = labelsArr.map(l => {
+            if (l && typeof l === 'object' && l.name) return String(l.name).toLowerCase().trim();
+            return null;
+          }).filter(Boolean);
+          // Si vinieron como ids, hacemos otra query a Label para resolverlos
+          if (labelNames.length === 0 && labelsArr.length > 0) {
+            const ids = labelsArr.map(l => String(l)).filter(Boolean);
+            if (ids.length > 0) {
+              const labRes = await pool.query(
+                `SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1 AND "labelId" = ANY($2)`,
+                [row.instanceId, ids]
+              );
+              labelNames = labRes.rows.map(r => String(r.name || '').toLowerCase().trim()).filter(Boolean);
+            }
+          }
+          // Buscar la PRIMERA label que mapee a un estado
+          let estadoNuevo = null, labelMatch = null;
+          for (const lname of labelNames) {
+            if (mapeo[lname]) { estadoNuevo = mapeo[lname]; labelMatch = lname; break; }
+          }
+          if (!estadoNuevo) { reporte.ignorados.sinMapeo++; continue; }
+
+          // Validar JID
+          const jid = row.remoteJid || '';
+          if (jid.includes('@g.us') || jid.includes('@lid')) { reporte.ignorados.jidNoIndiv++; continue; }
+          const telRaw = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          if (telRaw.length < 7) { reporte.ignorados.telInvalido++; continue; }
+          const telN = normTel(telRaw);
+
+          // Acumular en reporte por instancia
+          if (!reporte.porInstancia[instName]) reporte.porInstancia[instName] = {};
+          if (!reporte.porInstancia[instName][labelMatch]) reporte.porInstancia[instName][labelMatch] = 0;
+          reporte.porInstancia[instName][labelMatch]++;
+
+          // Buscar pedido activo
+          const pdActivo = pedidos.find(p => normTel(p.telefono) === telN && !ESTADOS_INACTIVOS.has(p.estado || ''));
+          if (pdActivo) {
+            if (pdActivo.estado !== estadoNuevo) {
+              if (!soloPreview) {
+                const estadoPrev = pdActivo.estado;
+                pdActivo.estado = estadoNuevo;
+                pdActivo.ultimoMovimiento = ahora;
+                pdActivo.historial = pdActivo.historial || [];
+                pdActivo.historial.push({
+                  ts: ahora,
+                  evento: `Sync etiquetas WA: "${labelMatch}" (${instName}) → ${estadoNuevo}`,
+                  automatico: true,
+                });
+              }
+              reporte.actualizados.push({ id: pdActivo.id, equipo: pdActivo.equipo, de: pdActivo.estado, a: estadoNuevo, instancia: instName });
+            }
+          } else {
+            // No hay pedido activo: crear uno nuevo en el estado correspondiente
+            if (!soloPreview) {
+              const vendedora = VENDEDORA[instName] || '';
+              const nuevoId = db.leerNextId();
+              const nuevo = {
+                id: nuevoId,
+                tipo: 'pedido',
+                equipo: `Pedido importado #${nuevoId}`,
+                telefono: telRaw,
+                vendedora,
+                estado: estadoNuevo,
+                nombreEsTentativo: true,
+                origen: 'sync-etiquetas-wa',
+                fechaVenta: '',
+                ultimoMovimiento: ahora,
+                historial: [{
+                  ts: ahora,
+                  evento: `Importado de etiqueta WA "${labelMatch}" (${instName})`,
+                  automatico: true,
+                }],
+              };
+              db.upsertPedido(nuevo);
+            }
+            reporte.creados.push({ tel: telRaw, instancia: instName, estado: estadoNuevo, label: labelMatch });
+          }
+        }
+
+        return json(res, 200, { ok: true, ...reporte });
+      } catch (e) {
+        console.error('[sync-etiquetas-wa]', e);
+        return json(res, 500, { error: e.message });
+      } finally {
+        if (pool) { try { await pool.end(); } catch {} }
+      }
+    });
+    return;
   }
 
   // ── POST /api/costura/cerrar-atascado ──────────────────────────────
