@@ -9178,21 +9178,14 @@ setInterval(cargar, 15000);
             // venta confirmada de forma confiable. Las de avance casi nunca se
             // usan, asi que el avance posterior se detecta por OTROS triggers
             // (PDFs Drive, WeTransfer Gmail, etc).
-            // CONFIRMADO POR CAMILO (2026-06-29) + verificado contra Evolution
-            // findLabels/ws-ventas. Match case-insensitive (mas abajo) tolera
-            // mayusculas, minusculas y espacios extra.
-            // Nombres EXACTOS que existen en el WA de Betty:
-            //   En Proceso              → cliente consignado / venta confirmada
-            //   PAGO EN CASA            → pago efectivo en local
-            //   Pedido en tela          → pedido en tela (pre-costura)
-            //   en tela y en costura    → UNA etiqueta para ambas etapas (mandado a costurera)
-            //   hecho                   → lista para entregar
-            //   entregado               → entregada (la usan p/ remarketing mensual)
+            // SOLO las etiquetas que Camilo CONFIRMO explicito (29-jun-2026).
+            // Match case-insensitive (mas abajo) tolera mayus/minus/espacios.
+            // NO agregar otras etiquetas aunque parezcan obvias — Camilo
+            // tiene que decir que SI ("pago en casa" y "pedido en tela" se
+            // inventaron y se sacaron 29-jun).
             const ETIQUETAS_POR_INSTANCIA = {
               'ws-ventas': {
                 'En Proceso':              'confirmado',
-                'PAGO EN CASA':            'confirmado',
-                'Pedido en tela':          'tela-recibida',
                 'en tela y en costura':    'costura',
                 'hecho':                   'listo',
                 'entregado':               'entregado',
