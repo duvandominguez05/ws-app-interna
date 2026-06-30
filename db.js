@@ -792,6 +792,17 @@ const _cmListSinAviso7 = db.prepare(`
     AND aviso_7dias_enviado = 0
     AND fecha_envio <= @limite
 `);
+const _cmListAbiertosPorPedido = db.prepare(`
+  SELECT * FROM costureras_movimientos
+  WHERE pedido_id = ? AND fecha_recepcion IS NULL
+`);
+const _cmCerrarAbiertosPorPedido = db.prepare(`
+  UPDATE costureras_movimientos
+  SET fecha_recepcion = @fecha,
+      cantidad_recibida = cantidad_enviada,
+      observaciones = COALESCE(observaciones, '') || @nota
+  WHERE pedido_id = @pedido_id AND fecha_recepcion IS NULL
+`);
 
 function crearMovimientoCostura(data) {
   const res = _cmInsert.run({
@@ -849,6 +860,21 @@ function leerMovimientosCosturaSemana(desde, hasta) {
 
 function leerMovimientosCosturaSinAviso7Dias(limiteIso) {
   return _cmListSinAviso7.all({ limite: limiteIso });
+}
+
+// Cierra todos los movimientos abiertos de un pedido (asume entrega total).
+// Util cuando el pedido pasa a estado final y los movs quedan pegados.
+// Retorna cantidad de movimientos afectados.
+function cerrarMovimientosAbiertosPorPedido(pedido_id, opts = {}) {
+  const abiertos = _cmListAbiertosPorPedido.all(pedido_id);
+  if (abiertos.length === 0) return 0;
+  const motivo = opts.motivo || 'auto-cierre';
+  const res = _cmCerrarAbiertosPorPedido.run({
+    pedido_id,
+    fecha: new Date().toISOString(),
+    nota: ` | ${motivo}`,
+  });
+  return res.changes;
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -1075,6 +1101,7 @@ module.exports = {
   // Costureras
   crearMovimientoCostura, recibirMovimientoCostura, confirmarRecibidoCostura,
   marcarAviso7DiasCostura, leerMovimientoCostura,
+  cerrarMovimientosAbiertosPorPedido,
   leerMovimientosCosturaPendientes, leerMovimientosCostureraPorSlug,
   leerMovimientosCostureraPendientes, leerMovimientosCosturaSemana,
   leerMovimientosCosturaSinAviso7Dias,

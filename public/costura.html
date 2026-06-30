@@ -713,51 +713,17 @@ let nuevoEnvioState = {
 };
 
 function abrirNuevoEnvio() {
+  // Camilo (29-jun-2026): "el enfoque ya no es tomar una foto sino registrar
+  // normalmente como si fuera en un cuaderno". Arrancamos por el NOMBRE.
   nuevoEnvioState = { fotos: [], matchResult: null, nombreEscrito: '', pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
-  renderUploadFotos();
+  renderNombrarEquipo();
 }
 
-function renderUploadFotos() {
-  const fotos = nuevoEnvioState.fotos || [];
-  const tieneFoto = fotos.length > 0;
-  const slotsLlenos = fotos.map((f, i) => `
-    <div class="upload-slot lleno">
-      <img src="${f.dataUrl}" alt="foto ${i+1}">
-      <span class="overlay-vista">foto ${i+1}</span>
-      <button class="remove" onclick="quitarFoto(${i})">×</button>
-    </div>
-  `).join('');
-  const slotAdd = `
-    <label class="upload-slot" for="file-add">
-      <span class="placeholder">📷</span>
-      <span class="label-vista">${tieneFoto ? '+ otra' : 'foto del lote'}</span>
-      <span style="font-size:0.7rem; color:var(--muted-2);">tocar para tomar foto</span>
-      <input type="file" id="file-add" accept="image/*" capture="environment"
-             style="display:none;" onchange="archivarFoto(this.files[0])">
-    </label>
-  `;
-  abrirModal(`
-    <div class="modal-head">
-      <div>
-        <h2>📷 Nuevo envío a costura</h2>
-        <div class="sub">Tomá una foto del lote. La app busca el pedido sola. Podés agregar más fotos si querés.</div>
-      </div>
-      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
-    </div>
-    <div class="upload-grid">
-      ${slotsLlenos}
-      ${slotAdd}
-    </div>
-    <button class="btn-primary" ${tieneFoto ? '' : 'disabled'} onclick="buscarMatchDePedido()">
-      ${tieneFoto ? `🔍 Buscar pedido (${fotos.length} foto${fotos.length===1?'':'s'})` : 'Tomá una foto primero'}
-    </button>
-    <button class="btn-secondary" onclick="cerrarModalDirecto()">Cancelar</button>
-  `);
-}
+// [renderUploadFotos eliminada — foto ya no es punto de entrada]
 
 function quitarFoto(idx) {
   nuevoEnvioState.fotos.splice(idx, 1);
-  renderUploadFotos();
+  renderFotoOpcional();
 }
 
 async function archivarFoto(file) {
@@ -768,7 +734,7 @@ async function archivarFoto(file) {
     const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!m) throw new Error('formato invalido');
     nuevoEnvioState.fotos.push({ mime: m[1], base64: m[2], dataUrl });
-    renderUploadFotos();
+    renderFotoOpcional();
   } catch (e) {
     toast('Error leyendo foto: ' + e.message, 'err');
   }
@@ -799,53 +765,25 @@ function redimensionarImagen(file, maxLado, calidad) {
   });
 }
 
-async function buscarMatchDePedido() {
-  const fotos = nuevoEnvioState.fotos || [];
-  if (fotos.length === 0) return;
-  // Saltar directo a "Nombre del equipo" — el match foto corre en paralelo como ayuda.
-  // No bloquea ni decide: el nombre lo escribe Camilo/Graciela y eso es lo definitivo.
-  nuevoEnvioState.matchResult = null;
-  renderNombrarEquipo();
-  // Lanzar match foto en background (best-effort, no bloquea el flujo)
-  try {
-    fetch('/api/costura/match-foto', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fotos: fotos.map((f, i) => ({ base64: f.base64, mime: f.mime, vista: `foto ${i+1}` })),
-      }),
-    }).then(r => r.json()).then(d => {
-      nuevoEnvioState.matchResult = d;
-      // Si el modal de nombrar sigue abierto, refrescar para mostrar pista visual
-      if ($('input-nombre-equipo')) renderNombrarEquipo();
-    }).catch(() => {});
-  } catch {}
-}
+// [buscarMatchDePedido eliminada — el flujo ya no parte de foto.
+//  El match-foto sigue disponible via POST /api/costura/match-foto pero
+//  hoy se usa como herramienta opcional, no como entrada del flujo.]
 
-// ── Pantalla: NOMBRAR EQUIPO (obligatorio) ─────────────────────────────
+// ── Pantalla 1: NOMBRAR EQUIPO (obligatorio) ───────────────────────────
 // Camilo (29-jun-2026): "que sea obligatorio poner el nombre de equipo y asi
-// se hace match con los pedidos de la app".
-// El input arranca con la sugerencia del match-foto (si llegó) como hint.
+// se hace match con los pedidos de la app". Es el PUNTO DE PARTIDA del flujo
+// (antes era foto → match → nombre; ahora es nombre → costurera → foto opcional).
 function renderNombrarEquipo() {
-  const matchFoto = nuevoEnvioState.matchResult;
-  const sugerenciaFoto = matchFoto?.mejorMatch?.equipo || '';
-  const confianzaFoto = matchFoto?.confianzaGlobal || null;
-  const nombreActual = nuevoEnvioState.nombreEscrito || sugerenciaFoto || '';
+  const nombreActual = nuevoEnvioState.nombreEscrito || '';
 
   abrirModal(`
     <div class="modal-head">
       <div>
-        <h2>Nombre del equipo <span style="color:var(--red); font-size:1.2rem;">*</span></h2>
-        <div class="sub">Obligatorio. Si ya existe en el ERP, lo vinculamos automático.</div>
+        <h2>Nuevo envío — Paso 1/3</h2>
+        <div class="sub">Nombre del equipo <span style="color:var(--red); font-size:1.05rem;">*</span> obligatorio</div>
       </div>
       <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
     </div>
-
-    ${sugerenciaFoto && confianzaFoto && confianzaFoto !== 'ninguna' ? `
-      <div style="background:var(--purple-soft); border:1px solid var(--purple); border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:0.85rem;">
-        🎯 La foto se parece a: <b>${esc(sugerenciaFoto)}</b> (confianza ${esc(confianzaFoto)}). Si es ese, dejá el nombre.
-      </div>
-    ` : ''}
 
     <div style="margin-bottom:8px;">
       <input type="text" id="input-nombre-equipo"
@@ -856,11 +794,11 @@ function renderNombrarEquipo() {
              oninput="onTipearNombreEquipo(this.value)">
     </div>
     <div id="sugerencias-erp" style="min-height:60px; margin-bottom:14px;">
-      ${nombreActual.length >= 2 ? '<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Buscando coincidencias...</div>' : `<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Escribí el nombre — te muestro pedidos que matchean</div>`}
+      ${nombreActual.length >= 2 ? '<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Buscando coincidencias...</div>' : `<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Escribí el nombre — te muestro pedidos del ERP que matchean</div>`}
     </div>
 
     <button class="btn-primary" onclick="confirmarNombreEquipo()">Continuar →</button>
-    <button class="btn-secondary" onclick="renderUploadFotos()">← Volver a fotos</button>
+    <button class="btn-secondary" onclick="cerrarModalDirecto()">Cancelar</button>
   `);
 
   // Si el input ya tiene valor, dispará búsqueda
@@ -936,8 +874,8 @@ function abrirElegirCostureraYPrendas() {
   abrirModal(`
     <div class="modal-head">
       <div>
-        <h2>Asignar a costurera</h2>
-        <div class="sub">${esc(nombreMostrar)} ${nuevoEnvioState.pedidoElegido ? '' : '<span class="tag-sin-erp">⚠ SIN ERP</span>'}</div>
+        <h2>Paso 2/3 — Costurera + prendas</h2>
+        <div class="sub">${esc(nombreMostrar)} ${nuevoEnvioState.pedidoElegido ? '' : '<span class="tag-sin-erp">⚠ pedido nuevo (sin match ERP)</span>'}</div>
       </div>
       <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
     </div>
@@ -976,10 +914,50 @@ function abrirElegirCostureraYPrendas() {
       + Agregar prenda
     </button>
 
-    <button class="btn-primary" ${nuevoEnvioState.costurera_slug ? '' : 'disabled'} onclick="confirmarNuevoEnvio()">
-      ✓ Confirmar envío a costura
+    <button class="btn-primary" ${nuevoEnvioState.costurera_slug ? '' : 'disabled'} onclick="renderFotoOpcional()">
+      Continuar a foto (opcional) →
     </button>
-    <button class="btn-secondary" onclick="renderNombrarEquipo()">← Volver</button>
+    <button class="btn-secondary" onclick="renderNombrarEquipo()">← Volver al nombre</button>
+  `);
+}
+
+// ── Pantalla 3: FOTO OPCIONAL ──────────────────────────────────────────
+// Camilo (29-jun-2026): la foto ya no es obligatoria ni central.
+// Es opcional como respaldo visual del lote enviado a costurera.
+function renderFotoOpcional() {
+  const fotos = nuevoEnvioState.fotos || [];
+  const slotsLlenos = fotos.map((f, i) => `
+    <div class="upload-slot lleno">
+      <img src="${f.dataUrl}" alt="foto ${i+1}">
+      <span class="overlay-vista">foto ${i+1}</span>
+      <button class="remove" onclick="quitarFoto(${i})">×</button>
+    </div>
+  `).join('');
+  const slotAdd = `
+    <label class="upload-slot" for="file-add">
+      <span class="placeholder">📷</span>
+      <span class="label-vista">${fotos.length ? '+ otra' : 'foto del lote'}</span>
+      <span style="font-size:0.7rem; color:var(--muted-2);">tocar para tomar foto</span>
+      <input type="file" id="file-add" accept="image/*" capture="environment"
+             style="display:none;" onchange="archivarFoto(this.files[0])">
+    </label>
+  `;
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Paso 3/3 — Foto del lote (opcional)</h2>
+        <div class="sub">Si querés, tomá una foto como respaldo. O saltá directo.</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+    <div class="upload-grid">
+      ${slotsLlenos}
+      ${slotAdd}
+    </div>
+    <button class="btn-primary" onclick="confirmarNuevoEnvio()">
+      ✓ Confirmar envío a costura ${fotos.length ? `(con ${fotos.length} foto${fotos.length===1?'':'s'})` : '(sin foto)'}
+    </button>
+    <button class="btn-secondary" onclick="abrirElegirCostureraYPrendas()">← Volver</button>
   `);
 }
 

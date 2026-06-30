@@ -9272,6 +9272,17 @@ setInterval(cargar, 15000);
               });
               guardarPedidos(pedidos, leerNextId());
               console.log(`[labels-wa] ${instance}/"${labelName}": pedido #${pdActivo.id} ${estadoPrev}→${estadoNuevo}`);
+              // Auto-cerrar movimientos de costura abiertos si el pedido pasa
+              // a estado final. Evita que aparezcan eternamente en /costura.
+              const ESTADOS_FINALES = new Set(['entregado', 'enviado-final', 'archivado', 'cancelado']);
+              if (ESTADOS_FINALES.has(estadoNuevo)) {
+                try {
+                  const cerrados = db.cerrarMovimientosAbiertosPorPedido(pdActivo.id, {
+                    motivo: `auto: etiqueta WA "${labelName}" -> ${estadoNuevo}`,
+                  });
+                  if (cerrados > 0) console.log(`[labels-wa] auto-cerrados ${cerrados} mov(s) de #${pdActivo.id}`);
+                } catch (e) { console.error('[auto-cerrar mov]', e.message); }
+              }
               return json(res, 200, { ok: true, accion: 'avanzar', pedido_id: pdActivo.id, estadoPrev, estadoNuevo });
             }
 
@@ -11537,9 +11548,13 @@ setInterval(cargar, 15000);
         } catch {}
       }
 
+      // Defensa: excluir pedidos en estado final aunque tengan movs abiertos.
+      // Si la etiqueta WA "entregado" llegó, el pedido ya no está en costura
+      // (aunque por un bug viejo haya quedado un mov sin cerrar).
+      const ESTADOS_FINALES_COSTURA = new Set(['entregado', 'enviado-final', 'archivado', 'cancelado', 'listo']);
       const enCostura = peds.filter(p =>
-        ESTADOS_EN_COSTURA.includes(p.estado) ||
-        movsPorPedido.has(p.id)
+        !ESTADOS_FINALES_COSTURA.has(p.estado || '') &&
+        (ESTADOS_EN_COSTURA.includes(p.estado) || movsPorPedido.has(p.id))
       ).map(p => {
         const movs = movsPorPedido.get(p.id) || [];
         const slug = movs[0]?.costurera_slug || null;
@@ -11651,6 +11666,47 @@ setInterval(cargar, 15000);
       console.error('[costura dashboard]', e);
       return json(res, 500, { error: e.message });
     }
+  }
+
+  // ── POST /api/costura/cerrar-atascado ──────────────────────────────
+  // Marca un pedido como `entregado` y cierra sus movimientos abiertos.
+  // Body: { pedido_id, motivo? }
+  // Util cuando Camilo ve un pedido pegado en /costura que ya entregó pero
+  // nadie marcó. Esto reemplaza tener que tocar la DB a mano.
+  if (req.method === 'POST' && req.url === '/api/costura/cerrar-atascado') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1024*1024) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const pedido_id = parseInt(data.pedido_id, 10);
+        if (!pedido_id) return json(res, 400, { error: 'pedido_id requerido' });
+        const motivo = (data.motivo || 'cerrado manual desde /costura').slice(0, 200);
+        const todos = leerPedidos();
+        const idx = todos.findIndex(x => x.id === pedido_id);
+        if (idx < 0) return json(res, 404, { error: 'pedido no existe' });
+        const ped = todos[idx];
+        const estadoPrev = ped.estado;
+        ped.estado = 'entregado';
+        ped.ultimoMovimiento = new Date().toISOString();
+        ped.historial = ped.historial || [];
+        ped.historial.push({
+          fecha: new Date().toISOString(),
+          por: 'app-costura',
+          accion: 'cerrar-atascado',
+          de: estadoPrev,
+          a: 'entregado',
+          nota: motivo,
+        });
+        guardarPedidos(todos, leerNextId());
+        const movsCerrados = db.cerrarMovimientosAbiertosPorPedido(pedido_id, { motivo });
+        return json(res, 200, { ok: true, pedido_id, estadoPrev, movsCerrados });
+      } catch (e) {
+        console.error('[cerrar-atascado]', e);
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
   }
 
   // ── GET /api/costura/buscar-pedido?q=texto — autocompletar nombre de equipo ──
@@ -12130,7 +12186,9 @@ setInterval(cargar, 15000);
         if (!prendas || !Array.isArray(prendas) || prendas.length === 0) {
           return json(res, 400, { error: 'faltan prendas' });
         }
-        // Tomar la PRIMERA foto disponible en cualquiera de los formatos aceptados
+        // Foto OPCIONAL desde 29-jun-2026. Camilo: "el enfoque ya no es tomar una
+        // foto sino registrar normalmente como si fuera en un cuaderno". La foto
+        // queda como prueba visual opcional, no como entrada obligatoria.
         let fotoPrincipalBase64 = null, fotoPrincipalMime = null;
         if (Array.isArray(fotos) && fotos.length > 0 && fotos[0]?.base64) {
           fotoPrincipalBase64 = fotos[0].base64;
@@ -12142,9 +12200,7 @@ setInterval(cargar, 15000);
           fotoPrincipalBase64 = frenteBase64;
           fotoPrincipalMime = frenteMime || 'image/jpeg';
         }
-        if (!fotoPrincipalBase64) {
-          return json(res, 400, { error: 'falta foto (fotos[]/fotoBase64/frenteBase64)' });
-        }
+        // SIN foto tambien se acepta — solo se omite el setFotoPedido
         const costu = PERSONAS.find(x => x.slug === costurera_slug && x.roles.includes('costura'));
         if (!costu) return json(res, 400, { error: 'costurera no encontrada' });
 
@@ -12193,9 +12249,11 @@ setInterval(cargar, 15000);
           pedido_id = nuevoId;
         }
 
-        // Guardar foto principal del lote como referencia del pedido en costura
-        const fotoUrl = `data:${fotoPrincipalMime};base64,${fotoPrincipalBase64}`;
-        try { db.setFotoPedido(pedido_id, fotoUrl, 'lote-costura'); } catch (e) { console.error('[setFotoPedido]', e); }
+        // Guardar foto principal del lote como referencia (si la mandaron)
+        if (fotoPrincipalBase64) {
+          const fotoUrl = `data:${fotoPrincipalMime};base64,${fotoPrincipalBase64}`;
+          try { db.setFotoPedido(pedido_id, fotoUrl, 'lote-costura'); } catch (e) { console.error('[setFotoPedido]', e); }
+        }
 
         // Crear movimientos de costura (uno por tipo de prenda)
         const movimientos = [];
