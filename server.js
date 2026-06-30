@@ -9178,11 +9178,22 @@ setInterval(cargar, 15000);
             // venta confirmada de forma confiable. Las de avance casi nunca se
             // usan, asi que el avance posterior se detecta por OTROS triggers
             // (PDFs Drive, WeTransfer Gmail, etc).
+            // CONFIRMADO POR CAMILO (2026-06-29) — etiquetas reales que ws-ventas USA
+            // como db de remarketing. Cada etapa = una etiqueta:
+            //   En Proceso    → cliente consignado, venta confirmada
+            //   En tela       → llegó la tela de calandra
+            //   En costura    → mandada a costurera
+            //   Hecho         → lista para entregar
+            //   Entregado     → entregada (la usan p/ remarketing mensual)
             const ETIQUETAS_POR_INSTANCIA = {
               'ws-ventas': {
                 'En Proceso':            'confirmado',
                 'PAGO EN CASA':          'confirmado', // pago efectivo en local
-                'entregado':             'entregado',  // si SI la usan al cerrar
+                'En tela':               'tela-recibida',
+                'En costura':            'costura',
+                'Hecho':                 'listo',
+                'Entregado':             'entregado',
+                'entregado':             'entregado',  // legacy minusculas
               },
               'ws wendy': {
                 'CONSIGNADO':            'confirmado',
@@ -9213,7 +9224,13 @@ setInterval(cargar, 15000);
             if (!mapeo) {
               return json(res, 200, { ok: true, ignorado: 'instancia desconocida', instance });
             }
-            const estadoNuevo = mapeo[labelName];
+            // Match case-insensitive (tolera "En tela" / "en tela" / "EN TELA")
+            const labelLower = String(labelName || '').toLowerCase().trim();
+            const mapeoLower = {};
+            for (const [k, v] of Object.entries(mapeo)) {
+              mapeoLower[k.toLowerCase().trim()] = v;
+            }
+            const estadoNuevo = mapeoLower[labelLower];
             if (!estadoNuevo) {
               console.log(`[labels-wa] ${instance}/"${labelName}" sin mapeo — ignorado`);
               return json(res, 200, { ok: true, ignorado: 'etiqueta sin mapeo', labelName });
@@ -11637,6 +11654,47 @@ setInterval(cargar, 15000);
       });
     } catch (e) {
       console.error('[costura dashboard]', e);
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/costura/buscar-pedido?q=texto — autocompletar nombre de equipo ──
+  // Devuelve hasta 5 pedidos ACTIVOS cuyo equipo/cliente/vendedora matchea el texto.
+  // Usado por la app /costura cuando Camilo o Graciela escriben el nombre del equipo.
+  if (req.method === 'GET' && req.url.startsWith('/api/costura/buscar-pedido')) {
+    try {
+      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const q = (u.searchParams.get('q') || '').trim().toLowerCase();
+      if (!q || q.length < 2) return json(res, 200, { ok: true, pedidos: [] });
+      const tokens = q.split(/\s+/).filter(Boolean);
+      // Excluir cerrados (entregado-final, archivado, cancelado, descartado)
+      const ESTADOS_INACTIVOS = new Set(['enviado-final', 'archivado', 'cancelado', 'descartado']);
+      const peds = leerPedidos().filter(p => !ESTADOS_INACTIVOS.has(p.estado || ''));
+      const matches = peds
+        .map(p => {
+          const haystack = [p.equipo, p.telefono, p.pushNameCliente, p.nombreCliente, p.vendedora]
+            .filter(Boolean).join(' ').toLowerCase();
+          let score = 0;
+          for (const t of tokens) {
+            if (haystack.includes(t)) score++;
+          }
+          // Bonus si el equipo empieza con el texto (match mas fuerte)
+          if (p.equipo && p.equipo.toLowerCase().startsWith(q)) score += 2;
+          return { p, score };
+        })
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(x => ({
+          id: x.p.id,
+          equipo: x.p.equipo || `Pedido #${x.p.id}`,
+          vendedora: x.p.vendedora || '',
+          estado: x.p.estado,
+          telefono: x.p.telefono || '',
+          thumbnail: (db.getFotoPedido(x.p.id)?.url) || (x.p.drive?.pdfRip?.thumbnail) || null,
+        }));
+      return json(res, 200, { ok: true, total: matches.length, pedidos: matches });
+    } catch (e) {
       return json(res, 500, { error: e.message });
     }
   }

@@ -703,16 +703,17 @@ function abrirCosturera(slug) {
 // ──────────── NUEVO ENVIO A COSTURA (POR FOTO) ────────────
 // Estado del flujo:
 let nuevoEnvioState = {
-  fotos: [],       // [{ base64, mime, dataUrl }]
-  matchResult: null,
-  pedidoElegido: null, // { id, equipo, vendedora } o null si fantasma
-  nombreFantasma: '',
+  fotos: [],            // [{ base64, mime, dataUrl }]
+  matchResult: null,    // pista visual del match-foto (no decide)
+  nombreEscrito: '',    // lo que va tipeando Camilo/Graciela en el input
+  pedidoElegido: null,  // { pedido_id, equipo } si vinculó al ERP, null si nuevo
+  nombreFantasma: '',   // nombre final si NO vinculó (pedido nuevo sin ERP)
   costurera_slug: null,
   prendas: [],
 };
 
 function abrirNuevoEnvio() {
-  nuevoEnvioState = { fotos: [], matchResult: null, pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
+  nuevoEnvioState = { fotos: [], matchResult: null, nombreEscrito: '', pedidoElegido: null, nombreFantasma: '', costurera_slug: null, prendas: [] };
   renderUploadFotos();
 }
 
@@ -801,105 +802,130 @@ function redimensionarImagen(file, maxLado, calidad) {
 async function buscarMatchDePedido() {
   const fotos = nuevoEnvioState.fotos || [];
   if (fotos.length === 0) return;
-  abrirModal(`
-    <div class="modal-head"><div><h2>Buscando pedido...</h2><div class="sub">Analizando ${fotos.length} foto${fotos.length===1?'':'s'} con Gemini Vision</div></div></div>
-    <div style="text-align:center; padding:40px 20px;">
-      <div style="font-size:3rem; margin-bottom:14px;">🔍</div>
-      <div style="color:var(--muted); font-size:0.9rem;">Esto tarda 5-10 segundos...</div>
-    </div>
-  `);
+  // Saltar directo a "Nombre del equipo" — el match foto corre en paralelo como ayuda.
+  // No bloquea ni decide: el nombre lo escribe Camilo/Graciela y eso es lo definitivo.
+  nuevoEnvioState.matchResult = null;
+  renderNombrarEquipo();
+  // Lanzar match foto en background (best-effort, no bloquea el flujo)
   try {
-    const r = await fetch('/api/costura/match-foto', {
+    fetch('/api/costura/match-foto', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fotos: fotos.map((f, i) => ({ base64: f.base64, mime: f.mime, vista: `foto ${i+1}` })),
       }),
-    });
-    const d = await r.json();
-    if (!r.ok || d.error) throw new Error(d.error || 'error al matchear');
-    nuevoEnvioState.matchResult = d;
-    renderResultadoMatch();
-  } catch (e) {
-    toast('Error: ' + e.message, 'err');
-    renderUploadFotos(); // volver al upload
+    }).then(r => r.json()).then(d => {
+      nuevoEnvioState.matchResult = d;
+      // Si el modal de nombrar sigue abierto, refrescar para mostrar pista visual
+      if ($('input-nombre-equipo')) renderNombrarEquipo();
+    }).catch(() => {});
+  } catch {}
+}
+
+// ── Pantalla: NOMBRAR EQUIPO (obligatorio) ─────────────────────────────
+// Camilo (29-jun-2026): "que sea obligatorio poner el nombre de equipo y asi
+// se hace match con los pedidos de la app".
+// El input arranca con la sugerencia del match-foto (si llegó) como hint.
+function renderNombrarEquipo() {
+  const matchFoto = nuevoEnvioState.matchResult;
+  const sugerenciaFoto = matchFoto?.mejorMatch?.equipo || '';
+  const confianzaFoto = matchFoto?.confianzaGlobal || null;
+  const nombreActual = nuevoEnvioState.nombreEscrito || sugerenciaFoto || '';
+
+  abrirModal(`
+    <div class="modal-head">
+      <div>
+        <h2>Nombre del equipo <span style="color:var(--red); font-size:1.2rem;">*</span></h2>
+        <div class="sub">Obligatorio. Si ya existe en el ERP, lo vinculamos automático.</div>
+      </div>
+      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
+    </div>
+
+    ${sugerenciaFoto && confianzaFoto && confianzaFoto !== 'ninguna' ? `
+      <div style="background:var(--purple-soft); border:1px solid var(--purple); border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:0.85rem;">
+        🎯 La foto se parece a: <b>${esc(sugerenciaFoto)}</b> (confianza ${esc(confianzaFoto)}). Si es ese, dejá el nombre.
+      </div>
+    ` : ''}
+
+    <div style="margin-bottom:8px;">
+      <input type="text" id="input-nombre-equipo"
+             placeholder="ej: Cafeteritos, Tigres del Norte, Pepe Sanchez..."
+             style="width:100%; padding:14px; background:var(--panel-2); border:2px solid var(--line-strong); border-radius:10px; color:var(--text); font-size:1rem;"
+             autocomplete="off" autofocus
+             value="${esc(nombreActual)}"
+             oninput="onTipearNombreEquipo(this.value)">
+    </div>
+    <div id="sugerencias-erp" style="min-height:60px; margin-bottom:14px;">
+      ${nombreActual.length >= 2 ? '<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Buscando coincidencias...</div>' : `<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Escribí el nombre — te muestro pedidos que matchean</div>`}
+    </div>
+
+    <button class="btn-primary" onclick="confirmarNombreEquipo()">Continuar →</button>
+    <button class="btn-secondary" onclick="renderUploadFotos()">← Volver a fotos</button>
+  `);
+
+  // Si el input ya tiene valor, dispará búsqueda
+  if (nombreActual.length >= 2) {
+    onTipearNombreEquipo(nombreActual);
   }
 }
 
-function renderResultadoMatch() {
-  const d = nuevoEnvioState.matchResult;
-  const matchesOrdenados = (d.matches || []).filter(m => m.coincide).sort((a, b) => {
-    const orden = { alta: 3, media: 2, baja: 1 };
-    return (orden[b.confianza] || 0) - (orden[a.confianza] || 0);
-  });
-  const hayMatch = matchesOrdenados.length > 0;
-  const mejor = matchesOrdenados[0];
-
-  abrirModal(`
-    <div class="modal-head">
-      <div>
-        <h2>${hayMatch ? '🎯 Pedido encontrado' : '⚠ Sin match en ERP'}</h2>
-        <div class="sub">
-          ${hayMatch ? `${matchesOrdenados.length} candidato${matchesOrdenados.length === 1 ? '' : 's'} · evaluamos ${d.totalCandidatosEvaluables || 0} de ${d.totalPedidosEnEstados || 0} pedidos activos`
-                     : `Ningún pedido del ERP coincide con estas fotos. Podés registrarlo igualmente.`}
+let _buscarPedidoTimer = null;
+function onTipearNombreEquipo(valor) {
+  nuevoEnvioState.nombreEscrito = valor;
+  clearTimeout(_buscarPedidoTimer);
+  const cont = $('sugerencias-erp');
+  if (!cont) return;
+  if (!valor || valor.length < 2) {
+    cont.innerHTML = `<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Escribí el nombre — te muestro pedidos que matchean</div>`;
+    return;
+  }
+  _buscarPedidoTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/api/costura/buscar-pedido?q=${encodeURIComponent(valor)}`);
+      const d = await r.json();
+      const peds = d.pedidos || [];
+      if (peds.length === 0) {
+        cont.innerHTML = `<div style="color:var(--muted-2); font-size:0.8rem; padding:8px;">Sin coincidencias en el ERP. Si lo confirmás, se registra como nuevo.</div>`;
+        return;
+      }
+      cont.innerHTML = peds.map(p => `
+        <div class="sugerencia-card" onclick="elegirPedidoExistente(${p.id}, ${JSON.stringify(p.equipo).replace(/"/g,'&quot;')})"
+             style="display:flex; align-items:center; gap:10px; padding:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; cursor:pointer;">
+          <div style="width:36px; height:36px; border-radius:8px; background:var(--panel-3); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+            ${p.thumbnail ? `<img src="${esc(p.thumbnail)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'">` : `<span style="font-size:0.75rem; color:var(--muted);">${esc(getInitials(p.equipo))}</span>`}
+          </div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:0.92rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.equipo)}</div>
+            <div style="font-size:0.72rem; color:var(--muted);">${esc(p.vendedora || '—')} · ${esc(p.estado)} · #${p.id}</div>
+          </div>
         </div>
-      </div>
-      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
-    </div>
-    ${hayMatch ? matchesOrdenados.map((m, i) => `
-      <div class="match-card ${m.confianza}" onclick="elegirPedidoMatch(${m.pedido_id})">
-        <span class="pill">Confianza ${esc(m.confianza)}${i === 0 ? ' · MEJOR' : ''}</span>
-        <h3>${esc(m.equipo)}</h3>
-        <div class="meta">Vendedora: ${esc(m.vendedora || '—')} · ID #${m.pedido_id}</div>
-        <div class="razon">${esc(m.porQue || '')}</div>
-      </div>
-    `).join('') : ''}
-    <button class="btn-secondary" onclick="elegirFantasma()">
-      ${hayMatch ? '➕ Ninguno coincide — registrar como fantasma (sin ERP)' : '➕ Registrar igualmente (sin ERP)'}
-    </button>
-    <button class="btn-secondary" onclick="renderUploadFotos()">← Volver a subir fotos</button>
-  `);
+      `).join('');
+    } catch (e) {
+      cont.innerHTML = `<div style="color:#fca5a5; font-size:0.8rem; padding:8px;">Error buscando: ${esc(e.message)}</div>`;
+    }
+  }, 250);
 }
 
-function elegirPedidoMatch(pedido_id) {
-  const m = (nuevoEnvioState.matchResult.matches || []).find(x => x.pedido_id === pedido_id);
-  if (!m) return;
-  nuevoEnvioState.pedidoElegido = m;
+function elegirPedidoExistente(pedido_id, equipo) {
+  nuevoEnvioState.pedidoElegido = { pedido_id, equipo };
+  nuevoEnvioState.nombreEscrito = equipo;
   abrirElegirCostureraYPrendas();
 }
 
-function elegirFantasma() {
-  nuevoEnvioState.pedidoElegido = null;
-  abrirNombrarFantasma();
-}
-
-function abrirNombrarFantasma() {
-  abrirModal(`
-    <div class="modal-head">
-      <div>
-        <h2>⚠ Pedido sin ERP</h2>
-        <div class="sub">Poné un nombre para identificarlo después</div>
-      </div>
-      <button class="close-btn" onclick="cerrarModalDirecto()">✕</button>
-    </div>
-    <div style="margin-bottom:16px;">
-      <label style="display:block; font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:8px;">Nombre del equipo / cliente</label>
-      <input type="text" id="input-nombre-fantasma" placeholder="ej: Tigres del Norte, Pepe Sanchez..."
-             style="width:100%; padding:14px; background:var(--panel-2); border:1px solid var(--line-strong); border-radius:10px; color:var(--text); font-size:1rem;"
-             autocomplete="off" autofocus
-             value="${esc(nuevoEnvioState.nombreFantasma || '')}">
-    </div>
-    <button class="btn-primary" onclick="confirmarNombreFantasma()">Continuar →</button>
-    <button class="btn-secondary" onclick="renderResultadoMatch()">← Volver</button>
-  `);
-}
-
-function confirmarNombreFantasma() {
-  const nombre = ($('input-nombre-fantasma')?.value || '').trim();
-  if (!nombre) return toast('Poné un nombre', 'err');
+function confirmarNombreEquipo() {
+  const nombre = ($('input-nombre-equipo')?.value || '').trim();
+  if (!nombre) return toast('El nombre del equipo es obligatorio', 'err');
+  // No matcheo automatico al texto exacto — si Camilo quiso vincular ya tocó la sugerencia.
+  // Si no tocó nada y escribió un nombre, lo creamos como nuevo (fantasma).
   nuevoEnvioState.nombreFantasma = nombre;
+  nuevoEnvioState.pedidoElegido = null;
   abrirElegirCostureraYPrendas();
 }
+
+// [eliminadas: renderResultadoMatch / elegirPedidoMatch / elegirFantasma /
+//  abrirNombrarFantasma / confirmarNombreFantasma — reemplazadas por
+//  renderNombrarEquipo() con autocompletado contra el ERP. Camilo (29-jun-2026):
+//  el nombre del equipo es siempre obligatorio y matchea solo contra pedidos.]
 
 function abrirElegirCostureraYPrendas() {
   const costureras = (dashboardData?.costureras || []);
@@ -953,7 +979,7 @@ function abrirElegirCostureraYPrendas() {
     <button class="btn-primary" ${nuevoEnvioState.costurera_slug ? '' : 'disabled'} onclick="confirmarNuevoEnvio()">
       ✓ Confirmar envío a costura
     </button>
-    <button class="btn-secondary" onclick="${nuevoEnvioState.pedidoElegido ? 'renderResultadoMatch()' : 'abrirNombrarFantasma()'}">← Volver</button>
+    <button class="btn-secondary" onclick="renderNombrarEquipo()">← Volver</button>
   `);
 }
 
