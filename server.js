@@ -11669,6 +11669,130 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/diagnostico-pedidos ─────────────────────────────
+  // Cruza los pedidos del ERP con las etiquetas WA de cada telefono.
+  // Devuelve:
+  //  - Pedidos ERP con su estado ACTUAL y su estado REAL segun etiqueta WA
+  //  - Pedidos WA activos que NO estan en el ERP
+  //  - Resumen ejecutivo por vendedora
+  if (req.method === 'GET' && req.url === '/api/admin/diagnostico-pedidos') {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+
+      // Mapeo etiqueta -> estado ERP (mismo que sync)
+      const MAPEO = {
+        'ws-ventas': { 'en proceso': 'confirmado', 'en tela y en costura': 'costura', 'hecho': 'listo', 'entregado': 'entregado' },
+        'ws wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-ney':    { 'pagado': 'confirmado', 'venta': 'entregado' },
+        'ws-paola':  { 'pedido en proceso': 'confirmado', 'entregado': 'entregado' },
+      };
+      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+      const instById = {}, instByName = {};
+      for (const r of inst.rows) { instById[r.id] = r.name; instByName[r.name] = r.id; }
+
+      // Precargar labels por instancia
+      const labelCache = {};
+      for (const iid of Object.keys(instById)) {
+        const lr = await pool.query(`SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1`, [iid]);
+        labelCache[iid] = {};
+        for (const r of lr.rows) labelCache[iid][String(r.labelId)] = String(r.name || '').toLowerCase().trim();
+      }
+
+      const normTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.startsWith('57') ? d.slice(2) : d; };
+
+      // Funcion para buscar labels de un telefono en Evolution
+      async function labelsPorTel(tel) {
+        const telFull = tel.startsWith('57') ? tel : '57' + tel;
+        const wapp = `${telFull}@s.whatsapp.net`;
+        // 1) chat @s.whatsapp.net directo
+        let chats = (await pool.query(
+          `SELECT "instanceId", labels FROM "Chat" WHERE "remoteJid" = $1`, [wapp]
+        )).rows;
+        // 2) chat @lid via remoteJidAlt
+        const lidC = (await pool.query(
+          `SELECT DISTINCT m."instanceId", m.key->>'remoteJid' AS "remoteJid"
+           FROM "Message" m
+           WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid'`,
+          [wapp]
+        )).rows;
+        for (const lc of lidC) {
+          const c = (await pool.query(
+            `SELECT "instanceId", labels FROM "Chat" WHERE "remoteJid" = $1 AND "instanceId" = $2`,
+            [lc.remoteJid, lc.instanceId]
+          )).rows;
+          chats.push(...c);
+        }
+        const out = [];
+        for (const ch of chats) {
+          let raw = ch.labels;
+          if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = []; } }
+          const arr = Array.isArray(raw) ? raw : [];
+          const names = [];
+          const cache = labelCache[ch.instanceId] || {};
+          for (const l of arr) {
+            if (l && typeof l === 'object' && l.name) names.push(String(l.name).toLowerCase().trim());
+            else if (l) {
+              const k = String(l);
+              names.push(cache[k] || k.toLowerCase().trim());
+            }
+          }
+          out.push({ instancia: (instById[ch.instanceId] || '').toLowerCase(), labels: names });
+        }
+        return out;
+      }
+
+      const peds = leerPedidos();
+      const pedidosERP = [];
+      for (const p of peds) {
+        const tel = String(p.telefono || '').replace(/\D/g, '');
+        if (!tel) { pedidosERP.push({ ...pedResumen(p), waLabels: [], estadoWA: null }); continue; }
+        const chats = await labelsPorTel(tel);
+        // Determinar estado sugerido por WA
+        let estadoWA = null, labelWA = null, instanciaWA = null;
+        for (const ch of chats) {
+          const mapeo = MAPEO[ch.instancia];
+          if (!mapeo) continue;
+          for (const ln of ch.labels) {
+            if (mapeo[ln]) { estadoWA = mapeo[ln]; labelWA = ln; instanciaWA = ch.instancia; break; }
+          }
+          if (estadoWA) break;
+        }
+        pedidosERP.push({
+          id: p.id,
+          equipo: p.equipo || '?',
+          vendedora: p.vendedora || '?',
+          telefono: p.telefono || '',
+          estadoERP: p.estado,
+          estadoWA,
+          labelWA,
+          instanciaWA,
+          discrepancia: estadoWA && estadoWA !== p.estado,
+        });
+      }
+      function pedResumen(p) {
+        return { id: p.id, equipo: p.equipo, vendedora: p.vendedora, telefono: p.telefono, estadoERP: p.estado };
+      }
+
+      return json(res, 200, {
+        ok: true,
+        totalPedidosERP: peds.length,
+        pedidosERP,
+        resumen: {
+          totalERP: peds.length,
+          conDiscrepancia: pedidosERP.filter(x => x.discrepancia).length,
+          entregadosSegunWA: pedidosERP.filter(x => x.estadoWA === 'entregado' && x.estadoERP !== 'entregado' && x.estadoERP !== 'enviado-final').length,
+          sinLabelWA: pedidosERP.filter(x => !x.estadoWA).length,
+        },
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: (e.stack||'').slice(0,500) });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ── GET /api/admin/verificar-chat?tel=573003270280 ──────────────────
   // Muestra el chat completo (labels + ultimos mensajes) del telefono dado.
   // Sirve para verificar si un pedido detectado por sync-etiquetas-wa es
