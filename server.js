@@ -11836,23 +11836,25 @@ setInterval(cargar, 15000);
           // Validar JID — @lid es el nuevo formato WA, TIENE cliente valido
           const jid = row.remoteJid || '';
           if (jid.includes('@g.us')) { reporte.ignorados.jidNoIndiv++; continue; }
-          // Para @lid necesitamos resolver el telefono desde la tabla Contact
+          // Para @lid: el tel real vive en Message.key.remoteJidAlt.
+          // Cualquier mensaje del chat tiene ese campo con el @s.whatsapp.net real.
           let telRaw = '';
           if (jid.includes('@lid')) {
-            // Buscar el telefono real en Contact.remoteJidAlt o similar
-            const cRes = await pool.query(
-              `SELECT "remoteJid" FROM "Contact" WHERE "instanceId" = $1 AND "remoteJid" LIKE '%@s.whatsapp.net' AND "id" IN (SELECT id FROM "Contact" WHERE "instanceId" = $1 LIMIT 1) LIMIT 1`,
-              [row.instanceId]
+            const mRes = await pool.query(
+              `SELECT key->>'remoteJidAlt' AS tel FROM "Message"
+               WHERE "instanceId" = $1
+                 AND key->>'remoteJid' = $2
+                 AND key->>'remoteJidAlt' LIKE '%@s.whatsapp.net'
+               LIMIT 1`,
+              [row.instanceId, jid]
             ).catch(() => ({ rows: [] }));
-            // Sin resolver por ahora: extraer numeros del JID como fallback
-            telRaw = jid.replace('@lid', '').replace(/\D/g, '');
-            // Los IDs @lid son numeros largos que NO son telefonos reales.
-            // Si tiene >12 digitos, probablemente es LID interno, no telefono.
-            if (telRaw.length > 12) telRaw = '';
+            if (mRes.rows.length > 0 && mRes.rows[0].tel) {
+              telRaw = mRes.rows[0].tel.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            }
           } else {
             telRaw = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
           }
-          if (telRaw.length < 7) { reporte.ignorados.telInvalido++; continue; }
+          if (telRaw.length < 7 || telRaw.length > 12) { reporte.ignorados.telInvalido++; continue; }
           const telN = normTel(telRaw);
 
           // Acumular en reporte por instancia
