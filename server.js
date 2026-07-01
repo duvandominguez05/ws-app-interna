@@ -11669,6 +11669,50 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/debug-evolution-schema — diagnostico del schema ──
+  // Para entender como Evolution resuelve @lid -> telefono real.
+  if (req.method === 'GET' && req.url === '/api/admin/debug-evolution-schema') {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      // 1) columnas de la tabla Contact
+      const contactCols = await pool.query(`
+        SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_name = 'Contact' ORDER BY ordinal_position
+      `);
+      // 2) muestra de un contacto con @lid
+      const lidSample = await pool.query(`
+        SELECT * FROM "Contact" WHERE "remoteJid" LIKE '%@lid' LIMIT 3
+      `);
+      // 3) muestra de un mensaje con remoteJidAlt (donde WA guarda el tel real)
+      const msgSample = await pool.query(`
+        SELECT key FROM "Message"
+        WHERE key::text LIKE '%remoteJidAlt%' AND key::text LIKE '%@lid%'
+        LIMIT 3
+      `);
+      // 4) muestra de un chat con @lid y sus labels
+      const chatSample = await pool.query(`
+        SELECT "remoteJid", labels FROM "Chat"
+        WHERE "remoteJid" LIKE '%@lid' AND labels IS NOT NULL
+          AND labels::text NOT IN ('null','[]','""')
+        LIMIT 5
+      `);
+      return json(res, 200, {
+        ok: true,
+        contactColumnas: contactCols.rows,
+        lidSample: lidSample.rows,
+        msgSampleKeys: msgSample.rows.map(r => r.key),
+        chatLidConLabels: chatSample.rows,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    } finally {
+      if (pool) { try { await pool.end(); } catch {} }
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // POST /api/admin/sync-etiquetas-wa
   // Lee la DB Postgres de Evolution directo (necesita EVOLUTION_DB_URL).
