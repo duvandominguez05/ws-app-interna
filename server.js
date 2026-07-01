@@ -11669,6 +11669,41 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/sticker-crudo?tel=X ──────────────────────────────
+  // Devuelve el JSON COMPLETO del sticker mas reciente del chat.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-crudo')) {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const tel = (u.searchParams.get('tel') || '').replace(/\D/g, '');
+    if (!tel) return json(res, 400, { error: 'tel requerido' });
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      const telFull = tel.startsWith('57') ? tel : '57' + tel;
+      const wapp = `${telFull}@s.whatsapp.net`;
+      // Buscar el @lid de este tel
+      const lidRes = await pool.query(
+        `SELECT DISTINCT m.key->>'remoteJid' AS "remoteJid"
+         FROM "Message" m
+         WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid' LIMIT 1`,
+        [wapp]
+      );
+      const jids = [wapp];
+      for (const r of lidRes.rows) jids.push(r.remoteJid);
+      const jidsSql = jids.map((_, i) => `$${i+1}`).join(',');
+      const msgs = await pool.query(
+        `SELECT "messageTimestamp", key, message FROM "Message"
+         WHERE key->>'remoteJid' IN (${jidsSql}) AND "messageType" = 'stickerMessage'
+         ORDER BY "messageTimestamp" DESC LIMIT 3`,
+        jids
+      );
+      return json(res, 200, { ok: true, tel: telFull, jids, stickers: msgs.rows });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ── GET /api/admin/buscar-sticker?tel=X ─────────────────────────────
   // Busca stickers en el chat de un telefono (en @s.whatsapp.net y en @lid).
   // Detecta si son sticker de venta comparando con STICKER_VENTA_HASHES.
