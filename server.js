@@ -11669,6 +11669,98 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/verificar-chat?tel=573003270280 ──────────────────
+  // Muestra el chat completo (labels + ultimos mensajes) del telefono dado.
+  // Sirve para verificar si un pedido detectado por sync-etiquetas-wa es
+  // realmente una venta o un falso positivo.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/verificar-chat')) {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const tel = (u.searchParams.get('tel') || '').replace(/\D/g, '');
+    if (!tel || tel.length < 7) return json(res, 400, { error: 'tel requerido' });
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      const telFull = tel.startsWith('57') ? tel : '57' + tel;
+      // Buscar chat: puede estar en @s.whatsapp.net directo o en @lid con remoteJidAlt
+      const wappJid = `${telFull}@s.whatsapp.net`;
+      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+      const instName = {};
+      for (const r of inst.rows) instName[r.id] = r.name;
+
+      // Primero @s.whatsapp.net directo
+      let chats = await pool.query(
+        `SELECT c."remoteJid", c.labels, c."instanceId" FROM "Chat" c
+         WHERE c."remoteJid" = $1`,
+        [wappJid]
+      );
+      // Si no encuentra, buscar via Message.remoteJidAlt
+      if (chats.rows.length === 0) {
+        const lidChats = await pool.query(
+          `SELECT DISTINCT m."instanceId", m.key->>'remoteJid' AS "remoteJid"
+           FROM "Message" m
+           WHERE m.key->>'remoteJidAlt' = $1
+             AND m.key->>'remoteJid' LIKE '%@lid'`,
+          [wappJid]
+        );
+        for (const lidRow of lidChats.rows) {
+          const c = await pool.query(
+            `SELECT "remoteJid", labels, "instanceId" FROM "Chat"
+             WHERE "remoteJid" = $1 AND "instanceId" = $2`,
+            [lidRow.remoteJid, lidRow.instanceId]
+          );
+          chats.rows.push(...c.rows);
+        }
+      }
+
+      const resultados = [];
+      for (const chat of chats.rows) {
+        const instanciaNombre = instName[chat.instanceId] || chat.instanceId;
+        // Resolver nombres de labels
+        let labelsRaw = chat.labels;
+        if (typeof labelsRaw === 'string') { try { labelsRaw = JSON.parse(labelsRaw); } catch { labelsRaw = []; } }
+        const labelsArr = Array.isArray(labelsRaw) ? labelsRaw : [];
+        const labelIds = labelsArr.map(l => (l && typeof l === 'object') ? String(l.id || l.labelId || '') : String(l));
+        const labRes = labelIds.length > 0 ? await pool.query(
+          `SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1 AND "labelId" = ANY($2)`,
+          [chat.instanceId, labelIds]
+        ) : { rows: [] };
+        const labels = labRes.rows.map(r => r.name);
+        // Ultimos 30 mensajes
+        const msgs = await pool.query(
+          `SELECT "messageTimestamp", "pushName", key, message
+           FROM "Message"
+           WHERE "instanceId" = $1 AND key->>'remoteJid' = $2
+           ORDER BY "messageTimestamp" DESC
+           LIMIT 30`,
+          [chat.instanceId, chat.remoteJid]
+        );
+        const mensajes = msgs.rows.reverse().map(m => {
+          const ts = m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString().slice(5,16).replace('T',' ') : '?';
+          const fromMe = m.key?.fromMe;
+          const msg = m.message || {};
+          let txt = msg.conversation || msg.extendedTextMessage?.text || '';
+          if (!txt) {
+            if (msg.imageMessage) txt = '[IMG' + (msg.imageMessage.caption ? ': '+msg.imageMessage.caption : '') + ']';
+            else if (msg.audioMessage) txt = '[AUDIO]';
+            else if (msg.videoMessage) txt = '[VIDEO]';
+            else if (msg.stickerMessage) txt = '[STICKER]';
+            else if (msg.documentMessage) txt = '[DOC: '+(msg.documentMessage.fileName||'?')+']';
+            else if (msg.orderMessage) txt = '[PEDIDO CATALOGO]';
+            else if (msg.locationMessage) txt = '[UBICACION]';
+            else txt = '[' + Object.keys(msg).join(',') + ']';
+          }
+          return { fecha: ts, quien: fromMe ? 'Vendedora' : 'Cliente', texto: (txt||'').slice(0,200) };
+        });
+        resultados.push({ instancia: instanciaNombre, chatJid: chat.remoteJid, labels, totalMensajes: msgs.rows.length, mensajes });
+      }
+      return json(res, 200, { ok: true, tel: telFull, encontrados: resultados.length, chats: resultados });
+    } catch (e) {
+      return json(res, 500, { error: e.message, stack: e.stack.slice(0,500) });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ── GET /api/admin/debug-evolution-schema — diagnostico del schema ──
   // Para entender como Evolution resuelve @lid -> telefono real.
   if (req.method === 'GET' && req.url === '/api/admin/debug-evolution-schema') {
