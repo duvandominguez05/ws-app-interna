@@ -11669,6 +11669,84 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/buscar-sticker?tel=X ─────────────────────────────
+  // Busca stickers en el chat de un telefono (en @s.whatsapp.net y en @lid).
+  // Detecta si son sticker de venta comparando con STICKER_VENTA_HASHES.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/buscar-sticker')) {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const tel = (u.searchParams.get('tel') || '').replace(/\D/g, '');
+    if (!tel) return json(res, 400, { error: 'tel requerido' });
+    const STK_VENTA = (process.env.STICKER_VENTA_HASHES || '8412e3c08b27c7ebc947948502e59b304347445bf4778a89245408e51fa61620,363cba4bcedd7e2dbe2f73a8dcb7ef6cd4208815a606cbd99f735d52c1b0f995').split(',').map(s => s.trim());
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      const telFull = tel.startsWith('57') ? tel : '57' + tel;
+      const wapp = `${telFull}@s.whatsapp.net`;
+      // 1) Todos los JIDs del chat (directo + @lid)
+      const jids = [wapp];
+      const lidRes = await pool.query(
+        `SELECT DISTINCT m.key->>'remoteJid' AS "remoteJid"
+         FROM "Message" m
+         WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid'`,
+        [wapp]
+      );
+      for (const r of lidRes.rows) jids.push(r.remoteJid);
+      // 2) Buscar TODOS los stickers en esos JIDs
+      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+      const instById = {}; for (const r of inst.rows) instById[r.id] = r.name;
+      const stickers = [];
+      for (const jid of jids) {
+        const msgs = await pool.query(
+          `SELECT "instanceId", "messageTimestamp", key, message
+           FROM "Message"
+           WHERE key->>'remoteJid' = $1 AND "messageType" = 'stickerMessage'
+           ORDER BY "messageTimestamp" DESC`,
+          [jid]
+        );
+        for (const m of msgs.rows) {
+          const stk = m.message?.stickerMessage || {};
+          let hash = '';
+          if (stk.fileSha256) {
+            try {
+              const buf = Buffer.from(stk.fileSha256.data || Object.values(stk.fileSha256));
+              hash = buf.toString('hex');
+            } catch {}
+          }
+          const ts = m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : '?';
+          stickers.push({
+            jid,
+            instancia: instById[m.instanceId] || '?',
+            fecha: ts,
+            fromMe: m.key?.fromMe,
+            hash,
+            esStickerVenta: STK_VENTA.includes(hash),
+          });
+        }
+      }
+      // 3) Contar mensajes totales en cada JID
+      const conteo = {};
+      for (const jid of jids) {
+        const c = await pool.query(
+          `SELECT COUNT(*) AS n FROM "Message" WHERE key->>'remoteJid' = $1`,
+          [jid]
+        );
+        conteo[jid] = parseInt(c.rows[0].n);
+      }
+      return json(res, 200, {
+        ok: true, tel: telFull,
+        jidsEncontrados: jids,
+        mensajesPorJid: conteo,
+        totalStickers: stickers.length,
+        stickersVentaConfirmados: stickers.filter(s => s.esStickerVenta).length,
+        stickers,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ── GET /api/admin/diagnostico-pedidos ─────────────────────────────
   // Cruza los pedidos del ERP con las etiquetas WA de cada telefono.
   // Devuelve:
