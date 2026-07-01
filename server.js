@@ -11793,6 +11793,112 @@ setInterval(cargar, 15000);
     } finally { if (pool) { try { await pool.end(); } catch {} } }
   }
 
+  // ── POST /api/admin/revertir-sync-etiquetas ────────────────────────
+  // Borra TODOS los pedidos importados con origen=sync-etiquetas-wa
+  // (deja el estado original del ERP intacto).
+  if (req.method === 'POST' && req.url === '/api/admin/revertir-sync-etiquetas') {
+    try {
+      const todos = leerPedidos();
+      const aBorrar = todos.filter(p => p.origen === 'sync-etiquetas-wa').map(p => p.id);
+      const restantes = todos.filter(p => p.origen !== 'sync-etiquetas-wa');
+      guardarPedidos(restantes, leerNextId());
+      return json(res, 200, { ok: true, borrados: aBorrar.length, ids: aBorrar });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // ── GET /api/admin/auditar-imports?n=10 ─────────────────────────────
+  // Toma N pedidos importados por sync-etiquetas-wa al azar y muestra
+  // sus chats para verificar que son ventas reales.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/auditar-imports')) {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const n = Math.min(parseInt(u.searchParams.get('n') || '10'), 20);
+    const filtroEstado = u.searchParams.get('estado'); // opcional: entregado/confirmado/costura/listo
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      const peds = leerPedidos().filter(p =>
+        p.origen === 'sync-etiquetas-wa' &&
+        (!filtroEstado || p.estado === filtroEstado) &&
+        p.telefono
+      );
+      // Muestra aleatoria
+      const shuffled = [...peds].sort(() => Math.random() - 0.5).slice(0, n);
+      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+      const instById = {};
+      for (const r of inst.rows) instById[r.id] = r.name;
+      const resultados = [];
+      for (const p of shuffled) {
+        const tel = String(p.telefono || '').replace(/\D/g, '');
+        if (!tel) continue;
+        const telFull = tel.startsWith('57') ? tel : '57' + tel;
+        // Buscar chat
+        const wapp = `${telFull}@s.whatsapp.net`;
+        let chats = (await pool.query(`SELECT "instanceId", "remoteJid" FROM "Chat" WHERE "remoteJid" = $1`, [wapp])).rows;
+        if (chats.length === 0) {
+          const lidC = (await pool.query(
+            `SELECT DISTINCT m."instanceId", m.key->>'remoteJid' AS "remoteJid"
+             FROM "Message" m WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid' LIMIT 1`, [wapp])).rows;
+          chats.push(...lidC);
+        }
+        const chat = chats[0];
+        if (!chat) { resultados.push({ id: p.id, tel: telFull, estado: p.estado, indicadores: 'chat no encontrado', totalMsgs: 0, ultimos: [] }); continue; }
+        // Total mensajes
+        const cnt = await pool.query(
+          `SELECT COUNT(*) AS n FROM "Message" WHERE "instanceId" = $1 AND key->>'remoteJid' = $2`,
+          [chat.instanceId, chat.remoteJid]
+        );
+        // Ultimos 6 mensajes
+        const msgs = await pool.query(
+          `SELECT "messageTimestamp", key, message FROM "Message"
+           WHERE "instanceId" = $1 AND key->>'remoteJid' = $2
+           ORDER BY "messageTimestamp" DESC LIMIT 6`,
+          [chat.instanceId, chat.remoteJid]
+        );
+        const ultimos = msgs.rows.reverse().map(m => {
+          const ts = m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString().slice(5,16).replace('T',' ') : '?';
+          const fromMe = m.key?.fromMe;
+          const msg = m.message || {};
+          let txt = msg.conversation || msg.extendedTextMessage?.text || '';
+          if (!txt) {
+            if (msg.imageMessage) txt = '[IMG'+(msg.imageMessage.caption ? ':'+msg.imageMessage.caption : '')+']';
+            else if (msg.audioMessage) txt = '[AUDIO]';
+            else if (msg.stickerMessage) txt = '[STICKER]';
+            else if (msg.documentMessage) txt = '[DOC]';
+            else if (msg.orderMessage) txt = '[PEDIDO CATALOGO]';
+            else if (msg.videoMessage) txt = '[VIDEO]';
+            else if (msg.locationMessage) txt = '[UBICACION]';
+            else txt = '['+Object.keys(msg).join(',').slice(0,30)+']';
+          }
+          return `${ts} | ${fromMe?'Vend':'Clnt'} | ${(txt||'').slice(0,120)}`;
+        });
+        // Indicadores heuristicos de venta
+        const allText = ultimos.join(' ').toLowerCase();
+        const indicadores = [];
+        if (/nequi|daviplata|bancolomb|transfe|abono|consigna|pago|comprobante/.test(allText)) indicadores.push('mencion pago');
+        if (/tarj|cuen|listo|entrega|domicil|direcc/.test(allText)) indicadores.push('log entrega');
+        if (parseInt(cnt.rows[0].n) < 3) indicadores.push('POCOS MENSAJES!');
+        resultados.push({
+          id: p.id,
+          equipo: p.equipo,
+          tel: telFull,
+          estado: p.estado,
+          vendedora: p.vendedora,
+          instancia: instById[chat.instanceId] || '?',
+          totalMsgs: parseInt(cnt.rows[0].n),
+          indicadores: indicadores.join(', ') || 'sin indicadores claros',
+          ultimos,
+        });
+      }
+      return json(res, 200, { ok: true, muestra: resultados.length, resultados });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ── GET /api/admin/verificar-chat?tel=573003270280 ──────────────────
   // Muestra el chat completo (labels + ultimos mensajes) del telefono dado.
   // Sirve para verificar si un pedido detectado por sync-etiquetas-wa es
