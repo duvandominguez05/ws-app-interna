@@ -11669,6 +11669,240 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /api/admin/sync-etiquetas-wa-v2 — con extracción Gemini
+  // Body: { soloPreview: bool, limite: number (default 3) }
+  // Diferencia con v1: extrae con Gemini nombre equipo/cliente/tipo/cantidad
+  // de la conversacion, para crear pedidos con NOMBRE UTIL en vez de
+  // "Pedido importado #X".
+  // ═══════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && req.url === '/api/admin/sync-etiquetas-wa-v2') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1024*1024) req.destroy(); });
+    req.on('end', async () => {
+      const dbUrl = process.env.EVOLUTION_DB_URL;
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+      if (!geminiKey) return json(res, 500, { error: 'falta GEMINI_API_KEY' });
+      const data = (() => { try { return JSON.parse(body || '{}'); } catch { return {}; } })();
+      const soloPreview = !!data.soloPreview;
+      const limite = Math.min(parseInt(data.limite || 3), 200);
+
+      const MAPEO = {
+        'ws-ventas': { 'en proceso': 'confirmado', 'en tela y en costura': 'costura', 'hecho': 'listo', 'entregado': 'entregado' },
+        'ws wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-wendy':  { 'consignado': 'confirmado', 'pedido finalizado': 'entregado' },
+        'ws-ney':    { 'pagado': 'confirmado', 'venta': 'entregado' },
+        'ws-paola':  { 'pedido en proceso': 'confirmado', 'entregado': 'entregado' },
+      };
+      const VENDEDORA = { 'ws-ventas':'Betty', 'ws wendy':'Wendy', 'ws-wendy':'Wendy', 'ws-ney':'Ney', 'ws-paola':'Paola' };
+      const ESTADOS_INACTIVOS = new Set(['entregado', 'archivado', 'cancelado', 'descartado', 'enviado-final']);
+
+      let pool = null;
+      try {
+        pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+        const instRes = await pool.query(`SELECT id, name FROM "Instance"`);
+        const instById = {}; for (const r of instRes.rows) instById[r.id] = r.name;
+        const labelCache = {};
+        for (const iid of Object.keys(instById)) {
+          const lr = await pool.query(`SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1`, [iid]);
+          labelCache[iid] = {};
+          for (const r of lr.rows) labelCache[iid][String(r.labelId)] = String(r.name || '').toLowerCase().trim();
+        }
+        const chatRes = await pool.query(`
+          SELECT "instanceId", "remoteJid", labels FROM "Chat"
+          WHERE labels IS NOT NULL AND labels::text NOT IN ('null', '[]', '""')
+        `);
+
+        const reporte = { procesados: 0, creados: [], actualizados: [], sinVenta: [], errores: [] };
+        const normTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.startsWith('57') ? d.slice(2) : d; };
+        const pedidos = leerPedidos();
+        const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+        // Filtrar chats con label mapeada
+        const chatsConMapa = [];
+        for (const row of chatRes.rows) {
+          const instName = (instById[row.instanceId] || '').toLowerCase();
+          const mapeo = MAPEO[instName];
+          if (!mapeo) continue;
+          let labelsRaw = row.labels;
+          if (typeof labelsRaw === 'string') { try { labelsRaw = JSON.parse(labelsRaw); } catch { labelsRaw = []; } }
+          const labelsArr = Array.isArray(labelsRaw) ? labelsRaw : [];
+          const cache = labelCache[row.instanceId] || {};
+          const labelNames = labelsArr.map(l => {
+            if (l && typeof l === 'object' && l.name) return String(l.name).toLowerCase().trim();
+            if (l) return cache[String(l)] || String(l).toLowerCase().trim();
+            return '';
+          }).filter(Boolean);
+          let estadoNuevo = null, labelMatch = null;
+          for (const ln of labelNames) if (mapeo[ln]) { estadoNuevo = mapeo[ln]; labelMatch = ln; break; }
+          if (!estadoNuevo) continue;
+          chatsConMapa.push({ instanceId: row.instanceId, instName, remoteJid: row.remoteJid, estadoNuevo, labelMatch });
+        }
+
+        // Procesar hasta `limite` chats
+        const aProcesar = chatsConMapa.slice(0, limite);
+
+        for (const c of aProcesar) {
+          try {
+            // Resolver telefono real
+            let telRaw = '';
+            if (c.remoteJid.includes('@lid')) {
+              const mRes = await pool.query(
+                `SELECT key->>'remoteJidAlt' AS tel FROM "Message"
+                 WHERE "instanceId" = $1 AND key->>'remoteJid' = $2
+                   AND key->>'remoteJidAlt' LIKE '%@s.whatsapp.net' LIMIT 1`,
+                [c.instanceId, c.remoteJid]
+              ).catch(() => ({ rows: [] }));
+              if (mRes.rows[0]?.tel) telRaw = mRes.rows[0].tel.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            } else {
+              telRaw = c.remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            }
+            if (telRaw.length < 7 || telRaw.length > 12) { reporte.errores.push({ jid: c.remoteJid, err: 'tel invalido' }); continue; }
+            const telN = normTel(telRaw);
+
+            // Leer ultimos 40 msgs del chat
+            const msgs = await pool.query(
+              `SELECT "messageTimestamp", key, message FROM "Message"
+               WHERE "instanceId" = $1 AND key->>'remoteJid' = $2
+               ORDER BY "messageTimestamp" DESC LIMIT 40`,
+              [c.instanceId, c.remoteJid]
+            );
+            const conversacion = msgs.rows.reverse().map(m => {
+              const ts = m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString().slice(0,16).replace('T',' ') : '?';
+              const fromMe = m.key?.fromMe;
+              const msg = m.message || {};
+              let txt = msg.conversation || msg.extendedTextMessage?.text || '';
+              if (!txt) {
+                if (msg.imageMessage) txt = '[IMG'+(msg.imageMessage.caption?': '+msg.imageMessage.caption:'')+']';
+                else if (msg.audioMessage) txt = '[AUDIO]';
+                else if (msg.stickerMessage) txt = '[STICKER]';
+                else if (msg.documentMessage) txt = '[DOC]';
+                else if (msg.orderMessage) txt = '[PEDIDO CATALOGO]';
+                else txt = '['+Object.keys(msg)[0]+']';
+              }
+              return `${ts} ${fromMe?'VEND':'CLNT'}: ${(txt||'').slice(0,300)}`;
+            }).join('\n');
+
+            // Llamar Gemini
+            const prompt = `Analiza esta conversacion de WhatsApp entre una vendedora de W&S Enterprise (fabrica de uniformes deportivos sublimados, Bogota, Colombia) y un cliente.
+
+CONVERSACION:
+${conversacion}
+
+CONTEXTO: La vendedora vende uniformes deportivos (camisetas, pantalonetas, conjuntos, petos, chaquetas). Los clientes pueden ser:
+- EQUIPO deportivo (compran 10-30 uniformes con el nombre del equipo, ej: "Cafeteros", "Tigres FC")
+- VENTA UNIDAD (compran 1-3 prendas con nombre de persona, ej: "Camiseta para Carlos")
+- MAYORISTA (compran cantidades grandes para revender)
+
+Responde SOLO JSON valido (sin markdown, sin explicaciones):
+{
+  "esVentaReal": true|false,
+  "tipoVenta": "EQUIPO" | "UNIDAD" | "MAYORISTA" | "CONSULTA_SIN_VENTA",
+  "nombreEquipo": "..." o null,
+  "nombreCliente": "..." o null,
+  "cantidadUniformes": <numero> o null,
+  "tipoPrenda": "camiseta" | "pantaloneta" | "conjunto" | "peto" | "chaqueta" | null,
+  "colorPrincipal": "..." o null,
+  "totalCOP": <numero> o null,
+  "confianza": "alta"|"media"|"baja"
+}`;
+
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${geminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: { temperature: 0.1, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+                }),
+              }
+            );
+            if (!geminiRes.ok) {
+              const t = await geminiRes.text();
+              reporte.errores.push({ tel: telRaw, err: 'gemini '+geminiRes.status, det: t.slice(0,200) });
+              continue;
+            }
+            const gjson = await geminiRes.json();
+            const rawTxt = gjson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const clean = rawTxt.replace(/```json\s*|\s*```/g, '').trim();
+            let analisis;
+            try { analisis = JSON.parse(clean); } catch { reporte.errores.push({ tel: telRaw, err: 'parse gemini', raw: clean.slice(0,300) }); continue; }
+
+            reporte.procesados++;
+
+            if (!analisis.esVentaReal) {
+              reporte.sinVenta.push({ tel: telRaw, motivo: analisis.tipoVenta });
+              continue;
+            }
+
+            // Construir nombre util
+            let nombre = '';
+            if (analisis.tipoVenta === 'EQUIPO' && analisis.nombreEquipo) nombre = analisis.nombreEquipo;
+            else if (analisis.tipoVenta === 'UNIDAD' && analisis.nombreCliente) nombre = analisis.nombreCliente;
+            else if (analisis.nombreEquipo || analisis.nombreCliente) nombre = analisis.nombreEquipo || analisis.nombreCliente;
+            else nombre = `Sin nombre (${analisis.tipoVenta})`;
+
+            // Buscar pedido activo
+            const pdActivo = pedidos.find(p => normTel(p.telefono) === telN && !ESTADOS_INACTIVOS.has(p.estado || ''));
+            const ahora = new Date().toISOString();
+            if (pdActivo) {
+              if (pdActivo.estado !== c.estadoNuevo) {
+                if (!soloPreview) {
+                  pdActivo.estado = c.estadoNuevo;
+                  pdActivo.ultimoMovimiento = ahora;
+                  pdActivo.historial = pdActivo.historial || [];
+                  pdActivo.historial.push({ ts: ahora, evento: `Sync v2: "${c.labelMatch}" -> ${c.estadoNuevo}`, automatico: true });
+                }
+                reporte.actualizados.push({ id: pdActivo.id, nombre: pdActivo.equipo, de: pdActivo.estado, a: c.estadoNuevo });
+              }
+            } else if (analisis.esVentaReal) {
+              const vendedora = VENDEDORA[c.instName] || '';
+              if (!soloPreview) {
+                const nuevoId = db.leerNextId();
+                const nuevo = {
+                  id: nuevoId,
+                  tipo: 'pedido',
+                  equipo: nombre,
+                  cliente: analisis.nombreCliente || nombre,
+                  telefono: telRaw,
+                  vendedora,
+                  estado: c.estadoNuevo,
+                  numUniformes: analisis.cantidadUniformes || null,
+                  tipoPrenda: analisis.tipoPrenda || '',
+                  color: analisis.colorPrincipal || '',
+                  total: analisis.totalCOP || 0,
+                  origen: 'sync-etiquetas-wa-v2',
+                  fechaVenta: '',
+                  ultimoMovimiento: ahora,
+                  historial: [{
+                    ts: ahora,
+                    evento: `Importado por sync v2 con Gemini. tipo=${analisis.tipoVenta}, conf=${analisis.confianza}`,
+                    automatico: true,
+                  }],
+                };
+                db.upsertPedido(nuevo);
+              }
+              reporte.creados.push({
+                tel: telRaw, nombre, tipo: analisis.tipoVenta, cant: analisis.cantidadUniformes,
+                prenda: analisis.tipoPrenda, conf: analisis.confianza, estado: c.estadoNuevo,
+              });
+            }
+          } catch (e) {
+            reporte.errores.push({ err: e.message });
+          }
+        }
+
+        return json(res, 200, { ok: true, soloPreview, totalChatsMapeados: chatsConMapa.length, ...reporte });
+      } catch (e) {
+        console.error('[sync-v2]', e);
+        return json(res, 500, { error: e.message });
+      } finally { if (pool) { try { await pool.end(); } catch {} } }
+    });
+    return;
+  }
+
   // ── POST /api/admin/analizar-video-drive ────────────────────────────
   // Descarga video de Drive + lo analiza con Gemini Video API.
   // Body: { driveFileId, prompt? }
