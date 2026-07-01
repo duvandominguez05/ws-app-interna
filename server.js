@@ -11726,11 +11726,25 @@ setInterval(cargar, 15000);
           creados: [],
           actualizados: [],
           ignorados: { sinMapeo: 0, jidNoIndiv: 0, telInvalido: 0 },
+          etiquetasSinMapear: {}, // debug: qué etiquetas no mapeamos (para ver si falta alguna)
         };
+        // Cache de nombres de labels por instancia (evita queries repetidas)
+        const labelNameCache = {}; // labelNameCache[instanceId][labelId] = name
 
         const pedidos = leerPedidos();
         const normTel = t => { const d = String(t || '').replace(/\D/g, ''); return d.startsWith('57') ? d.slice(2) : d; };
         const ahora = new Date().toISOString();
+
+        // Precargar TODAS las labels por instancia (una query por instancia)
+        // asi resolvemos IDs a nombres sin queries repetidas por chat.
+        for (const iid of Object.keys(instById)) {
+          const labRes = await pool.query(
+            `SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1`,
+            [iid]
+          );
+          labelNameCache[iid] = {};
+          for (const r of labRes.rows) labelNameCache[iid][String(r.labelId)] = String(r.name || '').toLowerCase().trim();
+        }
 
         for (const row of chatRes.rows) {
           const instName = (instById[row.instanceId] || '').toLowerCase();
@@ -11738,28 +11752,26 @@ setInterval(cargar, 15000);
           const mapeo = MAPEO[instName];
           if (!mapeo) continue;
 
-          // El campo labels en Evolution v2 viene como array de label IDs (strings)
-          // o como array de objetos {id, name}. Soportamos ambos.
+          // El campo labels puede venir como:
+          //  - array de strings (IDs de label): ["15","67",...]
+          //  - array de objetos con id/name: [{id, name}, ...]
+          //  - array de strings con nombre: ["En Proceso", ...]
           let labelsRaw = row.labels;
           if (typeof labelsRaw === 'string') {
             try { labelsRaw = JSON.parse(labelsRaw); } catch { labelsRaw = []; }
           }
           const labelsArr = Array.isArray(labelsRaw) ? labelsRaw : [];
-          // Resolver nombres: si los items son objetos con name, usarlo; si son
-          // ids (strings/numbers), buscar en la tabla Label.
-          let labelNames = labelsArr.map(l => {
-            if (l && typeof l === 'object' && l.name) return String(l.name).toLowerCase().trim();
-            return null;
-          }).filter(Boolean);
-          // Si vinieron como ids, hacemos otra query a Label para resolverlos
-          if (labelNames.length === 0 && labelsArr.length > 0) {
-            const ids = labelsArr.map(l => String(l)).filter(Boolean);
-            if (ids.length > 0) {
-              const labRes = await pool.query(
-                `SELECT "labelId", name FROM "Label" WHERE "instanceId" = $1 AND "labelId" = ANY($2)`,
-                [row.instanceId, ids]
-              );
-              labelNames = labRes.rows.map(r => String(r.name || '').toLowerCase().trim()).filter(Boolean);
+          const cache = labelNameCache[row.instanceId] || {};
+          const labelNames = [];
+          for (const l of labelsArr) {
+            if (l && typeof l === 'object' && l.name) {
+              labelNames.push(String(l.name).toLowerCase().trim());
+            } else if (l) {
+              const key = String(l);
+              // 1) intentar como id en el cache
+              if (cache[key]) labelNames.push(cache[key]);
+              // 2) sino usar directo como nombre
+              else labelNames.push(key.toLowerCase().trim());
             }
           }
           // Buscar la PRIMERA label que mapee a un estado
@@ -11767,12 +11779,35 @@ setInterval(cargar, 15000);
           for (const lname of labelNames) {
             if (mapeo[lname]) { estadoNuevo = mapeo[lname]; labelMatch = lname; break; }
           }
-          if (!estadoNuevo) { reporte.ignorados.sinMapeo++; continue; }
+          if (!estadoNuevo) {
+            reporte.ignorados.sinMapeo++;
+            // Guardar debug de qué etiquetas aparecen sin mapear
+            for (const lname of labelNames) {
+              if (!reporte.etiquetasSinMapear[lname]) reporte.etiquetasSinMapear[lname] = 0;
+              reporte.etiquetasSinMapear[lname]++;
+            }
+            continue;
+          }
 
-          // Validar JID
+          // Validar JID — @lid es el nuevo formato WA, TIENE cliente valido
           const jid = row.remoteJid || '';
-          if (jid.includes('@g.us') || jid.includes('@lid')) { reporte.ignorados.jidNoIndiv++; continue; }
-          const telRaw = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          if (jid.includes('@g.us')) { reporte.ignorados.jidNoIndiv++; continue; }
+          // Para @lid necesitamos resolver el telefono desde la tabla Contact
+          let telRaw = '';
+          if (jid.includes('@lid')) {
+            // Buscar el telefono real en Contact.remoteJidAlt o similar
+            const cRes = await pool.query(
+              `SELECT "remoteJid" FROM "Contact" WHERE "instanceId" = $1 AND "remoteJid" LIKE '%@s.whatsapp.net' AND "id" IN (SELECT id FROM "Contact" WHERE "instanceId" = $1 LIMIT 1) LIMIT 1`,
+              [row.instanceId]
+            ).catch(() => ({ rows: [] }));
+            // Sin resolver por ahora: extraer numeros del JID como fallback
+            telRaw = jid.replace('@lid', '').replace(/\D/g, '');
+            // Los IDs @lid son numeros largos que NO son telefonos reales.
+            // Si tiene >12 digitos, probablemente es LID interno, no telefono.
+            if (telRaw.length > 12) telRaw = '';
+          } else {
+            telRaw = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          }
           if (telRaw.length < 7) { reporte.ignorados.telInvalido++; continue; }
           const telN = normTel(telRaw);
 
