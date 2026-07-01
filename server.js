@@ -11669,6 +11669,108 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── POST /api/admin/analizar-video-drive ────────────────────────────
+  // Descarga video de Drive + lo analiza con Gemini Video API.
+  // Body: { driveFileId, prompt? }
+  if (req.method === 'POST' && req.url === '/api/admin/analizar-video-drive') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 1024*1024) req.destroy(); });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        const fileId = data.driveFileId;
+        if (!fileId) return json(res, 400, { error: 'driveFileId requerido' });
+        const prompt = data.prompt || 'Describe con detalle lo que muestra este video. Si es un tutorial de n8n, transcribe los pasos, nombres de nodos, workflows mostrados, y la idea general.';
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return json(res, 500, { error: 'sin GEMINI_API_KEY' });
+
+        // 1) Descargar de Drive
+        const dl = await driveSync.descargarArchivoBase64(fileId);
+        if (!dl?.base64) return json(res, 500, { error: 'no se pudo descargar de Drive', dl });
+        const mime = dl.mime || 'video/mp4';
+        const buf = Buffer.from(dl.base64, 'base64');
+        console.log(`[analizar-video] descargado ${buf.length} bytes, mime=${mime}`);
+
+        // 2) Subir a Gemini File API (raw)
+        const upRes = await fetch(
+          `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'X-Goog-Upload-Protocol': 'raw',
+              'Content-Type': mime,
+              'Content-Length': String(buf.length),
+            },
+            body: buf,
+          }
+        );
+        if (!upRes.ok) {
+          const t = await upRes.text();
+          return json(res, 500, { error: `upload gemini: ${upRes.status}`, detalle: t.slice(0, 400) });
+        }
+        const upJson = await upRes.json();
+        const fileUri = upJson?.file?.uri;
+        const fileName = upJson?.file?.name;
+        if (!fileUri) return json(res, 500, { error: 'no file.uri', up: upJson });
+        console.log(`[analizar-video] subido a gemini: ${fileName}`);
+
+        // 3) Esperar state=ACTIVE (Gemini procesa el video en background)
+        let state = upJson?.file?.state || 'PROCESSING';
+        let intentos = 0;
+        while (state === 'PROCESSING' && intentos < 30) {
+          await new Promise(r => setTimeout(r, 3000));
+          intentos++;
+          const chk = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`);
+          if (chk.ok) {
+            const cj = await chk.json();
+            state = cj?.state || state;
+            console.log(`[analizar-video] state=${state} intento=${intentos}`);
+          }
+        }
+        if (state !== 'ACTIVE') {
+          return json(res, 500, { error: `video no ACTIVE tras ${intentos*3}s`, state });
+        }
+
+        // 4) Llamar generateContent
+        const modelo = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+        const genRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { file_data: { mime_type: mime, file_uri: fileUri } },
+                  { text: prompt },
+                ],
+              }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+            }),
+          }
+        );
+        if (!genRes.ok) {
+          const t = await genRes.text();
+          return json(res, 500, { error: `generateContent: ${genRes.status}`, detalle: t.slice(0, 400) });
+        }
+        const genJson = await genRes.json();
+        const texto = genJson?.candidates?.[0]?.content?.parts?.[0]?.text || '(sin texto)';
+
+        return json(res, 200, {
+          ok: true,
+          bytes: buf.length,
+          mime,
+          analisis: texto,
+          fileNameGemini: fileName,
+        });
+      } catch (e) {
+        console.error('[analizar-video]', e);
+        return json(res, 500, { error: e.message, stack: e.stack?.slice(0, 500) });
+      }
+    });
+    return;
+  }
+
   // ── GET /api/admin/sticker-crudo?tel=X ──────────────────────────────
   // Devuelve el JSON COMPLETO del sticker mas reciente del chat.
   if (req.method === 'GET' && req.url.startsWith('/api/admin/sticker-crudo')) {
