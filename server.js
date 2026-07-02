@@ -11669,6 +11669,70 @@ setInterval(cargar, 15000);
     }
   }
 
+  // ── GET /api/admin/leer-chat-completo?tel=X&limite=500 ──────────────
+  // Lee TODA la conversacion de un telefono combinando @s.whatsapp.net + @lid.
+  // Ordena por timestamp ascendente. Sin limite por defecto (500 mensajes).
+  // Usado para diagnosticar pedidos que no llegaron al ERP.
+  if (req.method === 'GET' && req.url.startsWith('/api/admin/leer-chat-completo')) {
+    const dbUrl = process.env.EVOLUTION_DB_URL;
+    if (!dbUrl) return json(res, 500, { error: 'falta EVOLUTION_DB_URL' });
+    const u = new URL(req.url, `http://${req.headers.host}`);
+    const tel = (u.searchParams.get('tel') || '').replace(/\D/g, '');
+    const limite = Math.min(parseInt(u.searchParams.get('limite') || '500'), 2000);
+    if (!tel || tel.length < 7) return json(res, 400, { error: 'tel requerido (min 7 digitos)' });
+    let pool = null;
+    try {
+      pool = new PgPool({ connectionString: dbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+      const telFull = tel.startsWith('57') ? tel : '57' + tel;
+      const wapp = `${telFull}@s.whatsapp.net`;
+      const jids = [wapp];
+      const lidRes = await pool.query(
+        `SELECT DISTINCT m.key->>'remoteJid' AS "remoteJid"
+         FROM "Message" m
+         WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid'`,
+        [wapp]
+      );
+      for (const r of lidRes.rows) jids.push(r.remoteJid);
+      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+      const instById = {}; for (const r of inst.rows) instById[r.id] = r.name;
+      const jidsSql = jids.map((_, i) => `$${i+1}`).join(',');
+      const msgs = await pool.query(
+        `SELECT "instanceId", "messageTimestamp", "pushName", key, message
+         FROM "Message"
+         WHERE key->>'remoteJid' IN (${jidsSql})
+         ORDER BY "messageTimestamp" ASC
+         LIMIT ${limite}`,
+        jids
+      );
+      const mensajes = msgs.rows.map(m => {
+        const ts = m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : null;
+        const fromMe = !!m.key?.fromMe;
+        const msg = m.message || {};
+        let tipo = 'texto', texto = msg.conversation || msg.extendedTextMessage?.text || '';
+        let media = null;
+        if (!texto) {
+          if (msg.imageMessage) { tipo = 'imagen'; texto = msg.imageMessage.caption || ''; media = { mime: msg.imageMessage.mimetype, hash: msg.imageMessage.fileSha256 }; }
+          else if (msg.audioMessage) { tipo = 'audio'; texto = '[AUDIO ' + (msg.audioMessage.seconds || '?') + 's]'; }
+          else if (msg.stickerMessage) { tipo = 'sticker'; texto = '[STICKER]'; }
+          else if (msg.documentMessage) { tipo = 'doc'; texto = '[DOC: ' + (msg.documentMessage.fileName || '?') + ']'; }
+          else if (msg.orderMessage) { tipo = 'pedido-catalogo'; texto = '[PEDIDO CATALOGO]'; }
+          else if (msg.videoMessage) { tipo = 'video'; texto = '[VIDEO ' + (msg.videoMessage.seconds || '?') + 's]'; }
+          else if (msg.locationMessage) { tipo = 'ubicacion'; texto = '[UBICACION]'; }
+          else if (msg.contactMessage) { tipo = 'contacto'; texto = '[CONTACTO]'; }
+          else { tipo = 'otro'; texto = '[' + Object.keys(msg).join(',') + ']'; }
+        }
+        return { ts, fromMe, quien: fromMe ? 'vendedora' : 'cliente', instancia: instById[m.instanceId], pushName: m.pushName, tipo, texto: (texto || '').slice(0, 800), media };
+      });
+      return json(res, 200, {
+        ok: true, tel: telFull, jids, total: mensajes.length,
+        primeraFecha: mensajes[0]?.ts, ultimaFecha: mensajes[mensajes.length - 1]?.ts,
+        mensajes,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    } finally { if (pool) { try { await pool.end(); } catch {} } }
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // POST /api/admin/sync-etiquetas-wa-v2 — con extracción Gemini
   // Body: { soloPreview: bool, limite: number (default 3) }
