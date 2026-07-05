@@ -16849,6 +16849,84 @@ async function cronCuadreCostuTick() {
 console.log('[cuadre-cost] activado — cuadre semanal domingo 8 PM Bogota');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON Vigilancia Chatwoot — pinga cada 5 min, alerta Telegram admin
+// Anti-ceguera: Chatwoot murio silencioso 15 dias sin darnos cuenta (2-jul-2026).
+// Estado persistente en data/vigilancia_chatwoot.json para sobrevivir deploys.
+// ═══════════════════════════════════════════════════════════════════
+const VIGILANCIA_CHATWOOT_FILE = path.join(__dirname, 'data', 'vigilancia_chatwoot.json');
+function _leerVigilanciaChatwoot() {
+  try { return JSON.parse(fs.readFileSync(VIGILANCIA_CHATWOOT_FILE, 'utf8')); }
+  catch { return { fallos: 0, ultimoEstado: 'up' }; }
+}
+function _guardarVigilanciaChatwoot(s) {
+  try { fs.mkdirSync(path.dirname(VIGILANCIA_CHATWOOT_FILE), { recursive: true }); } catch {}
+  try { fs.writeFileSync(VIGILANCIA_CHATWOOT_FILE, JSON.stringify(s, null, 2)); } catch {}
+}
+
+async function cronVigilarChatwootTick() {
+  try {
+    const url = process.env.CHATWOOT_URL;
+    if (!url) return;
+
+    const state = _leerVigilanciaChatwoot();
+
+    let status = 0;
+    let errorMsg = null;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(`${url.replace(/\/$/, '')}/api`, { signal: ctrl.signal, redirect: 'follow' })
+        .finally(() => clearTimeout(timer));
+      status = r.status;
+    } catch (e) {
+      errorMsg = e.name === 'AbortError' ? 'timeout(10s)' : (e.message || 'error red');
+    }
+
+    const vivo = (status >= 200 && status < 400) || status === 401 || status === 403;
+
+    if (vivo) {
+      if (state.ultimoEstado === 'down' && (state.fallos || 0) >= 2) {
+        const min = (state.fallos || 0) * 5;
+        const horaBog = new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false });
+        try {
+          await notificarTelegramAdmin(`✅ *Chatwoot volvió a responder* (${horaBog})\n\nEstuvo caído ~${min} min.\nStatus actual: ${status}`);
+        } catch (e) { console.error('[vig-chatwoot notif-up]', e.message); }
+      }
+      state.fallos = 0;
+      state.ultimoEstado = 'up';
+      _guardarVigilanciaChatwoot(state);
+      return;
+    }
+
+    state.fallos = (state.fallos || 0) + 1;
+    state.ultimoEstado = 'down';
+    _guardarVigilanciaChatwoot(state);
+
+    const n = state.fallos;
+    const min = n * 5;
+    const statusStr = errorMsg || String(status);
+
+    let msg = null;
+    if (n === 2) {
+      msg = `⚠️ *Chatwoot no responde hace 10 min*\n\nStatus: ${statusStr}\n\nSe reintenta cada 5 min.\nSi sigue caído a los 30 min, alerta con checklist.`;
+    } else if (n === 6) {
+      msg = `🚨 *Chatwoot lleva 30 min caído*\n\nStatus: ${statusStr}\n\nAcciones:\n1. Entrar a Railway → proyecto Chatwoot\n2. Ver Deployments → logs del último\n3. Botón *Restart*\n\nMientras: no se ven ni se etiquetan chats.`;
+    } else if (n === 24 || (n > 24 && n % 24 === 0)) {
+      msg = `🔴 *URGENTE: Chatwoot lleva ${Math.round(min/60)}h caído*\n\nStatus: ${statusStr}\n\nRevisar Railway ya.\n(Este aviso se repite cada 2h hasta que vuelva.)`;
+    }
+
+    if (msg) {
+      try { await notificarTelegramAdmin(msg); } catch (e) { console.error('[vig-chatwoot notif-down]', e.message); }
+    }
+  } catch (e) {
+    console.error('[cron-vig-chatwoot error]', e.message);
+  }
+}
+setInterval(cronVigilarChatwootTick, 5 * 60 * 1000);
+setTimeout(cronVigilarChatwootTick, 30 * 1000);
+console.log('[cron-vig-chatwoot] activado — pinga Chatwoot cada 5 min, alertas Telegram admin');
+
+// ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)
 // ═══════════════════════════════════════════════════════════════════
 // se registra dentro del handler de rutas, no acá
