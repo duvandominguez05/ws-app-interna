@@ -9233,11 +9233,37 @@ setInterval(cargar, 15000);
             }
 
             const remoteJid = eventData.chatId || eventData.chat?.id || eventData.remoteJid || eventData.number || '';
-            // Ignorar grupos y @lid (no son clientes individuales)
-            if (remoteJid.includes('@g.us') || remoteJid.includes('@lid')) {
-              return json(res, 200, { ok: true, ignorado: 'jid no-cliente', remoteJid });
+            // Ignorar SOLO grupos. Los @lid son clientes individuales con JID moderno (WA migro chats).
+            if (remoteJid.includes('@g.us')) {
+              return json(res, 200, { ok: true, ignorado: 'grupo', remoteJid });
             }
-            const telefono = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            // Resolver @lid -> tel real via Postgres (remoteJidAlt del ultimo mensaje).
+            // Fix 2026-07-05: antes se ignoraba @lid entero, se perdian todas las
+            // etiquetas de chats modernos (ej. Alcides 573219756891 vs 233488028536934@lid).
+            let telefono = '';
+            if (remoteJid.includes('@lid')) {
+              const dbUrl = process.env.EVOLUTION_DB_URL;
+              if (!dbUrl) {
+                return json(res, 200, { ok: true, ignorado: '@lid sin EVOLUTION_DB_URL', remoteJid });
+              }
+              const pool = new PgPool({ connectionString: dbUrl, max: 1, ssl: { rejectUnauthorized: false } });
+              try {
+                const r = await pool.query(
+                  `SELECT key->>'remoteJidAlt' AS tel FROM "Message"
+                   WHERE key->>'remoteJid' = $1 AND key->>'remoteJidAlt' LIKE '%@s.whatsapp.net'
+                   ORDER BY "messageTimestamp" DESC LIMIT 1`,
+                  [remoteJid]
+                );
+                const alt = r.rows[0]?.tel || '';
+                telefono = String(alt).replace('@s.whatsapp.net', '').replace(/\D/g, '');
+              } finally { await pool.end(); }
+              if (!telefono) {
+                return json(res, 200, { ok: true, ignorado: '@lid sin remoteJidAlt en Postgres', remoteJid });
+              }
+              console.log(`[labels-wa] resuelto @lid ${remoteJid} -> tel ${telefono}`);
+            } else {
+              telefono = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+            }
             if (telefono.length < 7) {
               return json(res, 200, { ok: true, ignorado: 'telefono invalido', telefono });
             }
