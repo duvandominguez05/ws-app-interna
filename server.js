@@ -5110,27 +5110,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // VER PEDIDOS ABANDONADOS +7 DIAS (sin enviar WA, solo lista)
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'GET' && req.url === '/api/admin/pedidos-abandonados') {
-    try {
-      const pedidos = leerPedidos();
-      const ahora = Date.now();
-      const _7DIAS = 7 * 24 * 60 * 60 * 1000;
-      const lista = pedidos.filter(p => {
-        if (p.estado !== 'hacer-diseno') return false;
-        const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0).getTime();
-        if (!ult) return false;
-        return (ahora - ult) > _7DIAS;
-      }).map(p => {
-        const ult = new Date(p.ultimoMovimiento || p.fechaVenta || 0);
-        const dias = Math.round((ahora - ult.getTime()) / (24 * 60 * 60 * 1000));
-        return { id: p.id, equipo: p.equipo, vendedora: p.vendedora, dias, abonado: p.abonado, ultimoMovimiento: p.ultimoMovimiento };
-      }).sort((a, b) => b.dias - a.dias);
-      return json(res, 200, { total: lista.length, pedidos: lista });
-    } catch (e) { return json(res, 500, { error: e.message }); }
-  }
 
   // ═══════════════════════════════════════════════════════════════════
   // DEBUG: ver el chat completo de Chatwoot de un pedido + imagenes
@@ -6109,37 +6088,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       return json(res, 500, { error: e.message });
     }
   }
-  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-ejecutar-ahora') {
-    try {
-      // Ejecutar el cron REAL ahora mismo (no esperar a las 10 PM)
-      const resultado = await ejecutarCronSilencioso(false);
-      _marcarCorrioHoy({
-        procesados: resultado.procesados,
-        movidos: resultado.movidos.length,
-        dudosos: resultado.dudosos.length,
-        gastoEstimado: resultado.costoEstimado,
-        ejecucionManual: true,
-      });
-      // Notificacion WA al jefe (igual que el tick automatico)
-      try {
-        if (typeof notificarJefes === 'function' && resultado.movidos.length > 0) {
-          const lineas = [
-            `🤖 *Cron silencioso (manual)* — ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`,
-            `Procesados: ${resultado.procesados} | Movidos: ${resultado.movidos.length} | Dudosos: ${resultado.dudosos.length}`,
-            '',
-            '*Movidos:*',
-            ...resultado.movidos.slice(0, 10).map(m => `• #${m.id} ${m.equipo}: ${m.de} → ${m.a}`),
-            '',
-            `💰 Gasto día: \$${resultado.gastoDiaActual.toFixed(3)} | mes: \$${resultado.gastoMesAcumulado.toFixed(3)} / \$${LIMITE_MES_USD}`,
-          ];
-          await notificarJefes(lineas.join('\n'), { soloJefe: true, dedupeKey: `cron-silencioso-manual-${Date.now()}` });
-        }
-      } catch (eN) { console.error('[cron-manual notif]', eN.message); }
-      return json(res, 200, resultado);
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
-  }
   if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-on') {
     const cfg = _leerConfigCron();
     cfg.activo = true;
@@ -6153,13 +6101,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     cfg.ultimaModificacion = new Date().toISOString();
     _guardarConfigCron(cfg);
     return json(res, 200, { ok: true, activo: false, mensaje: 'Cron silencioso DESACTIVADO.' });
-  }
-  if (req.method === 'POST' && req.url === '/api/admin/cron-silencioso-reset-dia') {
-    const g = _leerGasto();
-    const hoy = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota' });
-    delete g.dia[hoy];
-    _guardarGasto(g);
-    return json(res, 200, { ok: true, mensaje: 'Gasto del día reseteado a $0' });
   }
   if (req.method === 'GET' && req.url === '/api/admin/cron-silencioso-status') {
     const cfg = _leerConfigCron();
@@ -6180,16 +6121,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
   if (req.method === 'GET' && req.url === '/api/admin/saldo-claude') {
     const s = await verificarSaldoClaude();
     return json(res, 200, s);
-  }
-  if (req.method === 'GET' && req.url === '/api/admin/saldos') {
-    const [claude, gemini] = await Promise.all([verificarSaldoClaude(), verificarSaldoGemini()]);
-    return json(res, 200, {
-      claude,
-      gemini,
-      gastoInternoMes: _gastoMesActual(),
-      gastoInternoDia: _gastoDiaActual(),
-      limites: { mensual: LIMITE_MES_USD, diario: LIMITE_DIA_USD },
-    });
   }
 
   // DEBUG: listar chats recientes de una instancia Evolution
@@ -6224,39 +6155,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
-  // DEBUG: buscar TODOS los contactos en Chatwoot por telefono (puede haber duplicados)
-  if (req.method === 'GET' && req.url.startsWith('/api/admin/debug-chatwoot-contact-search')) {
-    try {
-      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const q = u.searchParams.get('q') || '';
-      const url = process.env.CHATWOOT_URL;
-      const accountId = process.env.CHATWOOT_ACCOUNT_ID;
-      const apiKey = process.env.CHATWOOT_API_KEY;
-      const r = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/search?q=${encodeURIComponent(q)}`, {
-        headers: { 'api_access_token': apiKey },
-      });
-      const data = await r.json();
-      const contactos = data.payload || [];
-      // Para cada contacto, traer sus conversaciones
-      const detalles = [];
-      for (const c of contactos.slice(0, 5)) {
-        const rConv = await fetch(`${url}/api/v1/accounts/${accountId}/contacts/${c.id}/conversations`, {
-          headers: { 'api_access_token': apiKey },
-        });
-        const dConv = await rConv.json();
-        detalles.push({
-          contact_id: c.id, name: c.name, phone: c.phone_number, email: c.email,
-          identifier: c.identifier,
-          conversaciones: (dConv.payload || []).map(cv => ({
-            id: cv.id, status: cv.status, inbox_id: cv.inbox_id,
-            labels: cv.labels || [],
-            last_activity_at: cv.last_activity_at ? new Date(cv.last_activity_at*1000).toLocaleString('es-CO',{timeZone:'America/Bogota'}) : null,
-          })),
-        });
-      }
-      return json(res, 200, { totalContactos: contactos.length, detalles });
-    } catch (e) { return json(res, 500, { error: e.message }); }
-  }
 
   // DEBUG: ver configuracion Chatwoot dentro de Evolution para una instancia
   // GET /api/admin/debug-evolution-chatwoot?instance=ws-ney
@@ -6771,56 +6669,7 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) { return json(res, 500, { error: e.message }); }
   }
 
-  // DEBUG: ejecutar cualquier query Gmail
-  if (req.method === 'GET' && req.url.startsWith('/api/admin/gmail-query')) {
-    try {
-      const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const q = u.searchParams.get('q') || 'from:noreply@wetransfer.com newer_than:7d';
-      const emails = await gmailWT.buscarEmails(q, 20);
-      return json(res, 200, {
-        query: q,
-        total: emails.length,
-        emails: emails.map(e => ({ subject: e.subject?.slice(0,120), from: e.from, date: e.date })),
-      });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
-  }
 
-  // DEBUG: que cuenta Gmail esta conectada + ultimas conversaciones WeTransfer
-  if (req.method === 'GET' && req.url === '/api/admin/gmail-debug') {
-    try {
-      // Pedir profile a Gmail API
-      const tokens = gmailWT._leerTokens();
-      const tok = tokens?.access_token;
-      let profile = null, error = null;
-      if (tok) {
-        try {
-          const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
-            headers: { Authorization: `Bearer ${tok}` },
-          });
-          profile = await r.json();
-        } catch (e) { error = e.message; }
-      }
-      // Buscar ultimos 5 emails de WeTransfer (sin texto)
-      const emails = await gmailWT.buscarEmails('from:noreply@wetransfer.com newer_than:60d', 10);
-      // Si nada, probar amplio
-      const ampleEmails = emails.length === 0
-        ? await gmailWT.buscarEmails('from:wetransfer newer_than:60d', 10)
-        : [];
-      return json(res, 200, {
-        cuentaConectada: profile?.emailAddress || 'NO_PROFILE',
-        totalMessagesEnInbox: profile?.messagesTotal,
-        scopes: tokens?.scope || 'sin-scope-info',
-        tokenExpiraEn: tokens?.expires_at ? new Date(tokens.expires_at).toLocaleString('es-CO') : '?',
-        wetransferUltimos: emails.map(e => ({ subject: e.subject?.slice(0,80), from: e.from?.slice(0,50), date: e.date })),
-        fallbackAmpleo: ampleEmails.map(e => ({ subject: e.subject?.slice(0,80), from: e.from?.slice(0,50), date: e.date })),
-        error,
-      });
-    } catch (e) {
-      return json(res, 500, { error: e.message, stack: e.stack });
-    }
-  }
 
   // ═══════════════════════════════════════════════════════════════════
   // VERIFICAR si se envio a calandra usando WeTransfer (rastreado via Gmail).
@@ -7059,110 +6908,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // PRIMER PAGOS PENDIENTES (debugging y panel de control)
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'GET' && req.url === '/api/admin/primer-pagos-pendientes') {
-    try {
-      const pagos = _leerPrimerPagos();
-      const ahora = Date.now();
-      return json(res, 200, {
-        pendientes: pagos.filter(p => p.estado === 'esperando-equipo'),
-        atendidos: pagos.filter(p => p.estado === 'atendido').slice(-20),
-        total: pagos.length,
-        ahora: new Date(ahora).toISOString(),
-      });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
-  }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // DIAGNOSTICO MATCHER DRIVE: muestra archivos del Drive corel y por que
-  // cada uno SI/NO se vinculo con un pedido
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'GET' && req.url === '/api/admin/diagnostico-drive') {
-    try {
-      const conectado = gmailWT.estaConectado();
-      if (!conectado) return json(res, 200, { error: 'Drive NO conectado (gmailWT.estaConectado=false)' });
-      const pedidos = leerPedidos();
-      const archivos = await driveSync.listarArchivos(driveSync.FOLDER_COREL, 100);
-      const cdrs = archivos.filter(a => /\.cdr$/i.test(a.name) && !/^Copia_de_seguridad_/i.test(a.name));
-      const diagnostico = cdrs.map(a => {
-        const parsed = gmailWT.parsearArchivo(a.name);
-        if (!parsed || !parsed.base) return { archivo: a.name, parsed: null, match: null, motivo: 'parseo fallo' };
-        const m = gmailWT.matchPedido(parsed.base, pedidos);
-        return {
-          archivo: a.name,
-          base: parsed.base,
-          baseNormalizada: nombreLimpio(parsed.base),
-          match: m ? { pedidoId: m.pedido.id, equipo: m.pedido.equipo, score: m.score } : null,
-        };
-      });
-      const pedidosResumen = pedidos.filter(p => !['enviado-final','archivado','entregado','cancelado'].includes(p.estado)).map(p => ({
-        id: p.id,
-        estado: p.estado,
-        equipo: p.equipo,
-        equipoNormalizado: nombreLimpio(p.equipo || ''),
-        telefono: p.telefono,
-      }));
-      return json(res, 200, {
-        archivosTotal: cdrs.length,
-        archivosMatcheados: diagnostico.filter(d => d.match).length,
-        archivosHuerfanos: diagnostico.filter(d => !d.match).length,
-        diagnostico: diagnostico.slice(0, 50),
-        pedidosElegibles: pedidosResumen.length,
-        muestraPedidos: pedidosResumen.slice(0, 30),
-      });
-    } catch (e) {
-      return json(res, 500, { error: e.message, stack: e.stack });
-    }
-  }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // FORZAR REPROCESO DE DRIVE AHORA (no esperar el cron de 10 min)
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'POST' && req.url === '/api/admin/forzar-reproceso-drive') {
-    try {
-      const conectado = gmailWT.estaConectado();
-      if (!conectado) {
-        return json(res, 200, {
-          ok: false,
-          error: 'Drive NO conectado (gmailWT.estaConectado=false). Hay que re-vincular OAuth.',
-          accion: 'Ir a /admin/google-oauth para reconectar'
-        });
-      }
-      // Llamar la sync directo para tener resultado en vivo
-      const pedidos = leerPedidos();
-      const resultado = await driveSync.sincronizarConPedidos(pedidos);
-      // Aplicar los updates
-      const aplicados = [];
-      let cambios = false;
-      for (const u of resultado.updates) {
-        const p = pedidos.find(x => x.id === u.pedidoId);
-        if (!p) continue;
-        p.drive = p.drive || {};
-        if (u.corel) { p.drive.corel = u.corel; cambios = true; aplicados.push({ id: p.id, equipo: p.equipo, corel: u.corel.nombre }); }
-        if (u.pdfRip) { p.drive.pdfRip = u.pdfRip; cambios = true; }
-        if (u.disenadorSugerido && !p.disenadorAsignado) p.disenadorAsignado = u.disenadorSugerido;
-        if (u.corel && p.estado === 'bandeja') p.estado = 'hacer-diseno';
-      }
-      if (cambios) guardarPedidos(pedidos, leerNextId());
-      return json(res, 200, {
-        ok: true,
-        sync: {
-          updates: resultado.updates.length,
-          huerfanos: resultado.huerfanos.length,
-          totalCorelEnDrive: resultado.totales?.corel,
-          totalPdfRipEnDrive: resultado.totales?.pdfRip,
-        },
-        aplicados: aplicados.slice(0, 20),
-        huerfanos: resultado.huerfanos.slice(0, 30).map(h => ({ archivo: h.archivo, tipo: h.tipo })),
-      });
-    } catch (e) {
-      return json(res, 500, { error: e.message, stack: e.stack });
-    }
-  }
 
   // ═══════════════════════════════════════════════════════════════════
   // VIGILANTE W&S — GET para que Camilo vea que pasa AHORA en cada PC
