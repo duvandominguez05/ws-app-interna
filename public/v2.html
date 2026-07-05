@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W&S · Tracking pedidos (v2)</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #161b22;
+      --border: #22272e;
+      --text: #e6edf3;
+      --muted: #7d8590;
+      --accent: #2f81f7;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f7f8fa;
+        --panel: #ffffff;
+        --border: #d0d7de;
+        --text: #24292f;
+        --muted: #57606a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .badge { background: var(--accent); color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .stats { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
+    .stat { font-size: 12px; color: var(--muted); }
+    .stat b { color: var(--text); }
+    main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+    .filters { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .chip {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); }
+    .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .list { display: grid; gap: 8px; grid-template-columns: 1fr; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: border-color 0.15s;
+    }
+    .card:hover { border-color: var(--accent); }
+    .card .titulo { font-weight: 600; font-size: 15px; }
+    .card .sub { color: var(--muted); font-size: 12px; }
+    .card .fila { flex: 1; min-width: 0; }
+    .etapa-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .e-confirmado { background: rgba(47, 129, 247, 0.15); color: var(--accent); }
+    .e-en_diseno { background: rgba(210, 153, 34, 0.15); color: var(--warn); }
+    .e-diseno_enviado { background: rgba(210, 153, 34, 0.25); color: var(--warn); }
+    .e-en_calandra { background: rgba(163, 113, 247, 0.15); color: #a371f7; }
+    .e-en_costura { background: rgba(163, 113, 247, 0.25); color: #a371f7; }
+    .e-listo { background: rgba(63, 185, 80, 0.15); color: var(--ok); }
+    .e-entregado { background: rgba(63, 185, 80, 0.3); color: var(--ok); }
+    .modal-bg {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      overflow-y: auto;
+      z-index: 10;
+      padding: 40px 20px;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-width: 700px;
+      width: 100%;
+      padding: 24px;
+    }
+    .modal h2 { margin: 0 0 4px 0; font-size: 20px; }
+    .modal .sub { color: var(--muted); margin-bottom: 20px; font-size: 13px; }
+    .close-btn {
+      float: right;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .timeline { border-left: 2px solid var(--border); padding-left: 20px; margin-left: 6px; margin-top: 20px; }
+    .ev { position: relative; margin-bottom: 20px; }
+    .ev::before {
+      content: '';
+      position: absolute;
+      left: -27px;
+      top: 4px;
+      width: 12px;
+      height: 12px;
+      background: var(--accent);
+      border-radius: 50%;
+      border: 2px solid var(--panel);
+    }
+    .ev .titulo { font-weight: 600; }
+    .ev .ts { color: var(--muted); font-size: 12px; }
+    .ev .detalle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .empty { text-align: center; padding: 40px; color: var(--muted); }
+    .warn-banner {
+      background: rgba(210, 153, 34, 0.15);
+      border: 1px solid var(--warn);
+      color: var(--warn);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>W&S Tracking <span class="badge">v2</span></h1>
+    <div class="stats" id="stats"></div>
+  </header>
+  <main>
+    <div class="warn-banner">
+      Vista pasiva — muestra el estado real de cada pedido. Nadie edita aca, todo llega de las senales que ya existen (comprobantes, etiquetas WA, PDFs Drive, /costura).
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="list" id="list"></div>
+  </main>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <script>
+    const ETAPAS_LABEL = {
+      todos: 'Todos',
+      confirmado: 'Confirmado',
+      en_diseno: 'En diseno',
+      diseno_enviado: 'Diseno enviado',
+      en_calandra: 'En calandra',
+      en_costura: 'En costura',
+      listo: 'Listo',
+      entregado: 'Entregado',
+    };
+    let etapaActiva = 'todos';
+
+    function fmtDate(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+      } catch { return iso; }
+    }
+    function fmtRelativo(iso) {
+      if (!iso) return '';
+      const d = new Date(iso).getTime();
+      const diff = Date.now() - d;
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return 'hace un momento';
+      if (min < 60) return `hace ${min} min`;
+      const h = Math.floor(min / 60);
+      if (h < 24) return `hace ${h} h`;
+      const days = Math.floor(h / 24);
+      return `hace ${days} d`;
+    }
+
+    async function cargar() {
+      const url = etapaActiva === 'todos' ? '/api/v2/pedidos' : `/api/v2/pedidos?etapa=${etapaActiva}`;
+      const r = await fetch(url);
+      const data = await r.json();
+      renderStats(data.stats || {});
+      renderList(data.pedidos || []);
+    }
+
+    function renderStats(stats) {
+      const el = document.getElementById('stats');
+      const total = stats.total || 0;
+      const por = stats.porEtapa || {};
+      el.innerHTML = `<span class="stat"><b>${total}</b> pedidos</span>` +
+        Object.entries(por).filter(([_, v]) => v > 0).map(([e, v]) =>
+          `<span class="stat"><b>${v}</b> ${ETAPAS_LABEL[e] || e}</span>`
+        ).join('');
+    }
+
+    function renderFilters() {
+      const el = document.getElementById('filters');
+      el.innerHTML = Object.entries(ETAPAS_LABEL).map(([k, v]) =>
+        `<button class="chip ${k === etapaActiva ? 'active' : ''}" data-e="${k}">${v}</button>`
+      ).join('');
+      el.querySelectorAll('.chip').forEach(b => b.onclick = () => { etapaActiva = b.dataset.e; renderFilters(); cargar(); });
+    }
+
+    function renderList(pedidos) {
+      const el = document.getElementById('list');
+      if (!pedidos.length) {
+        el.innerHTML = `<div class="empty">Todavia no hay pedidos en v2.<br><br>Cuando lleguen comprobantes o se detecten senales, van a aparecer aca.</div>`;
+        return;
+      }
+      el.innerHTML = pedidos.map(p => {
+        const titulo = p.equipo || p.cliente || (p.telefono ? `+${p.telefono}` : `#${p.id}`);
+        const sub = [p.cliente, p.vendedora, fmtRelativo(p.ultimoMovimiento)].filter(Boolean).join(' · ');
+        return `<div class="card" data-id="${p.id}">
+          <div class="fila">
+            <div class="titulo">${escape(titulo)}</div>
+            <div class="sub">${escape(sub)}</div>
+          </div>
+          <span class="etapa-badge e-${p.etapa}">${ETAPAS_LABEL[p.etapa] || p.etapa}</span>
+        </div>`;
+      }).join('');
+      el.querySelectorAll('.card').forEach(c => c.onclick = () => abrirPedido(c.dataset.id));
+    }
+
+    function escape(s) { return String(s || '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c])); }
+
+    async function abrirPedido(id) {
+      const r = await fetch(`/api/v2/pedidos/${id}`);
+      const { pedido, eventos } = await r.json();
+      const titulo = pedido.equipo || pedido.cliente || `+${pedido.telefono}`;
+      const evHtml = eventos.length ? eventos.map(e => `
+        <div class="ev">
+          <div class="titulo">${escape(e.titulo || e.tipo)}</div>
+          <div class="ts">${fmtDate(e.ts)} — ${escape(e.fuente || '')}</div>
+          ${e.detalle ? `<div class="detalle">${escape(e.detalle)}</div>` : ''}
+        </div>
+      `).join('') : '<div class="empty">Sin eventos aun.</div>';
+
+      document.getElementById('modal').innerHTML = `
+        <button class="close-btn" onclick="cerrar()">Cerrar</button>
+        <h2>${escape(titulo)}</h2>
+        <div class="sub">${escape([pedido.cliente, pedido.vendedora, pedido.telefono ? '+' + pedido.telefono : ''].filter(Boolean).join(' · '))}</div>
+        <span class="etapa-badge e-${pedido.etapa}">${ETAPAS_LABEL[pedido.etapa] || pedido.etapa}</span>
+        <div class="timeline">${evHtml}</div>
+      `;
+      document.getElementById('modalBg').classList.add('open');
+    }
+    function cerrar() { document.getElementById('modalBg').classList.remove('open'); }
+    document.getElementById('modalBg').onclick = (e) => { if (e.target.id === 'modalBg') cerrar(); };
+
+    renderFilters();
+    cargar();
+    setInterval(cargar, 30000);
+  </script>
+</body>
+</html>

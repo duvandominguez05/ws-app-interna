@@ -12,6 +12,8 @@ const grupoVentasWatcher = require('./grupo-ventas-watcher');
 const catalogoFotosWatcher = require('./catalogo-fotos-watcher');
 const chatReader = require('./chat-reader');
 const grupoTrabajoFamiliaWatcher = require('./grupo-trabajo-familia-watcher');
+const v2 = require('./v2-server');
+v2.initV2();
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -3125,6 +3127,38 @@ http.createServer(async (req, res) => {
     res.writeHead(204);
     res.end();
     return;
+  }
+
+  // ── v2 (ERP paralelo — modulo aislado en v2-server.js) ──
+  if (req.url && req.url.startsWith('/api/v2/')) {
+    cors(res);
+    return v2.handleV2Request(req, res);
+  }
+  if (req.method === 'GET' && (req.url === '/v2' || req.url === '/v2/')) {
+    return fs.readFile(path.join(__dirname, 'public', 'v2.html'), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(data);
+    });
+  }
+
+  // ── GET /api/admin/vigilancia-chatwoot — estado del vigilante ──
+  if (req.method === 'GET' && req.url === '/api/admin/vigilancia-chatwoot') {
+    try {
+      const f = path.join(__dirname, 'data', 'vigilancia_chatwoot.json');
+      let state = { fallos: 0, ultimoEstado: 'up' };
+      try { state = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
+      return json(res, 200, {
+        ok: true,
+        vigilante: 'activo',
+        chatwoot_url_configurado: !!process.env.CHATWOOT_URL,
+        telegram_admin_configurado: !!(process.env.TELEGRAM_BOT_TOKEN && (process.env.TELEGRAM_CHAT_ID_ADMIN || process.env.TELEGRAM_CHAT_ID_DUVAN || process.env.TELEGRAM_CHAT_ID)),
+        estado: state,
+        minutos_caido: (state.fallos || 0) * 5,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
   }
 
 
