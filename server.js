@@ -3223,6 +3223,26 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── GET /api/admin/vigilancia-evolution — estado del vigilante ──
+  if (req.method === 'GET' && req.url === '/api/admin/vigilancia-evolution') {
+    try {
+      const f = path.join(__dirname, 'data', 'vigilancia_evolution.json');
+      let state = { fallos: 0, ultimoEstado: 'up' };
+      try { state = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
+      return json(res, 200, {
+        ok: true,
+        vigilante: 'activo',
+        evolution_url_configurado: !!process.env.EVOLUTION_API_URL || true,
+        evolution_key_configurado: !!process.env.EVOLUTION_API_KEY,
+        telegram_admin_configurado: !!(process.env.TELEGRAM_BOT_TOKEN && (process.env.TELEGRAM_CHAT_ID_ADMIN || process.env.TELEGRAM_CHAT_ID_DUVAN || process.env.TELEGRAM_CHAT_ID)),
+        estado: state,
+        minutos_sin_alertar: (state.fallos || 0) * 5,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/vigilancia-chatwoot — estado del vigilante ──
   if (req.method === 'GET' && req.url === '/api/admin/vigilancia-chatwoot') {
     try {
@@ -17040,6 +17060,100 @@ async function cronVigilarChatwootTick() {
 setInterval(cronVigilarChatwootTick, 5 * 60 * 1000);
 setTimeout(cronVigilarChatwootTick, 30 * 1000);
 console.log('[cron-vig-chatwoot] activado — pinga Chatwoot cada 5 min, alertas Telegram admin');
+
+// ═══════════════════════════════════════════════════════════════════
+// CRON Vigilancia Evolution — deteccion "roto en silencio"
+// 6-jul-2026: Evolution dejo de mandar eventos 3 hs sin que nadie se
+// enterara. Chequea cada 5 min: (a) API responde, (b) hay eventos < 30 min.
+// Anomalia = cualquiera de las dos. Alertas escaladas a Telegram admin.
+// ═══════════════════════════════════════════════════════════════════
+const VIGILANCIA_EVOLUTION_FILE = path.join(__dirname, 'data', 'vigilancia_evolution.json');
+function _leerVigilanciaEvolution() {
+  try { return JSON.parse(fs.readFileSync(VIGILANCIA_EVOLUTION_FILE, 'utf8')); }
+  catch { return { fallos: 0, ultimoEstado: 'up' }; }
+}
+function _guardarVigilanciaEvolution(s) {
+  try { fs.mkdirSync(path.dirname(VIGILANCIA_EVOLUTION_FILE), { recursive: true }); } catch {}
+  try { fs.writeFileSync(VIGILANCIA_EVOLUTION_FILE, JSON.stringify(s, null, 2)); } catch {}
+}
+
+async function cronVigilarEvolutionTick() {
+  try {
+    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const KEY = process.env.EVOLUTION_API_KEY || '';
+    if (!EVO) return;
+
+    const state = _leerVigilanciaEvolution();
+
+    // (a) API responde?
+    let apiVivo = false;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(`${EVO}/`, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+      apiVivo = r.status >= 200 && r.status < 500;
+    } catch { apiVivo = false; }
+
+    // (b) Ultimo evento en BD (mira solo hoy + ayer para acotar)
+    let ultimoEventoTs = 0;
+    try {
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 2').all().map(r => r.fecha);
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha) || [];
+        for (const ev of events) {
+          const raw = ev?.date_time || ev?.dateTime || ev?.timestamp || 0;
+          const t = new Date(raw).getTime();
+          if (!isNaN(t) && t > ultimoEventoTs) ultimoEventoTs = t;
+        }
+        if (ultimoEventoTs) break;
+      }
+    } catch {}
+
+    const ahora = Date.now();
+    const minSinEventos = ultimoEventoTs ? Math.round((ahora - ultimoEventoTs) / 60000) : 999;
+    const silencioLargo = minSinEventos > 30;
+    const anomalia = !apiVivo || silencioLargo;
+
+    if (!anomalia) {
+      if (state.ultimoEstado === 'down' && (state.fallos || 0) >= 2) {
+        try {
+          await notificarTelegramAdmin(`✅ *Evolution recibiendo eventos otra vez*\n\nUltimo evento hace ${minSinEventos} min.\nAPI: up.`);
+        } catch (e) { console.error('[vig-evo notif-up]', e.message); }
+      }
+      state.fallos = 0;
+      state.ultimoEstado = 'up';
+      _guardarVigilanciaEvolution(state);
+      return;
+    }
+
+    state.fallos = (state.fallos || 0) + 1;
+    state.ultimoEstado = 'down';
+    _guardarVigilanciaEvolution(state);
+
+    const n = state.fallos;
+    const razon = !apiVivo
+      ? 'Evolution API no responde'
+      : `Evolution up pero CERO eventos hace ${minSinEventos} min`;
+
+    let msg = null;
+    if (n === 2) {
+      msg = `⚠️ *Evolution roto en silencio*\n\n${razon}\n\nSe reintenta cada 5 min.\nSi sigue caido, alerto con checklist.`;
+    } else if (n === 6) {
+      msg = `🚨 *Evolution ciego hace ~30 min*\n\n${razon}\n\nAcciones:\n1. Railway → Evolution API → Deployments → *Restart*\n2. Esperar 60 seg\n3. Verificar: /api/admin/pulso-webhooks\n\nMientras: cero deteccion de comprobantes, etiquetas, stickers.`;
+    } else if (n === 24 || (n > 24 && n % 24 === 0)) {
+      msg = `🔴 *URGENTE: Evolution ciego hace ${Math.round(n*5/60)}h*\n\n${razon}\n\nRestart en Railway ya.\n(Aviso repite cada 2h.)`;
+    }
+
+    if (msg) {
+      try { await notificarTelegramAdmin(msg); } catch (e) { console.error('[vig-evo notif-down]', e.message); }
+    }
+  } catch (e) {
+    console.error('[cron-vig-evolution error]', e.message);
+  }
+}
+setInterval(cronVigilarEvolutionTick, 5 * 60 * 1000);
+setTimeout(cronVigilarEvolutionTick, 45 * 1000);
+console.log('[cron-vig-evolution] activado — pinga Evolution + revisa pulso webhooks cada 5 min');
 
 // ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)
