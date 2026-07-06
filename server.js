@@ -3142,6 +3142,31 @@ http.createServer(async (req, res) => {
     });
   }
 
+  // ── GET /api/admin/estado-instancias — chequeo rapido conexion Evolution ──
+  if (req.method === 'GET' && req.url === '/api/admin/estado-instancias') {
+    try {
+      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const r = await fetch(`${EVO}/instance/fetchInstances`, { headers: { apikey: KEY } });
+      const arr = await r.json();
+      const resumen = (Array.isArray(arr) ? arr : []).map(i => ({
+        name: i.name || i.instanceName || null,
+        state: i.connectionStatus || i.status || i.instance?.state || null,
+        profileName: i.profileName || i.ownerJid || null,
+        wa_number: i.number || i.ownerJid || null,
+        disconnectionReason: i.disconnectionReasonCode || null,
+        disconnectedAt: i.disconnectionAt || null,
+        webhook: !!(i.Webhook || i.webhookUrl),
+        chatwoot: !!i.Chatwoot,
+      }));
+      const vivas = resumen.filter(r => r.state === 'open').length;
+      const total = resumen.length;
+      return json(res, 200, { ok: true, vivas, total, instancias: resumen });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/vigilancia-chatwoot — estado del vigilante ──
   if (req.method === 'GET' && req.url === '/api/admin/vigilancia-chatwoot') {
     try {
