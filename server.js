@@ -3142,6 +3142,42 @@ http.createServer(async (req, res) => {
     });
   }
 
+  // ── GET /api/admin/pulso-webhooks — cuando fue el ultimo evento por instancia ──
+  // Muestra si realmente estamos RECIBIENDO datos. Si hace horas -> roto en silencio.
+  if (req.method === 'GET' && req.url === '/api/admin/pulso-webhooks') {
+    try {
+      const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 3').all().map(r => r.fecha);
+      const porInstancia = {};
+      let totalEventosHoy = 0;
+      const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+      for (const fecha of fechas) {
+        const events = db.leerEvolutionEvents(fecha) || [];
+        for (const ev of events) {
+          const inst = ev.instance || ev.instanceName || ev._instance || 'desconocida';
+          const ts = ev.date_time || ev.dateTime || ev.timestamp || ev._recv_at || fecha;
+          if (!porInstancia[inst] || String(ts) > String(porInstancia[inst].ultimo)) {
+            porInstancia[inst] = { ultimo: ts, tipo: ev.event || null };
+          }
+          if (fecha === hoy) totalEventosHoy++;
+        }
+      }
+      const ahora = Date.now();
+      const resumen = Object.entries(porInstancia).map(([inst, v]) => {
+        const t = new Date(v.ultimo).getTime();
+        const diffMin = isNaN(t) ? null : Math.round((ahora - t) / 60000);
+        return { instancia: inst, ultimo_evento: v.ultimo, minutos_desde_ultimo: diffMin, tipo: v.tipo };
+      }).sort((a, b) => (a.minutos_desde_ultimo || 0) - (b.minutos_desde_ultimo || 0));
+      return json(res, 200, {
+        ok: true,
+        eventos_hoy: totalEventosHoy,
+        fechas_consultadas: fechas,
+        por_instancia: resumen,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/estado-webhooks — verifica que webhook este seteado por instancia ──
   if (req.method === 'GET' && req.url === '/api/admin/estado-webhooks') {
     try {
