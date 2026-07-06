@@ -3142,6 +3142,26 @@ http.createServer(async (req, res) => {
     });
   }
 
+  // ── GET /api/admin/estado-webhooks — verifica que webhook este seteado por instancia ──
+  if (req.method === 'GET' && req.url === '/api/admin/estado-webhooks') {
+    try {
+      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
+      const out = [];
+      for (const name of nombres) {
+        try {
+          const r = await fetch(`${EVO}/webhook/find/${encodeURIComponent(name)}`, { headers: { apikey: KEY } });
+          const j = await r.json().catch(() => null);
+          out.push({ name, http: r.status, enabled: j?.enabled ?? j?.webhook?.enabled ?? null, url: j?.url ?? j?.webhook?.url ?? null, events: j?.events ?? j?.webhook?.events ?? null });
+        } catch (e) { out.push({ name, error: e.message }); }
+      }
+      return json(res, 200, { ok: true, webhooks: out });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/estado-instancias — chequeo rapido conexion Evolution ──
   if (req.method === 'GET' && req.url === '/api/admin/estado-instancias') {
     try {
