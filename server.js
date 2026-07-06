@@ -3154,7 +3154,8 @@ http.createServer(async (req, res) => {
         const events = db.leerEvolutionEvents(fecha) || [];
         for (const ev of events) {
           const inst = ev.instance || ev.instanceName || ev._instance || 'desconocida';
-          const ts = ev.date_time || ev.dateTime || ev.timestamp || ev._recv_at || fecha;
+          // Priorizamos _recv_at (hora real server) sobre date_time (Evolution puede estar desfasado)
+          const ts = ev._recv_at || ev.date_time || ev.dateTime || ev.timestamp || fecha;
           if (!porInstancia[inst] || String(ts) > String(porInstancia[inst].ultimo)) {
             porInstancia[inst] = { ultimo: ts, tipo: ev.event || null };
           }
@@ -8869,7 +8870,10 @@ setInterval(cargar, 15000);
         if (!global._reaccionesLoaded) { console.log('[boot] sprint-1 reacciones cargado'); global._reaccionesLoaded = true; }
         
         // 1. Guardar log crudo para debug (en SQLite)
+        // Inyectamos _recv_at con la hora del server (Evolution manda date_time con
+        // reloj propio que puede estar desfasado — no confiar en el para vigilancia).
         const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // Formato YYYY-MM-DD
+        payload._recv_at = new Date().toISOString();
         db.insertEvolutionEvent(hoy, payload);
 
         // 2. Seguridad Básica: Validar Token (por query ?token=... o header apikey)
@@ -17149,14 +17153,16 @@ async function cronVigilarEvolutionTick() {
       apiVivo = r.status >= 200 && r.status < 500;
     } catch { apiVivo = false; }
 
-    // (b) Ultimo evento en BD (mira solo hoy + ayer para acotar)
+    // (b) Ultimo evento en BD — usamos _recv_at (hora del server al guardar),
+    // NO date_time del payload de Evolution (su reloj puede estar desfasado).
     let ultimoEventoTs = 0;
     try {
       const fechas = db.raw.prepare('SELECT DISTINCT fecha FROM evolution_events ORDER BY fecha DESC LIMIT 2').all().map(r => r.fecha);
       for (const fecha of fechas) {
         const events = db.leerEvolutionEvents(fecha) || [];
         for (const ev of events) {
-          const raw = ev?.date_time || ev?.dateTime || ev?.timestamp || 0;
+          // Prioridad: _recv_at (server) > date_time (evolution)
+          const raw = ev?._recv_at || ev?.date_time || ev?.dateTime || ev?.timestamp || 0;
           const t = new Date(raw).getTime();
           if (!isNaN(t) && t > ultimoEventoTs) ultimoEventoTs = t;
         }
