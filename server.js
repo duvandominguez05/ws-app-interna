@@ -3178,6 +3178,36 @@ http.createServer(async (req, res) => {
     }
   }
 
+  // ── POST /api/admin/reintentar-webhooks — auto-heal soft: re-registra webhook por instancia ──
+  // Cuando Evolution deja de despachar eventos aunque el webhook aparece "enabled",
+  // re-hacer POST /webhook/set suele destrabar sin necesidad de restart.
+  if (req.method === 'POST' && req.url === '/api/admin/reintentar-webhooks') {
+    try {
+      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const host = req.headers.host || 'ws-app-interna-production.up.railway.app';
+      const webhookUrl = `https://${host}/api/evolution-webhook?token=ws_secret_2026`;
+      const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
+      const eventos = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','CHATS_UPDATE','CHATS_UPSERT','LABELS_ASSOCIATION','LABELS_EDIT','MESSAGES_DELETE','CONTACTS_UPSERT'];
+      const out = [];
+      for (const name of nombres) {
+        try {
+          const body = { webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: eventos } };
+          const r = await fetch(`${EVO}/webhook/set/${encodeURIComponent(name)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: KEY },
+            body: JSON.stringify(body),
+          });
+          const j = await r.json().catch(() => null);
+          out.push({ name, http: r.status, ok: r.ok, resp: j });
+        } catch (e) { out.push({ name, error: e.message }); }
+      }
+      return json(res, 200, { ok: true, resultados: out });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // ── GET /api/admin/estado-webhooks — verifica que webhook este seteado por instancia ──
   if (req.method === 'GET' && req.url === '/api/admin/estado-webhooks') {
     try {
@@ -17070,7 +17100,32 @@ console.log('[cron-vig-chatwoot] activado — pinga Chatwoot cada 5 min, alertas
 const VIGILANCIA_EVOLUTION_FILE = path.join(__dirname, 'data', 'vigilancia_evolution.json');
 function _leerVigilanciaEvolution() {
   try { return JSON.parse(fs.readFileSync(VIGILANCIA_EVOLUTION_FILE, 'utf8')); }
-  catch { return { fallos: 0, ultimoEstado: 'up' }; }
+  catch { return { fallos: 0, ultimoEstado: 'up', ultimoAutoHealTs: 0, autoHealsHechos: 0 }; }
+}
+
+// Auto-heal soft: re-registra el webhook a cada instancia. Muchas veces
+// destraba Evolution sin necesidad de restart en Railway.
+async function _autoHealEvolutionWebhooks() {
+  try {
+    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const KEY = process.env.EVOLUTION_API_KEY || '';
+    const webhookUrl = `https://ws-app-interna-production.up.railway.app/api/evolution-webhook?token=ws_secret_2026`;
+    const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
+    const eventos = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','CHATS_UPDATE','CHATS_UPSERT','LABELS_ASSOCIATION','LABELS_EDIT','MESSAGES_DELETE','CONTACTS_UPSERT'];
+    let ok = 0;
+    for (const name of nombres) {
+      try {
+        const body = { webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: eventos } };
+        const r = await fetch(`${EVO}/webhook/set/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: KEY },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) ok++;
+      } catch {}
+    }
+    return ok;
+  } catch { return 0; }
 }
 function _guardarVigilanciaEvolution(s) {
   try { fs.mkdirSync(path.dirname(VIGILANCIA_EVOLUTION_FILE), { recursive: true }); } catch {}
@@ -17128,18 +17183,29 @@ async function cronVigilarEvolutionTick() {
 
     state.fallos = (state.fallos || 0) + 1;
     state.ultimoEstado = 'down';
-    _guardarVigilanciaEvolution(state);
 
     const n = state.fallos;
     const razon = !apiVivo
       ? 'Evolution API no responde'
       : `Evolution up pero CERO eventos hace ${minSinEventos} min`;
 
+    // AUTO-HEAL SOFT: en el fallo 2 (10 min ciegos) intenta re-registrar webhooks.
+    // Solo re-intenta si pasaron > 30 min desde el ultimo auto-heal (evita loop).
+    let autoHealMsg = '';
+    if (n === 2 && apiVivo && (ahora - (state.ultimoAutoHealTs || 0)) > 30 * 60 * 1000) {
+      const ok = await _autoHealEvolutionWebhooks();
+      state.ultimoAutoHealTs = ahora;
+      state.autoHealsHechos = (state.autoHealsHechos || 0) + 1;
+      console.log(`[vig-evo] auto-heal ejecutado, ${ok}/5 instancias re-registradas`);
+      autoHealMsg = `\n\n🔧 Auto-heal ejecutado: re-registro webhook en ${ok}/5 instancias.\nEspero 5 min y verifico. Si vuelven eventos, tema resuelto solo.`;
+    }
+    _guardarVigilanciaEvolution(state);
+
     let msg = null;
     if (n === 2) {
-      msg = `⚠️ *Evolution roto en silencio*\n\n${razon}\n\nSe reintenta cada 5 min.\nSi sigue caido, alerto con checklist.`;
+      msg = `⚠️ *Evolution roto en silencio*\n\n${razon}\n\nSe reintenta cada 5 min.${autoHealMsg}`;
     } else if (n === 6) {
-      msg = `🚨 *Evolution ciego hace ~30 min*\n\n${razon}\n\nAcciones:\n1. Railway → Evolution API → Deployments → *Restart*\n2. Esperar 60 seg\n3. Verificar: /api/admin/pulso-webhooks\n\nMientras: cero deteccion de comprobantes, etiquetas, stickers.`;
+      msg = `🚨 *Evolution ciego hace ~30 min*\n\n${razon}\n\nEl auto-heal ya intento y no arreglo.\n\nAcciones:\n1. Railway → Evolution API → Deployments → *Restart*\n2. Esperar 60 seg\n3. Verificar: /api/admin/pulso-webhooks\n\nMientras: cero deteccion de comprobantes, etiquetas, stickers.`;
     } else if (n === 24 || (n > 24 && n % 24 === 0)) {
       msg = `🔴 *URGENTE: Evolution ciego hace ${Math.round(n*5/60)}h*\n\n${razon}\n\nRestart en Railway ya.\n(Aviso repite cada 2h.)`;
     }
