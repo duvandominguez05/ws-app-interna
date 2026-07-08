@@ -14,6 +14,8 @@ const chatReader = require('./chat-reader');
 const grupoTrabajoFamiliaWatcher = require('./grupo-trabajo-familia-watcher');
 const v2 = require('./v2-server');
 v2.initV2();
+const disenos = require('./disenos');
+disenos.init(db);
 
 // ── Configuración de Seguridad ───────────────────────────────────
 const API_KEY = process.env.API_KEY || 'ws-textil-2026';
@@ -3133,6 +3135,65 @@ http.createServer(async (req, res) => {
   if (req.url && req.url.startsWith('/api/v2/')) {
     cors(res);
     return v2.handleV2Request(req, res);
+  }
+
+  // ── /api/disenos/* — catalogo de disenos + match automatico ──
+  // POST /api/disenos/registrar-catalogo — llamado por watcher n8n con cada JPG nuevo
+  if (req.method === 'POST' && req.url === '/api/disenos/registrar-catalogo') {
+    cors(res);
+    let body = '';
+    req.on('data', d => body += d);
+    req.on('end', async () => {
+      try {
+        const b = JSON.parse(body || '{}');
+        const { fileId, nombre, driveDownloadUrl, sha256: sha256In, sizeBytes, modifiedTime } = b;
+        if (!fileId || !nombre) return json(res, 400, { error: 'fileId y nombre requeridos' });
+
+        let sha256 = sha256In || null;
+        let phash = null;
+
+        // Si n8n manda directamente el buffer (base64) o la URL, calculamos ambos hashes localmente
+        if (b.contentBase64) {
+          const buf = Buffer.from(b.contentBase64, 'base64');
+          sha256 = disenos.calcularSha256(buf);
+          phash = await disenos.calcularPHash(buf);
+        } else if (driveDownloadUrl) {
+          // n8n puede pasar una URL de descarga directa; la traemos
+          try {
+            const r = await fetch(driveDownloadUrl);
+            if (r.ok) {
+              const buf = Buffer.from(await r.arrayBuffer());
+              sha256 = disenos.calcularSha256(buf);
+              phash = await disenos.calcularPHash(buf);
+            }
+          } catch (e) { console.error('[disenos fetch drive]', e.message); }
+        }
+
+        const r = disenos.registrarCatalogo({ fileId, nombre, sha256, phash, sizeBytes, modifiedTime });
+        return json(res, 200, r);
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/disenos/catalogo — lista los disenos registrados
+  if (req.method === 'GET' && req.url.startsWith('/api/disenos/catalogo')) {
+    cors(res);
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const limit = parseInt(u.searchParams.get('limit') || '100', 10);
+      return json(res, 200, { catalogo: disenos.listarCatalogo({ limit }), stats: disenos.statsCatalogo() });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
+  // GET /api/disenos/estado — resumen ejecutivo
+  if (req.method === 'GET' && req.url === '/api/disenos/estado') {
+    cors(res);
+    return json(res, 200, { ok: true, ...disenos.statsCatalogo() });
   }
   if (req.method === 'GET' && (req.url === '/v2' || req.url === '/v2/')) {
     return fs.readFile(path.join(__dirname, 'public', 'v2.html'), (err, data) => {
@@ -9620,6 +9681,144 @@ setInterval(cargar, 15000);
             }
           } catch (eVoto) {
             console.error('[voto-poll]', eVoto.message);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // DETECTOR CATALOGO — imagen SALIENTE de vendedora → match con Drive
+        // Cuando el disenador manda un JPG al cliente, lo emparejamos con
+        // el archivo del CATALOGO (registrado previamente por el watcher n8n).
+        // NO crea pedidos — solo NOMBRA los que ya existen y registra envio.
+        // ─────────────────────────────────────────────────────────────
+        if (eventType === 'messages.upsert' && eventData?.messageType === 'imageMessage') {
+          try {
+            const fromMe = eventData.key?.fromMe === true;
+            const remoteJid = eventData.key?.remoteJid || '';
+            const esGrupo = remoteJid.endsWith('@g.us');
+            const waMsgId = eventData.key?.id || null;
+            if (fromMe && !esGrupo && remoteJid && waMsgId && !disenos.envioYaProcesado(waMsgId)) {
+              const vendedora = vendedoraDeInstancia(payload.instance);
+              const instance = payload.instance;
+              // Fire and forget: no bloqueamos el ack del webhook
+              (async () => {
+                try {
+                  // 1. Resolver telefono cliente (soporta @lid)
+                  let telCliente = '';
+                  if (remoteJid.endsWith('@lid')) {
+                    const dbUrl = process.env.EVOLUTION_DB_URL;
+                    if (dbUrl) {
+                      const pool = new PgPool({ connectionString: dbUrl, max: 1, ssl: { rejectUnauthorized: false } });
+                      try {
+                        const r = await pool.query(
+                          `SELECT key->>'remoteJidAlt' AS tel FROM "Message"
+                           WHERE key->>'remoteJid' = $1 AND key->>'remoteJidAlt' LIKE '%@s.whatsapp.net'
+                           ORDER BY "messageTimestamp" DESC LIMIT 1`,
+                          [remoteJid]
+                        );
+                        const alt = r.rows[0]?.tel || '';
+                        telCliente = String(alt).replace('@s.whatsapp.net', '').replace(/\D/g, '');
+                      } finally { await pool.end(); }
+                    }
+                  } else {
+                    telCliente = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+                  }
+                  if (!telCliente || telCliente.length < 8) return;
+
+                  // 2. Descargar imagen via Evolution
+                  const media = await descargarImagenEvolution(instance, eventData.key);
+                  if (!media || !media.base64) {
+                    console.log(`[disenos] no pudo descargar imagen ${waMsgId}`);
+                    return;
+                  }
+                  const buf = Buffer.from(media.base64, 'base64');
+
+                  // 3. Hash
+                  const sha256 = disenos.calcularSha256(buf);
+                  const phash = await disenos.calcularPHash(buf);
+
+                  // 4. Match contra catalogo
+                  const match = disenos.buscarMatch({ sha256, phash });
+
+                  if (!match) {
+                    // No match: probable meme/otra imagen. Solo log, no ensuciar admin.
+                    console.log(`[disenos] imagen saliente sin match. tel=${telCliente} vendedora=${vendedora || instance}`);
+                    return;
+                  }
+
+                  // 5. Pedido activo del cliente
+                  const pedidosArr = leerPedidos();
+                  const pedido = disenos.buscarPedidoActivoPorTel(pedidosArr, telCliente);
+                  const tsEnvio = new Date().toISOString();
+                  const nombreDiseno = String(match.catalogo.nombre || '').replace(/\.(jpe?g|png|webp)$/i, '');
+
+                  if (!pedido) {
+                    // Aviso: se envio diseno sin pedido creado
+                    disenos.registrarEnvio({
+                      disenoCatalogoId: match.catalogo.id,
+                      pedidoId: null,
+                      telefonoCliente: telCliente,
+                      instanciaVendedora: instance,
+                      waMsgId, metodo: match.metodo, confianza: match.confianza, tsEnvio,
+                    });
+                    try {
+                      await notificarTelegramAdmin(
+                        `⚠️ *Diseno detectado SIN pedido en la app*\n\n` +
+                        `Vendedora ${vendedora || instance} envio *${match.catalogo.nombre}* al cliente ${telCliente}, ` +
+                        `pero no hay pedido activo con ese numero.\n\n` +
+                        `Si es venta real: la vendedora debe mandar el sticker para crear el pedido.`
+                      );
+                    } catch {}
+                    return;
+                  }
+
+                  // Skip mayorista / catalogo (clientes que no requieren aprobacion diseno)
+                  const eqLower = String(pedido.equipo || '').toLowerCase();
+                  if (eqLower.includes('mayorista') || eqLower.includes('catalogo') || eqLower.includes('catálogo')) {
+                    console.log(`[disenos] pedido #${pedido.id} skip mayorista/catalogo`);
+                    disenos.registrarEnvio({
+                      disenoCatalogoId: match.catalogo.id, pedidoId: pedido.id,
+                      telefonoCliente: telCliente, instanciaVendedora: instance,
+                      waMsgId, metodo: match.metodo, confianza: match.confianza, tsEnvio,
+                    });
+                    return;
+                  }
+
+                  // 6. Nombrar el pedido si aun no tiene nombre real
+                  const antes = pedido.equipo || '';
+                  const yaTeniaNombreReal = antes && !/^cliente\s+[\+\d]/i.test(antes);
+                  if (!yaTeniaNombreReal) {
+                    pedido.equipo = nombreDiseno;
+                  }
+                  pedido.ultimoMovimiento = tsEnvio;
+                  pedido.fotoDiseno = pedido.fotoDiseno || match.catalogo.nombre;
+                  guardarPedidos(pedidosArr);
+
+                  // 7. Registrar envio
+                  disenos.registrarEnvio({
+                    disenoCatalogoId: match.catalogo.id, pedidoId: pedido.id,
+                    telefonoCliente: telCliente, instanciaVendedora: instance,
+                    waMsgId, metodo: match.metodo, confianza: match.confianza, tsEnvio,
+                  });
+
+                  // 8. Notif verde
+                  try {
+                    await notificarTelegramAdmin(
+                      `✅ *Diseno vinculado a pedido*\n\n` +
+                      `📋 Pedido #${pedido.id} · ${pedido.equipo}\n` +
+                      `📞 Cliente: ${telCliente}\n` +
+                      `👤 Vendedora: ${vendedora || instance}\n` +
+                      `🎨 Archivo: ${match.catalogo.nombre}\n` +
+                      `🔍 Match: ${match.metodo} (${(match.confianza * 100).toFixed(0)}%)` +
+                      (yaTeniaNombreReal ? `\n📝 Ya tenia nombre "${antes}", no se cambio.` : `\n📝 Pedido nombrado: "${nombreDiseno}"`)
+                    );
+                  } catch {}
+                } catch (e) {
+                  console.error('[disenos hook async error]', e.message);
+                }
+              })();
+            }
+          } catch (e) {
+            console.error('[disenos hook outer error]', e.message);
           }
         }
 
