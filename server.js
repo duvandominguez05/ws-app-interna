@@ -15746,11 +15746,22 @@ async function cronVerificarAprobacionesPendientesTick() {
           p.estado = 'cancelado'; p.motivo = `keyword negativa: "${kwNegHit}"`; cambios = true; continue;
         }
         // 6a. Cliente ya respondio positivo -> AUTO-APROBADO (no solo cancelar encuesta)
+        // Palabras cortas ambiguas (ok, va, dale, listo, quedo, etc.) solo gatillan si el mensaje total
+        // tiene <=3 palabras — evita falso positivo tipo "ok como te decia".
+        const AMBIGUAS_CORTAS = new Set(['ok', 'va', 'dale', 'listo', 'quedo', 'quedó', 'chevere', 'chévere', 'bacano', 'super', 'súper', 'genial', 'excelente']);
         const msgPositivo = ventanaDespues
           .filter(m => m.message_type === 0 && m.content)
           .find(m => {
             const t = String(m.content).toLowerCase().trim().replace(/[.!¡¿?]+$/, '');
-            return RESPUESTAS_CLIENTE_POSITIVAS.some(r => t === r || t.startsWith(r + ' ') || t.includes(r));
+            const nPal = t.split(/\s+/).filter(Boolean).length;
+            for (const r of RESPUESTAS_CLIENTE_POSITIVAS) {
+              if (AMBIGUAS_CORTAS.has(r)) {
+                if (nPal <= 3 && (t === r || t.startsWith(r + ' ') || t.endsWith(' ' + r) || t.includes(' ' + r + ' '))) return true;
+              } else {
+                if (t === r || t.startsWith(r + ' ') || t.includes(r)) return true;
+              }
+            }
+            return false;
           });
         if (msgPositivo) {
           const estadoAnt = pedido.estado;
