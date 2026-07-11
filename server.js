@@ -17535,6 +17535,79 @@ setTimeout(cronCatalogoDriveTick, 60 * 1000);
 console.log('[cron-catalogo] activado — explora CATALOGO recursivo cada 5 min');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON Vigilancia Google OAuth — cada 30 min chequea que Drive/Gmail
+// respondan. Si vuelve invalid_grant/401, alerta Telegram admin con link
+// para re-autorizar (mismo patron que Chatwoot/Evolution).
+// ═══════════════════════════════════════════════════════════════════
+const VIGILANCIA_GOOGLE_FILE = path.join(__dirname, 'data', 'vigilancia_google.json');
+function _leerVigilanciaGoogle() {
+  try { return JSON.parse(fs.readFileSync(VIGILANCIA_GOOGLE_FILE, 'utf8')); }
+  catch { return { fallos: 0, ultimoEstado: 'up' }; }
+}
+function _guardarVigilanciaGoogle(s) {
+  try { fs.mkdirSync(path.dirname(VIGILANCIA_GOOGLE_FILE), { recursive: true }); } catch {}
+  try { fs.writeFileSync(VIGILANCIA_GOOGLE_FILE, JSON.stringify(s, null, 2)); } catch {}
+}
+
+async function cronVigilarGoogleTick() {
+  try {
+    const state = _leerVigilanciaGoogle();
+    let ok = false;
+    let errorMsg = null;
+    try {
+      // Prueba minima: listar una carpeta conocida (COREL raiz)
+      const r = await driveSync.listarArchivos(driveSync.FOLDER_COREL, 1);
+      ok = Array.isArray(r);
+    } catch (e) {
+      errorMsg = e.message || 'error desconocido';
+      ok = false;
+    }
+
+    if (ok) {
+      if (state.ultimoEstado === 'down' && (state.fallos || 0) >= 2) {
+        const min = (state.fallos || 0) * 30;
+        try {
+          await notificarTelegramAdmin(`✅ *Google Drive/Gmail volvio a responder*\n\nEstuvo caido ~${min} min.\nRe-autorizacion aplicada correctamente.`);
+        } catch (e) { console.error('[vig-google notif-up]', e.message); }
+      }
+      state.fallos = 0;
+      state.ultimoEstado = 'up';
+      _guardarVigilanciaGoogle(state);
+      return;
+    }
+
+    state.fallos = (state.fallos || 0) + 1;
+    state.ultimoEstado = 'down';
+    _guardarVigilanciaGoogle(state);
+
+    const n = state.fallos;
+    const min = n * 30;
+    const esInvalidGrant = /invalid_grant|revoked|expired/i.test(errorMsg || '');
+
+    let msg = null;
+    if (n === 1 || n === 4 || (n > 4 && n % 4 === 0)) {
+      const razon = esInvalidGrant
+        ? 'OAuth expirado o revocado (invalid_grant)'
+        : `Drive API error: ${errorMsg}`;
+      msg = `🚨 *Google Drive/Gmail no responde*\n\n${razon}\n\nCaido hace ~${min} min.\n\n` +
+            `Accion: abrir en el navegador\n` +
+            `https://ws-app-interna-production.up.railway.app/api/gmail/auth\n\n` +
+            `y aceptar los permisos con la cuenta duvandominguez05@gmail.com.\n\n` +
+            `Mientras: cron CATALOGO, PDF RIP y Gmail WeTransfer estan detenidos.`;
+    }
+
+    if (msg) {
+      try { await notificarTelegramAdmin(msg); } catch (e) { console.error('[vig-google notif-down]', e.message); }
+    }
+  } catch (e) {
+    console.error('[cron-vig-google error]', e.message);
+  }
+}
+setInterval(cronVigilarGoogleTick, 30 * 60 * 1000);
+setTimeout(cronVigilarGoogleTick, 90 * 1000);
+console.log('[cron-vig-google] activado — chequea Drive/Gmail OAuth cada 30 min');
+
+// ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)
 // ═══════════════════════════════════════════════════════════════════
 // se registra dentro del handler de rutas, no acá
