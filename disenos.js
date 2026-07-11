@@ -160,6 +160,35 @@ function buscarMatch({ sha256, phash }) {
   return null;
 }
 
+// Sanity check para descartar falsos positivos del pHash.
+// Match sha256 (exacto) -> aceptar siempre.
+// Match pHash -> requiere que el nombre del archivo comparta al menos UNA
+// palabra rica con el nombre del pedido, cliente o pushNameCliente. Sino
+// es un falso positivo visual (ej: dago-algo.jpg vinculado a Palcos Luister).
+function _palabrasRicasSanity(s) {
+  const STOP = new Set(['fc','cf','sas','sa','club','team','equipo','fut','v','ver','version','n','no','uniforme','uniformes']);
+  return new Set(
+    String(s || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w))
+  );
+}
+
+function sanityCheckMatch(match, pedido) {
+  if (!match) return null;
+  if (match.metodo === 'sha256') return match;
+  const archivoBase = String(match.catalogo?.nombre || '').replace(/\.(jpe?g|png|webp)$/i, '');
+  const nombresPedido = [pedido?.equipo, pedido?.cliente, pedido?.pushNameCliente].filter(Boolean).join(' ');
+  const palA = _palabrasRicasSanity(archivoBase);
+  const palP = _palabrasRicasSanity(nombresPedido);
+  for (const w of palA) if (palP.has(w)) return match;
+  // Ninguna palabra rica en comun -> falso positivo probable
+  return null;
+}
+
 // Registrar un envio detectado (para historial + evitar procesar el mismo wa_msg_id 2 veces).
 function registrarEnvio({ disenoCatalogoId, pedidoId, telefonoCliente, instanciaVendedora, waMsgId, metodo, confianza, tsEnvio }) {
   try {
@@ -212,6 +241,7 @@ module.exports = {
   listarCatalogo,
   statsCatalogo,
   buscarMatch,
+  sanityCheckMatch,
   registrarEnvio,
   envioYaProcesado,
   buscarPedidoActivoPorTel,

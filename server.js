@@ -9685,12 +9685,12 @@ setInterval(cargar, 15000);
                     console.log(`[diseno-aprobacion] skip mayorista/catalogo: #${pedido.id} ${pedido.equipo}`);
                     return;
                   }
-                  // 3. Anti-duplicado encuesta ya mandada en 24h
+                  // 3. Anti-duplicado encuesta ya mandada (cooldown 6h)
                   const mapping = leerPollsMapping();
-                  const hace24h = Date.now() - 24 * 60 * 60 * 1000;
-                  const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace24h);
+                  const hace6h = Date.now() - 6 * 60 * 60 * 1000;
+                  const yaMandado = mapping.find(m => m.pedidoId === pedido.id && new Date(m.ts).getTime() > hace6h);
                   if (yaMandado) {
-                    console.log(`[diseno-aprobacion] pedido #${pedido.id} ya tiene poll activo, no encolo otra`);
+                    console.log(`[diseno-aprobacion] pedido #${pedido.id} cooldown 6h activo, no encolo otra`);
                     return;
                   }
                   // 4. Encolar en pending-approvals (cron verifica 5 min despues)
@@ -9706,7 +9706,7 @@ setInterval(cargar, 15000);
                     instance: payload.instance,
                     imageMsgKey: eventData.key,
                     imageTs: new Date(tsMsg).toISOString(),
-                    verificarEn: new Date(ahora + 45 * 1000).toISOString(), // 45 seg: rapido para no perder la ventana
+                    verificarEn: new Date(ahora + 20 * 60 * 1000).toISOString(), // 20 min: ventana de silencio — cliente reacciona natural antes de encuesta
                     estado: 'esperando',
                     creadoEn: new Date(ahora).toISOString(),
                   });
@@ -9842,8 +9842,13 @@ setInterval(cargar, 15000);
                   const sha256 = disenos.calcularSha256(buf);
                   const phash = await disenos.calcularPHash(buf);
 
-                  // 4. Match contra catalogo
-                  const match = disenos.buscarMatch({ sha256, phash });
+                  // 4. Match contra catalogo (con sanity check para evitar
+                  // falsos positivos del pHash)
+                  let match = disenos.buscarMatch({ sha256, phash });
+                  // Para el hook nuevo, el pedido lo buscamos DESPUES para saber sanity
+                  const pedidosArrPre = leerPedidos();
+                  const pedidoPre = disenos.buscarPedidoActivoPorTel(pedidosArrPre, telCliente);
+                  if (match && pedidoPre) match = disenos.sanityCheckMatch(match, pedidoPre);
 
                   if (!match) {
                     // No match: probable meme/otra imagen. Solo log, no ensuciar admin.
@@ -9851,9 +9856,9 @@ setInterval(cargar, 15000);
                     return;
                   }
 
-                  // 5. Pedido activo del cliente
-                  const pedidosArr = leerPedidos();
-                  const pedido = disenos.buscarPedidoActivoPorTel(pedidosArr, telCliente);
+                  // 5. Pedido activo del cliente (ya lo tenemos)
+                  const pedidosArr = pedidosArrPre;
+                  const pedido = pedidoPre;
                   const tsEnvio = new Date().toISOString();
                   const nombreDiseno = String(match.catalogo.nombre || '').replace(/\.(jpe?g|png|webp)$/i, '');
 
@@ -15655,9 +15660,13 @@ const KEYWORDS_NEGATIVAS_APROBACION = [
   'mira para que veas', 'mira esta otra', 'cambios',
 ];
 const RESPUESTAS_CLIENTE_POSITIVAS = [
-  'ok', 'dale', 'listo', 'perfecto', '🙏', '👍', 'me gusta',
-  'esta bien', 'está bien', 'aprobado', 'apruebo', 'va', 'chevere',
-  'chévere', 'bacano', 'genial', 'excelente',
+  'ok', 'dale', 'listo', 'perfecto', '🙏', '👍', '❤️', '✅', 'me gusta',
+  'esta bien', 'está bien', 'aprobado', 'apruebo', 'lo apruebo', 'va',
+  'chevere', 'chévere', 'bacano', 'genial', 'excelente',
+  'quedo', 'quedó', 'quedó bien', 'quedo bien', 'quedó chevere',
+  'envialo', 'envíalo', 'mandalo', 'mándalo', 'me encanta',
+  'buenisimo', 'buenísimo', 'super', 'súper', 'ahi va', 'ahí va',
+  'esta perfecto', 'está perfecto', 'asi esta bien', 'así está bien',
 ];
 let _cronVerifAprobEjecutando = false;
 async function cronVerificarAprobacionesPendientesTick() {
@@ -15677,11 +15686,11 @@ async function cronVerificarAprobacionesPendientesTick() {
         if (!['hacer-diseno', 'bandeja'].includes(pedido.estado)) {
           p.estado = 'cancelado'; p.motivo = `pedido ya esta en ${pedido.estado}`; cambios = true; continue;
         }
-        // 1. Anti-duplicado: ya hay encuesta activa en 24h
+        // 1. Anti-duplicado: cooldown 6h por pedido
         const mapping = leerPollsMapping();
-        const hace24h = ahora - 24 * 60 * 60 * 1000;
-        if (mapping.find(m => m.pedidoId === p.pedidoId && new Date(m.ts).getTime() > hace24h)) {
-          p.estado = 'cancelado'; p.motivo = 'ya hay encuesta activa'; cambios = true; continue;
+        const hace6hCron = ahora - 6 * 60 * 60 * 1000;
+        if (mapping.find(m => m.pedidoId === p.pedidoId && new Date(m.ts).getTime() > hace6hCron)) {
+          p.estado = 'cancelado'; p.motivo = 'cooldown 6h: ya se mandó encuesta reciente'; cambios = true; continue;
         }
         // 2. Burst check
         const tsImg = new Date(p.imageTs).getTime();
@@ -15715,7 +15724,7 @@ async function cronVerificarAprobacionesPendientesTick() {
         const todos = ((dataMsg.payload || dataMsg || [])).sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
         const tsImgSec = Math.floor(tsImg / 1000);
         const ventanaAntes = todos.filter(m => m.created_at >= tsImgSec - 600 && m.created_at < tsImgSec);
-        const ventanaDespues = todos.filter(m => m.created_at >= tsImgSec && m.created_at <= tsImgSec + 5 * 60);
+        const ventanaDespues = todos.filter(m => m.created_at >= tsImgSec && m.created_at <= tsImgSec + 20 * 60);
         // 4. Cliente mando imagen <5 min antes
         const clienteMandoImg = ventanaAntes.some(m =>
           m.message_type === 0 &&
@@ -15736,19 +15745,88 @@ async function cronVerificarAprobacionesPendientesTick() {
         if (kwNegHit) {
           p.estado = 'cancelado'; p.motivo = `keyword negativa: "${kwNegHit}"`; cambios = true; continue;
         }
-        // 6. Cliente ya respondio positivo
-        const respCliente = ventanaDespues
+        // 6a. Cliente ya respondio positivo -> AUTO-APROBADO (no solo cancelar encuesta)
+        const msgPositivo = ventanaDespues
           .filter(m => m.message_type === 0 && m.content)
-          .some(m => {
+          .find(m => {
             const t = String(m.content).toLowerCase().trim().replace(/[.!¡¿?]+$/, '');
             return RESPUESTAS_CLIENTE_POSITIVAS.some(r => t === r || t.startsWith(r + ' ') || t.includes(r));
           });
-        if (respCliente) {
-          p.estado = 'cancelado'; p.motivo = 'cliente ya aprobo por texto'; cambios = true; continue;
+        if (msgPositivo) {
+          const estadoAnt = pedido.estado;
+          if (['hacer-diseno', 'bandeja'].includes(pedido.estado)) pedido.estado = 'confirmado';
+          const nowIso = new Date(ahora).toISOString();
+          pedido.fechaAprobacionCliente = nowIso;
+          pedido.aprobacionCliente = { accion: 'aprobar', respondioEn: nowIso, viaPoll: false, cita: String(msgPositivo.content).slice(0, 200) };
+          pedido.historial = pedido.historial || [];
+          pedido.historial.push({
+            fecha: nowIso,
+            por: 'auto-detector-texto-libre',
+            accion: 'aprobacion-cliente',
+            de: estadoAnt,
+            a: pedido.estado,
+            nota: `Cliente aprobó por texto libre: "${String(msgPositivo.content).slice(0, 120)}"`,
+          });
+          guardarPedidos(peds, leerNextId());
+          console.log(`[verif-aprob] AUTO-APROBADO por texto libre #${pedido.id} "${String(msgPositivo.content).slice(0,60)}"`);
+          if (typeof notificarWAVendedora === 'function') {
+            const nm = pedido.nombreDiseno || pedido.equipo || `Pedido #${pedido.id}`;
+            notificarWAVendedora(p.vendedora, `✅ ${nm}: cliente APROBÓ por texto ("${String(msgPositivo.content).slice(0,60)}"). Pedido a confirmado (sin encuesta).`).catch(()=>{});
+          }
+          if (typeof notificarTelegramAdmin === 'function') {
+            notificarTelegramAdmin(`✅ Auto-aprobado #${pedido.id} (${pedido.equipo || pedido.cliente || ''}) por texto libre: "${String(msgPositivo.content).slice(0, 100)}"`).catch(()=>{});
+          }
+          p.estado = 'cancelado'; p.motivo = 'cliente aprobo por texto -> auto-aprobado'; cambios = true; continue;
         }
-        // 7. Gemini estricto
+        // 6b. Cliente pidio cambio explicito por texto -> NO encuesta, esperar nuevo JPG
+        const KW_CAMBIO = [
+          'cambia', 'cambio', 'cambiemos', 'cambiar', 'ajusta', 'ajustar',
+          'modifica', 'modificar', 'quita', 'quítale', 'quitale', 'quítame', 'quitame',
+          'ponle', 'ponele', 'agrega', 'agregar', 'agregale', 'agrégale',
+          'reemplaza', 'sin el', 'sin la', 'en vez de', 'mejor sin',
+          'no me gusta', 'no me convence', 'no me gustan', 'muy grande', 'muy pequeño',
+          'muy chico', 'otro color', 'otro diseño', 'con otro', 'con más', 'sin la parte',
+        ];
+        const msgCambio = ventanaDespues
+          .filter(m => m.message_type === 0 && m.content)
+          .find(m => {
+            const t = String(m.content).toLowerCase();
+            return KW_CAMBIO.some(k => t.includes(k));
+          });
+        if (msgCambio) {
+          pedido.esperandoNuevoJpg = true;
+          pedido.ultimoPedidoCambioTs = new Date(ahora).toISOString();
+          pedido.ultimoPedidoCambioCita = String(msgCambio.content).slice(0, 200);
+          pedido.historial = pedido.historial || [];
+          pedido.historial.push({
+            fecha: new Date(ahora).toISOString(),
+            por: 'auto-detector-texto-libre',
+            accion: 'cliente-pide-cambio-texto',
+            nota: `Cliente pidió cambio por texto: "${String(msgCambio.content).slice(0, 120)}"`,
+          });
+          guardarPedidos(peds, leerNextId());
+          console.log(`[verif-aprob] cliente pide cambio #${pedido.id} "${String(msgCambio.content).slice(0,60)}" - espero nuevo JPG`);
+          p.estado = 'cancelado'; p.motivo = 'cliente pide cambio por texto -> espero nuevo JPG'; cambios = true; continue;
+        }
+        // 7. Descargar imagen
         const img = await descargarImagenEvolution(p.instance, p.imageMsgKey);
         if (!img || !img.base64) { p.estado = 'cancelado'; p.motivo = 'no se pudo descargar imagen'; cambios = true; continue; }
+        // 7a. Dedupe por sha256 del JPG: mismo archivo nunca dispara 2 encuestas
+        let sha256Img = null;
+        try {
+          const cryptoSha = require('crypto');
+          const imgBuffer = Buffer.from(img.base64, 'base64');
+          sha256Img = cryptoSha.createHash('sha256').update(imgBuffer).digest('hex');
+          const yaMismoSha = mapping.find(m => m.sha256Img === sha256Img);
+          if (yaMismoSha) {
+            p.estado = 'cancelado';
+            p.motivo = `mismo JPG (sha256) ya tuvo encuesta pedido #${yaMismoSha.pedidoId}`;
+            cambios = true;
+            console.log(`[verif-aprob] dedupe sha256 #${pedido.id} - JPG idéntico ya se encuestó`);
+            continue;
+          }
+        } catch (eSha) { console.error('[verif-aprob sha256]', eSha.message); }
+        // 7b. Gemini estricto
         const clasif = await clasificarImagenConGemini(img.base64, img.mimeType);
         if (!clasif || clasif.tipo !== 'diseno-uniforme' || clasif.confianza !== 'alta') {
           p.estado = 'cancelado'; p.motivo = `Gemini: tipo=${clasif?.tipo} conf=${clasif?.confianza}`; cambios = true; continue;
@@ -15779,6 +15857,7 @@ async function cronVerificarAprobacionesPendientesTick() {
           vendedora: p.vendedora,
           instance: p.instance,
           imageMsgKey: p.imageMsgKey,
+          sha256Img: sha256Img || null,
           ts: new Date(ahora).toISOString(),
         });
         if (mapping.length > 200) mapping.splice(0, mapping.length - 200);
