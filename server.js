@@ -3196,6 +3196,33 @@ http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, ...disenos.statsCatalogo() });
   }
 
+  // POST /api/disenos/matchear-pdfs-ahora — dispara cronDriveTick manual y devuelve resumen
+  if (req.method === 'POST' && req.url === '/api/disenos/matchear-pdfs-ahora') {
+    cors(res);
+    try {
+      const antes = db.leerPedidos();
+      const conPdfAntes = new Set(antes.filter(p => p.drive?.pdfRip?.id).map(p => p.id));
+      await cronDriveTick();
+      const despues = db.leerPedidos();
+      const vinculadosNuevos = despues.filter(p => p.drive?.pdfRip?.id && !conPdfAntes.has(p.id));
+      const enviadosCalandra = despues.filter(p => p.estado === 'enviado-calandra' && p.drive?.pdfRip?.id);
+      return json(res, 200, {
+        ok: true,
+        pedidos_totales: despues.length,
+        pedidos_con_pdf_antes: conPdfAntes.size,
+        pedidos_con_pdf_despues: despues.filter(p => p.drive?.pdfRip?.id).length,
+        vinculados_ahora: vinculadosNuevos.length,
+        muestra_nuevos: vinculadosNuevos.slice(0, 10).map(p => ({
+          id: p.id, equipo: p.equipo, fotoDiseno: p.fotoDiseno,
+          pdf: p.drive.pdfRip.nombre, estado: p.estado,
+        })),
+        enviados_calandra_total: enviadosCalandra.length,
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   // GET /api/disenos/backfill-status — estado del ultimo backfill
   if (req.method === 'GET' && req.url === '/api/disenos/backfill-status') {
     cors(res);

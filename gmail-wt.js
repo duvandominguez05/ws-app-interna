@@ -347,8 +347,26 @@ function matchPedido(base, pedidos) {
     const minPalCl = Math.max(1, Math.min(palabrasFile.size, palCl.size));
     const scoreCl = minPalCl ? comunesCl / minPalCl : 0;
 
-    // Tomamos el mayor de los 2
-    const score = Math.max(scoreEq, scoreCl);
+    // 3) Match contra fotoDiseno (nombre del archivo del CATALOGO vinculado
+    // por match visual). Ej: PDF "alemania 1_1234.pdf" vs fotoDiseno = "alemania 1.jpg".
+    let scoreFd = 0;
+    if (p.fotoDiseno) {
+      const fdBase = String(p.fotoDiseno).replace(/\.(jpe?g|png|webp)$/i, '');
+      // Match exacto normalizado -> score 1
+      if (_normalizar(fdBase) === baseNorm) return { pedido: p, score: 1 };
+      const palFd = _palabrasRicas(fdBase);
+      let comunesFd = 0;
+      for (const w of palabrasFile) if (palFd.has(w)) comunesFd++;
+      const minPalFd = Math.max(1, Math.min(palabrasFile.size, palFd.size));
+      scoreFd = minPalFd ? comunesFd / minPalFd : 0;
+      if (scoreFd >= 0.7 && comunesFd >= 1) {
+        // Match fuerte por fotoDiseno gana sobre equipo/cliente
+        if (scoreFd > mejorScore) { mejorScore = scoreFd; mejor = p; }
+      }
+    }
+
+    // Tomamos el mayor de los 3
+    const score = Math.max(scoreEq, scoreCl, scoreFd);
     const comunes = Math.max(comunesEq, comunesCl);
 
     // Umbral: 50% Y al menos 1 palabra rica coincidente
