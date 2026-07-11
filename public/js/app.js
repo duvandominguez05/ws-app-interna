@@ -5376,50 +5376,55 @@ function _blobToBase64(blob) {
   });
 }
 
-// Helper: genera PDF blob desde un registro de documento
+// Helper: genera PDF blob desde un registro de documento.
+// CRITICO: renderizamos en un iframe con srcdoc para NO heredar el CSS
+// dark de la app (style.css:743 tbody td { color: var(--text) } estaba
+// pisando el color del template y pintaba los items verdes en el PDF).
+// El iframe visible con opacity:0 aplica estilos correctamente en mobile
+// (a diferencia del intento previo con contenedor off-screen).
 async function _generarPdfBlobDesdeRegistro(registro) {
-  // No usamos iframe — en celulares el contenido a -9999px no aplicaba estilos.
-  // Renderizamos en un div del document principal (visible para el browser pero
-  // posicionado fuera de pantalla con visibility:hidden). Captura confiable.
   const htmlDoc = buildDocHTML(registro);
-  // Extraer solo el contenido del body + el style del head
-  const styleMatch = htmlDoc.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-  const bodyMatch = htmlDoc.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const cssInterno = styleMatch ? styleMatch[1] : '';
-  const cuerpo = bodyMatch ? bodyMatch[1] : htmlDoc;
 
-  const contenedor = document.createElement('div');
-  contenedor.id = '_pdf_render_temp';
-  // CRITICO: width fijo + min-height (no height fijo). El height fijo creaba
-  // pagina 2 en blanco cuando el contenido era mas corto que el container.
-  // Ahora medimos scrollHeight DESPUES del render y lo pasamos a html2canvas
-  // para que el PDF se ajuste al contenido real (sin pagina sobrante).
-  // min-height:1050 garantiza altura suficiente en mobile (donde height:auto
-  // a veces resultaba en canvas con altura 0 = PDF vacio de 3KB).
-  contenedor.style.cssText = 'position:fixed;left:0;top:0;width:800px;min-height:1050px;background:#ffffff;pointer-events:none;z-index:-1;overflow:hidden;';
-  contenedor.innerHTML = '<style>' + cssInterno + '</style>' + cuerpo;
-  document.body.appendChild(contenedor);
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  // Visible en el layout (para que browser aplique fuentes/estilos), pero
+  // transparente + pointer-events off + z negativo = invisible al usuario.
+  iframe.style.cssText = 'position:fixed;top:0;left:0;width:800px;height:1200px;border:0;background:#ffffff;z-index:-1;opacity:0;pointer-events:none;';
+  document.body.appendChild(iframe);
 
-  // Esperar layout/render
+  // Escribir el HTML COMPLETO adentro. El iframe no hereda CSS externo:
+  // solo se aplica lo definido en el <style> del template.
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(htmlDoc);
+  iframe.contentDocument.close();
+
+  // Esperar layout + fuentes (2 rAF + 1.2s para custom fonts en mobile)
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  await new Promise(r => setTimeout(r, 800));
+  await new Promise(r => setTimeout(r, 1200));
 
-  // Medir altura real del contenido y usar esa (+ buffer chico para safety).
-  const alturaReal = Math.max(contenedor.scrollHeight, 1050);
+  const bodyIframe = iframe.contentDocument.body;
+  const alturaReal = Math.max(bodyIframe.scrollHeight, 1050);
+
+  // Ajustar iframe a la altura real del contenido para evitar recortes
+  iframe.style.height = alturaReal + 'px';
+  await new Promise(r => setTimeout(r, 150));
+
   const opt = {
     margin: [6, 6, 6, 6],
     image: { type: 'jpeg', quality: 0.97 },
-    // width/height EXPLICITOS — usar la altura medida del contenido real
-    // para no generar paginas sobrantes en blanco.
-    html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false, windowWidth: 800, windowHeight: alturaReal, width: 800, height: alturaReal },
+    html2canvas: {
+      scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff',
+      logging: false, windowWidth: 800, windowHeight: alturaReal,
+      width: 800, height: alturaReal,
+    },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
   try {
-    const pdfBlob = await html2pdf().set(opt).from(contenedor).outputPdf('blob');
+    const pdfBlob = await html2pdf().set(opt).from(bodyIframe).outputPdf('blob');
     return pdfBlob;
   } finally {
-    if (contenedor.parentNode) contenedor.parentNode.removeChild(contenedor);
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
   }
 }
 
