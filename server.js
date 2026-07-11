@@ -3195,6 +3195,53 @@ http.createServer(async (req, res) => {
     cors(res);
     return json(res, 200, { ok: true, ...disenos.statsCatalogo() });
   }
+
+  // POST /api/disenos/refrescar-catalogo — corre el cron manual y devuelve resultado
+  if (req.method === 'POST' && req.url === '/api/disenos/refrescar-catalogo') {
+    cors(res);
+    try {
+      const archivos = await driveSync.listarCatalogoRecursivo().catch(e => ({ __error: e.message }));
+      if (archivos && archivos.__error) {
+        return json(res, 500, { ok: false, paso: 'listar', error: archivos.__error });
+      }
+      if (!archivos || !archivos.length) {
+        return json(res, 200, { ok: true, mensaje: 'no hay archivos', total: 0 });
+      }
+      let nuevos = 0, reemplazos = 0, skips = 0, errores = [];
+      for (const f of archivos) {
+        try {
+          const existente = db.raw.prepare(
+            'SELECT id, modified_time FROM disenos_catalogo WHERE file_id = ? ORDER BY id DESC LIMIT 1'
+          ).get(f.id);
+          if (existente && existente.modified_time === f.modifiedTime) { skips++; continue; }
+          const dl = await driveSync.descargarArchivoBase64(f.id);
+          if (!dl || !dl.base64) { errores.push({ nombre: f.name, error: 'no download' }); continue; }
+          const buf = Buffer.from(dl.base64, 'base64');
+          const sha256 = disenos.calcularSha256(buf);
+          const phash = await disenos.calcularPHash(buf);
+          const r = disenos.registrarCatalogo({
+            fileId: f.id, nombre: f.name, sha256, phash,
+            sizeBytes: parseInt(f.size || '0', 10) || null,
+            modifiedTime: f.modifiedTime,
+          });
+          if (r.accion === 'nuevo') nuevos++;
+          else if (r.accion === 'reemplazo') reemplazos++;
+          else skips++;
+        } catch (e) {
+          errores.push({ nombre: f.name, error: e.message });
+        }
+      }
+      return json(res, 200, {
+        ok: true,
+        archivos_totales: archivos.length,
+        nuevos, reemplazos, skips,
+        errores_count: errores.length,
+        errores_muestra: errores.slice(0, 5),
+      });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message, stack: e.stack });
+    }
+  }
   if (req.method === 'GET' && (req.url === '/v2' || req.url === '/v2/')) {
     return fs.readFile(path.join(__dirname, 'public', 'v2.html'), (err, data) => {
       if (err) { res.writeHead(404); return res.end('not found'); }
