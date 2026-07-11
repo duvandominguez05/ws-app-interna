@@ -401,9 +401,54 @@ async function descargarArchivoBase64(fileId) {
   return { base64: Buffer.from(buf).toString('base64'), mime: meta.mimeType, size: meta.size, name: meta.name };
 }
 
+// ── CATALOGO recursivo ───────────────────────────────────────────────
+// La carpeta CATALOGO tiene subcarpetas por tipo de prenda (UNIFORME HOMBRE,
+// CAMISA, BALONCESTO, etc). Los JPGs viven adentro de esas subcarpetas.
+// Este helper lista todos los JPGs de la carpeta CATALOGO recursivamente.
+const FOLDER_CATALOGO = process.env.DRIVE_FOLDER_CATALOGO || '18KQclpuL1Jbg-ED5iJQP-sAm2HGR6-e5';
+
+async function listarSubcarpetas(folderId) {
+  const q = encodeURIComponent(`'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const fields = encodeURIComponent('files(id,name),nextPageToken');
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=100&fields=${fields}`;
+  const data = await driveFetch(url);
+  return data.files || [];
+}
+
+// Lista TODAS las imagenes (jpg/png) de la carpeta CATALOGO explorando
+// recursivamente: raiz + subcarpetas.
+async function listarCatalogoRecursivo() {
+  const out = [];
+
+  // 1. JPGs en la raiz de CATALOGO
+  const raiz = await listarArchivos(FOLDER_CATALOGO, 500);
+  for (const f of raiz) {
+    if (f.mimeType && f.mimeType.startsWith('image/')) {
+      out.push({ ...f, subcarpeta: 'raiz' });
+    }
+  }
+
+  // 2. Explorar cada subcarpeta
+  const subs = await listarSubcarpetas(FOLDER_CATALOGO);
+  for (const sub of subs) {
+    try {
+      const files = await listarArchivos(sub.id, 500);
+      for (const f of files) {
+        if (f.mimeType && f.mimeType.startsWith('image/')) {
+          out.push({ ...f, subcarpeta: sub.name });
+        }
+      }
+    } catch (e) { console.error(`[catalogo] subcarpeta ${sub.name}:`, e.message); }
+  }
+
+  return out;
+}
+
 module.exports = {
   sincronizarConPedidos,
   listarArchivos,
+  listarSubcarpetas,
+  listarCatalogoRecursivo,
   procesarCorel,
   procesarPdfRip,
   subirArchivo,
@@ -415,4 +460,5 @@ module.exports = {
   FOLDER_PDFRIP,
   FOLDER_FACTURAS,
   FOLDER_COTIZACIONES,
+  FOLDER_CATALOGO,
 };

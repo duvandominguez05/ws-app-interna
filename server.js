@@ -17427,6 +17427,67 @@ setTimeout(cronVigilarEvolutionTick, 45 * 1000);
 console.log('[cron-vig-evolution] activado — pinga Evolution + revisa pulso webhooks cada 5 min');
 
 // ═══════════════════════════════════════════════════════════════════
+// CRON Catalogo Drive — cada 5 min explora CATALOGO recursivo, descarga
+// los JPGs nuevos o reemplazados, calcula sha256+pHash y los registra
+// en disenos_catalogo. Reemplaza al workflow n8n (que solo veia la raiz).
+// ═══════════════════════════════════════════════════════════════════
+async function cronCatalogoDriveTick() {
+  try {
+    const archivos = await driveSync.listarCatalogoRecursivo();
+    if (!archivos.length) {
+      console.log('[cron-catalogo] no hay archivos');
+      return;
+    }
+    let nuevos = 0, reemplazos = 0, skips = 0, errores = 0;
+
+    for (const f of archivos) {
+      try {
+        // Chequeo idempotente: ya tenemos este fileId con mismo modifiedTime?
+        const existente = db.raw.prepare(
+          'SELECT id, modified_time FROM disenos_catalogo WHERE file_id = ? ORDER BY id DESC LIMIT 1'
+        ).get(f.id);
+        if (existente && existente.modified_time === f.modifiedTime) {
+          skips++;
+          continue;
+        }
+
+        // Descargar
+        const dl = await driveSync.descargarArchivoBase64(f.id);
+        if (!dl || !dl.base64) { errores++; continue; }
+        const buf = Buffer.from(dl.base64, 'base64');
+
+        // Hash
+        const sha256 = disenos.calcularSha256(buf);
+        const phash = await disenos.calcularPHash(buf);
+
+        // Registrar (idempotente por fileId+sha256)
+        const r = disenos.registrarCatalogo({
+          fileId: f.id,
+          nombre: f.name,
+          sha256, phash,
+          sizeBytes: parseInt(f.size || '0', 10) || null,
+          modifiedTime: f.modifiedTime,
+        });
+        if (r.accion === 'nuevo') nuevos++;
+        else if (r.accion === 'reemplazo') reemplazos++;
+        else skips++;
+      } catch (e) {
+        errores++;
+        console.error(`[cron-catalogo] archivo ${f.name}:`, e.message);
+      }
+    }
+    if (nuevos || reemplazos || errores) {
+      console.log(`[cron-catalogo] archivos=${archivos.length} nuevos=${nuevos} reemplazos=${reemplazos} skips=${skips} errores=${errores}`);
+    }
+  } catch (e) {
+    console.error('[cron-catalogo error]', e.message);
+  }
+}
+setInterval(cronCatalogoDriveTick, 5 * 60 * 1000);
+setTimeout(cronCatalogoDriveTick, 60 * 1000);
+console.log('[cron-catalogo] activado — explora CATALOGO recursivo cada 5 min');
+
+// ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)
 // ═══════════════════════════════════════════════════════════════════
 // se registra dentro del handler de rutas, no acá
