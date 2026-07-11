@@ -3196,10 +3196,15 @@ http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, ...disenos.statsCatalogo() });
   }
 
-  // POST /api/disenos/backfill?maxPorPedido=10 — matchea disenos historicos
-  // Va a Postgres Evolution, busca las N ultimas imagenes salientes de cada
-  // pedido activo, hashea, matchea contra CATALOGO. Si matchea: nombra +
-  // avanza + registra. Marca los avanzados con evento "diseno asumido por estado".
+  // GET /api/disenos/backfill-status — estado del ultimo backfill
+  if (req.method === 'GET' && req.url === '/api/disenos/backfill-status') {
+    cors(res);
+    return json(res, 200, global._backfillDisenosState || { estado: 'nunca corrido' });
+  }
+
+  // POST /api/disenos/backfill?maxPorPedido=10 — matchea disenos historicos EN BACKGROUND
+  // Devuelve inmediato. Estado en GET /api/disenos/backfill-status.
+  // Notif Telegram admin al terminar.
   if (req.method === 'POST' && req.url.startsWith('/api/disenos/backfill')) {
     cors(res);
     const evoDbUrl = process.env.EVOLUTION_DB_URL;
@@ -3207,155 +3212,20 @@ http.createServer(async (req, res) => {
     const u = new URL(req.url, `http://${req.headers.host}`);
     const maxPorPedido = Math.min(parseInt(u.searchParams.get('maxPorPedido') || '15', 10), 30);
     const estados = (u.searchParams.get('estados') || 'confirmado,hacer-diseno,bandeja,listo,enviado-calandra,costura,entregado').split(',');
-    let pool = null;
-    try {
-      pool = new PgPool({ connectionString: evoDbUrl, max: 2, ssl: { rejectUnauthorized: false } });
-      const inst = await pool.query(`SELECT id, name FROM "Instance"`);
-      const instById = {}; for (const r of inst.rows) instById[r.id] = r.name;
 
-      const pedidos = leerPedidos().filter(p => estados.includes(p.estado));
-      const detalle = [];
-      let matcheados = 0, sinMatch = 0, sinMedia = 0, avanzadosMarcados = 0;
-
-      const ESTADOS_AVANZADOS = new Set(['listo', 'enviado-calandra', 'costura', 'entregado']);
-
-      for (const p of pedidos) {
-        const tel = String(p.telefono || '').replace(/\D/g, '');
-        if (!tel || tel.length < 7) {
-          detalle.push({ id: p.id, equipo: p.equipo, resultado: 'skip - sin telefono' });
-          continue;
-        }
-        try {
-          // 1. JIDs (wapp + posibles @lid)
-          const telFull = tel.startsWith('57') ? tel : '57' + tel;
-          const wapp = `${telFull}@s.whatsapp.net`;
-          const jids = [wapp];
-          const lidRes = await pool.query(
-            `SELECT DISTINCT m.key->>'remoteJid' AS "remoteJid" FROM "Message" m
-             WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid'`,
-            [wapp]
-          );
-          for (const r of lidRes.rows) jids.push(r.remoteJid);
-
-          // 2. Ultimas imagenes salientes (fromMe=true, messageType=imageMessage)
-          const jidsSql = jids.map((_, i) => `$${i+1}`).join(',');
-          const msgs = await pool.query(
-            `SELECT "instanceId", "messageTimestamp", key, message
-             FROM "Message"
-             WHERE key->>'remoteJid' IN (${jidsSql})
-               AND key->>'fromMe' = 'true'
-               AND "messageType" = 'imageMessage'
-             ORDER BY "messageTimestamp" DESC
-             LIMIT ${maxPorPedido}`,
-            jids
-          );
-
-          if (!msgs.rows.length) {
-            // Si el pedido esta en estado avanzado, marcar retro
-            if (ESTADOS_AVANZADOS.has(p.estado)) {
-              disenos.registrarEnvio({
-                disenoCatalogoId: null, pedidoId: p.id,
-                telefonoCliente: tel, instanciaVendedora: null,
-                waMsgId: `retro-${p.id}`, metodo: 'retro-avanzado',
-                confianza: 0.8, tsEnvio: new Date().toISOString(),
-              });
-              avanzadosMarcados++;
-              detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, resultado: 'marcado retro (estado avanzado, sin imagenes en historial)' });
-            } else {
-              detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, resultado: 'sin imagenes salientes en Evolution' });
-            }
-            continue;
-          }
-
-          // 3. Descargar cada imagen y matchear
-          let matchDelPedido = null;
-          const nombresIntentados = [];
-          for (const m of msgs.rows) {
-            const waMsgId = m.key?.id;
-            if (!waMsgId) continue;
-            if (disenos.envioYaProcesado(waMsgId)) continue;
-            const instName = instById[m.instanceId];
-            if (!instName) continue;
-
-            try {
-              const media = await descargarImagenEvolution(instName, m.key);
-              if (!media || !media.base64) { continue; }
-              const buf = Buffer.from(media.base64, 'base64');
-              const sha256 = disenos.calcularSha256(buf);
-              const phash = await disenos.calcularPHash(buf);
-              const match = disenos.buscarMatch({ sha256, phash });
-              if (match) {
-                disenos.registrarEnvio({
-                  disenoCatalogoId: match.catalogo.id, pedidoId: p.id,
-                  telefonoCliente: tel, instanciaVendedora: instName,
-                  waMsgId, metodo: match.metodo, confianza: match.confianza,
-                  tsEnvio: new Date(parseInt(m.messageTimestamp || Date.now()/1000) * 1000).toISOString(),
-                });
-                if (!matchDelPedido || match.confianza > matchDelPedido.confianza) {
-                  matchDelPedido = { catalogo: match.catalogo, confianza: match.confianza, metodo: match.metodo };
-                }
-              }
-              nombresIntentados.push(match ? match.catalogo.nombre : null);
-            } catch (eDl) { /* imagen borrada u otro error, skip */ }
-          }
-
-          if (matchDelPedido) {
-            // Nombrar si no tenia nombre real
-            const antes = p.equipo || '';
-            const yaTeniaNombreReal = antes && !/^cliente\s+[\+\d]/i.test(antes);
-            const nombreDiseno = String(matchDelPedido.catalogo.nombre || '').replace(/\.(jpe?g|png|webp)$/i, '');
-            const cambio = { antes };
-            if (!yaTeniaNombreReal) {
-              p.equipo = nombreDiseno;
-              cambio.despues = nombreDiseno;
-            }
-            p.fotoDiseno = p.fotoDiseno || matchDelPedido.catalogo.nombre;
-            p.ultimoMovimiento = new Date().toISOString();
-            matcheados++;
-            detalle.push({
-              id: p.id, equipo_antes: antes, equipo_despues: p.equipo,
-              estado: p.estado, telefono: tel,
-              archivo: matchDelPedido.catalogo.nombre,
-              metodo: matchDelPedido.metodo, confianza: matchDelPedido.confianza.toFixed(2),
-              resultado: 'MATCH ✓',
-            });
-          } else {
-            // Si es estado avanzado sin match, marcar retro tambien
-            if (ESTADOS_AVANZADOS.has(p.estado)) {
-              disenos.registrarEnvio({
-                disenoCatalogoId: null, pedidoId: p.id,
-                telefonoCliente: tel, instanciaVendedora: null,
-                waMsgId: `retro-${p.id}`, metodo: 'retro-avanzado',
-                confianza: 0.7, tsEnvio: new Date().toISOString(),
-              });
-              avanzadosMarcados++;
-              detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, telefono: tel, resultado: `marcado retro (${msgs.rows.length} imgs revisadas, ninguna match)` });
-            } else {
-              sinMatch++;
-              detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, telefono: tel, resultado: `sin match (${msgs.rows.length} imgs revisadas)` });
-            }
-          }
-        } catch (ePed) {
-          detalle.push({ id: p.id, equipo: p.equipo, error: ePed.message });
-        }
-      }
-      // Guardar pedidos con nombres nuevos
-      guardarPedidos(leerPedidos().map(p => {
-        const upd = pedidos.find(x => x.id === p.id);
-        return upd ? upd : p;
-      }));
-
-      return json(res, 200, {
-        ok: true,
-        pedidos_procesados: pedidos.length,
-        matcheados, sin_match: sinMatch, avanzados_marcados: avanzadosMarcados,
-        detalle,
-      });
-    } catch (e) {
-      return json(res, 500, { ok: false, error: e.message, stack: e.stack });
-    } finally {
-      if (pool) { try { await pool.end(); } catch {} }
+    // Si ya hay uno corriendo, no arrancar otro
+    if (global._backfillDisenosState && global._backfillDisenosState.estado === 'corriendo') {
+      return json(res, 200, { ok: true, mensaje: 'ya corriendo', estado: global._backfillDisenosState });
     }
+
+    global._backfillDisenosState = { estado: 'corriendo', iniciado: new Date().toISOString(), progreso: 0, total: 0 };
+
+    // Fire & forget — respondemos inmediato
+    setImmediate(async () => {
+      await _correrBackfillDisenos(evoDbUrl, maxPorPedido, estados);
+    });
+
+    return json(res, 200, { ok: true, mensaje: 'iniciado en background', consultar_en: '/api/disenos/backfill-status' });
   }
 
   // POST /api/disenos/refrescar-catalogo — corre el cron manual y devuelve resultado
@@ -17768,6 +17638,173 @@ async function cronVigilarGoogleTick() {
 setInterval(cronVigilarGoogleTick, 30 * 60 * 1000);
 setTimeout(cronVigilarGoogleTick, 90 * 1000);
 console.log('[cron-vig-google] activado — chequea Drive/Gmail OAuth cada 30 min');
+
+// ═══════════════════════════════════════════════════════════════════
+// _correrBackfillDisenos — funcion async del backfill que corre en background.
+// Disparada desde POST /api/disenos/backfill. Estado en global._backfillDisenosState.
+// ═══════════════════════════════════════════════════════════════════
+async function _correrBackfillDisenos(evoDbUrl, maxPorPedido, estados) {
+  const ESTADOS_AVANZADOS = new Set(['listo', 'enviado-calandra', 'costura', 'entregado']);
+  let pool = null;
+  const detalle = [];
+  let matcheados = 0, sinMatch = 0, avanzadosMarcados = 0;
+  try {
+    pool = new PgPool({ connectionString: evoDbUrl, max: 2, ssl: { rejectUnauthorized: false } });
+    const inst = await pool.query(`SELECT id, name FROM "Instance"`);
+    const instById = {}; for (const r of inst.rows) instById[r.id] = r.name;
+
+    const pedidos = leerPedidos().filter(p => estados.includes(p.estado));
+    global._backfillDisenosState.total = pedidos.length;
+
+    for (const p of pedidos) {
+      global._backfillDisenosState.progreso = (global._backfillDisenosState.progreso || 0) + 1;
+      global._backfillDisenosState.actual = { id: p.id, equipo: p.equipo };
+
+      const tel = String(p.telefono || '').replace(/\D/g, '');
+      if (!tel || tel.length < 7) {
+        detalle.push({ id: p.id, equipo: p.equipo, resultado: 'skip - sin telefono' });
+        continue;
+      }
+      try {
+        const telFull = tel.startsWith('57') ? tel : '57' + tel;
+        const wapp = `${telFull}@s.whatsapp.net`;
+        const jids = [wapp];
+        const lidRes = await pool.query(
+          `SELECT DISTINCT m.key->>'remoteJid' AS "remoteJid" FROM "Message" m
+           WHERE m.key->>'remoteJidAlt' = $1 AND m.key->>'remoteJid' LIKE '%@lid'`,
+          [wapp]
+        );
+        for (const r of lidRes.rows) jids.push(r.remoteJid);
+
+        const jidsSql = jids.map((_, i) => `$${i+1}`).join(',');
+        const msgs = await pool.query(
+          `SELECT "instanceId", "messageTimestamp", key, message
+           FROM "Message"
+           WHERE key->>'remoteJid' IN (${jidsSql})
+             AND key->>'fromMe' = 'true'
+             AND "messageType" = 'imageMessage'
+           ORDER BY "messageTimestamp" DESC
+           LIMIT ${maxPorPedido}`,
+          jids
+        );
+
+        if (!msgs.rows.length) {
+          if (ESTADOS_AVANZADOS.has(p.estado)) {
+            disenos.registrarEnvio({
+              disenoCatalogoId: null, pedidoId: p.id,
+              telefonoCliente: tel, instanciaVendedora: null,
+              waMsgId: `retro-${p.id}`, metodo: 'retro-avanzado',
+              confianza: 0.8, tsEnvio: new Date().toISOString(),
+            });
+            avanzadosMarcados++;
+            detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, resultado: 'marcado retro (estado avanzado, sin imgs)' });
+          } else {
+            detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, resultado: 'sin imagenes salientes en Evolution' });
+          }
+          continue;
+        }
+
+        let matchDelPedido = null;
+        for (const m of msgs.rows) {
+          const waMsgId = m.key?.id;
+          if (!waMsgId) continue;
+          if (disenos.envioYaProcesado(waMsgId)) continue;
+          const instName = instById[m.instanceId];
+          if (!instName) continue;
+          try {
+            const media = await descargarImagenEvolution(instName, m.key);
+            if (!media || !media.base64) continue;
+            const buf = Buffer.from(media.base64, 'base64');
+            const sha256 = disenos.calcularSha256(buf);
+            const phash = await disenos.calcularPHash(buf);
+            const match = disenos.buscarMatch({ sha256, phash });
+            if (match) {
+              disenos.registrarEnvio({
+                disenoCatalogoId: match.catalogo.id, pedidoId: p.id,
+                telefonoCliente: tel, instanciaVendedora: instName,
+                waMsgId, metodo: match.metodo, confianza: match.confianza,
+                tsEnvio: new Date(parseInt(m.messageTimestamp || Date.now()/1000) * 1000).toISOString(),
+              });
+              if (!matchDelPedido || match.confianza > matchDelPedido.confianza) {
+                matchDelPedido = { catalogo: match.catalogo, confianza: match.confianza, metodo: match.metodo };
+              }
+            }
+          } catch (eDl) { /* imagen borrada, skip */ }
+        }
+
+        if (matchDelPedido) {
+          const pedidosNow = leerPedidos();
+          const pFresh = pedidosNow.find(x => x.id === p.id);
+          if (pFresh) {
+            const antes = pFresh.equipo || '';
+            const yaTeniaNombreReal = antes && !/^cliente\s+[\+\d]/i.test(antes);
+            const nombreDiseno = String(matchDelPedido.catalogo.nombre || '').replace(/\.(jpe?g|png|webp)$/i, '');
+            if (!yaTeniaNombreReal) pFresh.equipo = nombreDiseno;
+            pFresh.fotoDiseno = pFresh.fotoDiseno || matchDelPedido.catalogo.nombre;
+            pFresh.ultimoMovimiento = new Date().toISOString();
+            guardarPedidos(pedidosNow);
+            matcheados++;
+            detalle.push({
+              id: p.id, equipo_antes: antes, equipo_despues: pFresh.equipo,
+              estado: p.estado, telefono: tel,
+              archivo: matchDelPedido.catalogo.nombre,
+              metodo: matchDelPedido.metodo, confianza: matchDelPedido.confianza.toFixed(2),
+              resultado: 'MATCH',
+            });
+          }
+        } else {
+          if (ESTADOS_AVANZADOS.has(p.estado)) {
+            disenos.registrarEnvio({
+              disenoCatalogoId: null, pedidoId: p.id,
+              telefonoCliente: tel, instanciaVendedora: null,
+              waMsgId: `retro-${p.id}`, metodo: 'retro-avanzado',
+              confianza: 0.7, tsEnvio: new Date().toISOString(),
+            });
+            avanzadosMarcados++;
+            detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, telefono: tel, resultado: `retro (${msgs.rows.length} imgs revisadas, ninguna match)` });
+          } else {
+            sinMatch++;
+            detalle.push({ id: p.id, equipo: p.equipo, estado: p.estado, telefono: tel, resultado: `sin match (${msgs.rows.length} imgs revisadas)` });
+          }
+        }
+      } catch (ePed) {
+        detalle.push({ id: p.id, equipo: p.equipo, error: ePed.message });
+      }
+    }
+
+    global._backfillDisenosState = {
+      estado: 'terminado',
+      terminado: new Date().toISOString(),
+      pedidos_procesados: pedidos.length,
+      matcheados, sin_match: sinMatch, avanzados_marcados: avanzadosMarcados,
+      detalle,
+    };
+
+    // Notif Telegram admin con resumen
+    try {
+      const top = detalle.filter(d => d.resultado === 'MATCH').slice(0, 8);
+      let msg = `🎨 *Backfill de disenos terminado*\n\n` +
+        `Pedidos procesados: ${pedidos.length}\n` +
+        `Matcheados: ${matcheados}\n` +
+        `Sin match: ${sinMatch}\n` +
+        `Retro (avanzados sin match): ${avanzadosMarcados}\n\n`;
+      if (top.length) {
+        msg += `*Top matches:*\n`;
+        for (const t of top) msg += `  #${t.id} → ${t.archivo} (conf ${t.confianza})\n`;
+      }
+      msg += `\nDetalle completo: /api/disenos/backfill-status`;
+      await notificarTelegramAdmin(msg);
+    } catch (e) { console.error('[backfill notif]', e.message); }
+
+    console.log(`[backfill] terminado: matcheados=${matcheados} sinMatch=${sinMatch} retro=${avanzadosMarcados}`);
+  } catch (e) {
+    console.error('[backfill error]', e.message);
+    global._backfillDisenosState = { estado: 'error', error: e.message, detalle };
+    try { await notificarTelegramAdmin(`❌ Backfill disenos fallo: ${e.message}`); } catch {}
+  } finally {
+    if (pool) { try { await pool.end(); } catch {} }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // ENDPOINT MANUAL: forzar backup ahora (admin)
