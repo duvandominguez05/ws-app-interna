@@ -5391,22 +5391,29 @@ async function _generarPdfBlobDesdeRegistro(registro) {
 
   const bodyIframe = iframe.contentDocument.body;
   const pageEl = iframe.contentDocument.querySelector('.page') || bodyIframe;
-  const alturaReal = Math.max(bodyIframe.scrollHeight, pageEl.scrollHeight, pageEl.offsetHeight, 1050);
-  iframe.style.height = (alturaReal + 20) + 'px';
+  // Medir tambien el último hijo del footer para no dejar afuera el LLAVE BRE-B
+  // en pedidos largos.
+  const footerLast = iframe.contentDocument.querySelector('.page > div:last-child');
+  const footerBottom = footerLast ? footerLast.getBoundingClientRect().bottom : 0;
+  const alturaReal = Math.ceil(Math.max(bodyIframe.scrollHeight, pageEl.scrollHeight, pageEl.offsetHeight, footerBottom, 1050));
+  // Buffer generoso 120px extra: en pedidos con muchos items la altura crece
+  // y necesitamos margen para asegurar que LLAVE BRE-B siempre quepa.
+  const alturaConBuffer = alturaReal + 120;
+  iframe.style.height = alturaConBuffer + 'px';
   await new Promise(r => setTimeout(r, 200));
 
   // FORMATO PDF CUSTOM: ancho A4=210mm, alto proporcional al content
-  // (asegura 1 sola página siempre)
+  // + buffer 25mm para asegurar que TODO quepa (LLAVE BRE-B, footer, etc).
   const anchoMm = 210;
-  const altoMm = Math.ceil(alturaReal * (anchoMm / 800)) + 5;
+  const altoMm = Math.ceil(alturaConBuffer * (anchoMm / 800)) + 25;
 
   const opt = {
     margin: [0, 0, 0, 0],
     image: { type: 'jpeg', quality: 0.97 },
     html2canvas: {
       scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff',
-      logging: false, windowWidth: 800, windowHeight: alturaReal,
-      width: 800, height: alturaReal, x: 0, y: 0,
+      logging: false, windowWidth: 800, windowHeight: alturaConBuffer,
+      width: 800, height: alturaConBuffer, x: 0, y: 0,
     },
     jsPDF: { unit: 'mm', format: [anchoMm, altoMm], orientation: 'portrait' },
     pagebreak: { mode: [] },
