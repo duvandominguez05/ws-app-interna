@@ -5177,151 +5177,133 @@ function buildDocHTML(d) {
   const cta1 = CUENTAS_BANCOLOMBIA[1];
   const cta2 = CUENTAS_BANCOLOMBIA[2];
 
-  return `<!DOCTYPE html><html style="background:#f1f5f9;"><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
+  // TEMPLATE VERSION DIV-LAYOUT (2026-07-13)
+  // Descubierto por test: html2canvas 1.4.x tiene bug con backgrounds de color
+  // en <td> (los convierte a negro) y con nested tables. Los <div> con background
+  // renderizan pixel-perfect. Layout de 2-cols usa inline-block.
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo} #${d.numero}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff !important;color:#0f172a !important;color-scheme:light !important}
-  .page{width:800px;min-height:1130px;margin:0 auto;background:#ffffff !important;color:#0f172a !important;position:relative;page-break-inside:avoid;}
-
-  /* RESET defensivo contra el CSS dark de la app (body#000, tbody td color:white).
-     Sin estos !important el render mostraba el fondo negro a traves de las celdas
-     transparentes y el texto en blanco invisible. */
-  .page, .page table, .page tbody, .page thead, .page tr { background:#ffffff !important; }
-  .page td, .page th { background-color: transparent; }
-  .page tbody td { color:#334155 !important; }
-  .page strong { color: inherit; }
-
-  .header-bg { background:${color2} !important; color:#ffffff !important; padding:32px 38px; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 18px 18px; margin-bottom:22px; border-bottom:6px solid ${color1}; }
-  .header-bg, .header-bg * { color: inherit !important; }
-  .logo-box { display:flex; align-items:center; gap:14px; }
-  .logo-icon { width:52px; height:52px; background:linear-gradient(135deg, #7c3aed, #0ea5e9) !important; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:800; color:#ffffff !important; }
-  .logo-text { font-size:26px; font-weight:900; letter-spacing:0.4px; color:#ffffff !important; }
-  .logo-sub { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:#94a3b8 !important; font-weight:600; margin-top:2px; }
-
-  .company-dt { text-align:right; font-size:12px; color:#cbd5e1 !important; line-height:1.6; }
-  .company-dt strong { color:#ffffff !important; font-size:14px; }
-
-  .doc-meta { padding:0 38px; display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; background:#ffffff !important; }
-  .doc-meta-left { display:flex; gap:36px; }
-  .doc-meta-item { display:flex; flex-direction:column; gap:4px; }
-  .doc-meta-lbl { font-size:10px; text-transform:uppercase; color:#94a3b8 !important; font-weight:700; letter-spacing:1.2px; }
-  .doc-meta-val { font-size:14px; color:#0f172a !important; font-weight:600; }
-  .doc-title { text-align:right; }
-  .doc-title h1 { font-size:38px; color:${color1} !important; font-weight:900; letter-spacing:1px; line-height:1; }
-  .doc-title .num { font-size:18px; font-weight:700; color:#64748b !important; margin-top:4px; }
-
-  .client-box { margin:0 38px 20px; background:#f8fafc !important; border:1px solid #e2e8f0; border-radius:12px; padding:18px 20px; color:#0f172a !important; }
-  .client-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-
-  .table-wrap { padding:0 38px; margin-bottom:18px; background:#ffffff !important; }
-  table { width:100%; border-collapse:separate; border-spacing:0; background:#ffffff !important; }
-  thead th { background:#f1f5f9 !important; padding:11px 10px !important; font-size:11px !important; font-weight:700; color:#475569 !important; text-transform:uppercase; text-align:left; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; letter-spacing:normal !important; }
-  thead th:first-child { text-align:center; border-left:1px solid #e2e8f0; border-radius:8px 0 0 8px; }
-  thead th:last-child { text-align:right; border-right:1px solid #e2e8f0; border-radius:0 8px 8px 0; }
-  tbody td { border-bottom:1px solid #e2e8f0; padding:11px 10px !important; font-size:13px !important; background:#ffffff !important; }
-
-  .totals-row td { background:#f8fafc !important; }
-  .totals-row.final td { background:#ffffff !important; border-bottom:none; }
-  .total-val { font-size:18px; font-weight:800; color:#0f172a !important; background:#e0f2fe !important; padding:6px 12px; border-radius:8px; display:inline-block; }
-
-  .footer { padding:0 38px; margin-top:8px; page-break-inside:avoid; background:#ffffff !important; }
-  .footer-alert { background:#fff1f2 !important; border:1px solid #fecdd3; border-radius:8px; padding:10px; text-align:center; font-size:10px; font-weight:700; color:#be123c !important; margin-bottom:16px; line-height:1.5; }
-
-  .banks-title { text-align:center; font-weight:800; font-size:13px; color:#334155 !important; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; }
-  .cuentas { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; page-break-inside:avoid; background:#ffffff !important; }
-  .cuenta { background:#f8fafc !important; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; text-align:center; font-size:11px; color:#475569 !important; line-height:1.6; page-break-inside:avoid; }
-  .cuenta strong { display:block; font-size:12px; color:#0f172a !important; margin-bottom:4px; }
-
+  html,body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#0f172a}
+  body{background:#ffffff;color:#0f172a;margin:0;padding:0}
+  .page{width:800px;margin:0 auto;background:#ffffff;color:#0f172a}
+  .col{display:inline-block;vertical-align:top}
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-</style></head><body style="background:#ffffff !important;color:#0f172a !important;">
+</style></head><body>
 <div class="page">
-  
-  <div class="header-bg">
-    <div class="logo-box">
-      <div class="logo-icon">⚡</div>
-      <div>
-        <div class="logo-text">W&S UNIFORMES DEPORTIVOS</div>
-        <div class="logo-sub">Producción Deportiva</div>
+
+  <!-- HEADER OSCURO (div + inline-block) -->
+  <div style="background:${color2};padding:28px 34px;border-bottom:6px solid ${color1};font-size:0;">
+    <div class="col" style="width:60%;font-size:0;">
+      <div class="col" style="width:60px;font-size:14px;vertical-align:middle;">
+        <div style="width:52px;height:52px;background:#7c3aed;border-radius:12px;color:#ffffff;font-size:26px;font-weight:800;text-align:center;line-height:52px;">⚡</div>
+      </div>
+      <div class="col" style="width:calc(100% - 68px);padding-left:12px;font-size:14px;vertical-align:middle;">
+        <div style="font-size:22px;font-weight:900;letter-spacing:0.3px;color:#ffffff;line-height:1.15;">W&amp;S UNIFORMES DEPORTIVOS</div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:3px;color:#94a3b8;font-weight:600;margin-top:4px;">Producción Deportiva</div>
       </div>
     </div>
-    <div class="company-dt">
-      <strong>NIT: 52271474-9</strong><br>
-      Carrera 90A # 4-40, Bogotá D.C.<br>
-      350 697-4711 • 301 663-9430
+    <div class="col" style="width:40%;text-align:right;font-size:12px;color:#cbd5e1;line-height:1.6;">
+      <div style="color:#ffffff;font-size:14px;font-weight:700;">NIT: 52271474-9</div>
+      <div>Carrera 90A # 4-40, Bogotá D.C.</div>
+      <div>350 697-4711 &bull; 301 663-9430</div>
     </div>
   </div>
 
-  <div class="doc-meta">
-    <div class="doc-meta-left">
-      <div class="doc-meta-item">
-        <span class="doc-meta-lbl">Fecha Emisión</span>
-        <span class="doc-meta-val">${d.fecha}</span>
+  <!-- FECHA + VENDEDOR + TITULO -->
+  <div style="padding:22px 38px 18px 38px;font-size:0;">
+    <div class="col" style="width:55%;font-size:14px;">
+      <div style="display:inline-block;vertical-align:top;margin-right:36px;">
+        <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:1.2px;margin-bottom:4px;">Fecha Emisión</div>
+        <div style="font-size:14px;color:#0f172a;font-weight:600;">${d.fecha}</div>
       </div>
-      <div class="doc-meta-item">
-        <span class="doc-meta-lbl">Asesor / Vendedor</span>
-        <span class="doc-meta-val" style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;"></span> ${esc(d.vendedora)}
-        </span>
+      <div style="display:inline-block;vertical-align:top;">
+        <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:1.2px;margin-bottom:4px;">Asesor / Vendedor</div>
+        <div style="font-size:14px;color:#0f172a;font-weight:600;">
+          <span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;margin-right:6px;"></span>${esc(d.vendedora)}
+        </div>
       </div>
     </div>
-    <div class="doc-title">
-      <h1>${titulo}</h1>
-      <div class="num">Nº ${d.numero}</div>
+    <div class="col" style="width:45%;text-align:right;font-size:14px;">
+      <div style="font-size:32px;color:${color1};font-weight:900;letter-spacing:1px;line-height:1;">${titulo}</div>
+      <div style="font-size:16px;font-weight:700;color:#64748b;margin-top:6px;">Nº ${d.numero}</div>
     </div>
   </div>
-  
-  <div class="client-box">
-    <div class="doc-meta-lbl" style="margin-bottom:12px;">Datos del Cliente</div>
-    <div class="client-grid">
-      <div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Señor(es) / Equipo:</div>
-        <div style="font-size:14px;font-weight:700;color:#0f172a;">${esc(d.cliente)}</div>
-      </div>
-      <div>
-        ${d.telefono ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Teléfono:</div>
-        <div style="font-size:13px;font-weight:600;color:#334155;">${d.telefono}</div>` : ''}
+
+  <!-- CLIENT BOX -->
+  <div style="padding:0 38px 20px 38px;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;">
+      <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:1.2px;margin-bottom:12px;">Datos del Cliente</div>
+      <div style="font-size:0;">
+        <div class="col" style="width:50%;padding-right:12px;font-size:14px;">
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Señor(es) / Equipo:</div>
+          <div style="font-size:14px;font-weight:700;color:#0f172a;">${esc(d.cliente)}</div>
+        </div>
+        <div class="col" style="width:50%;padding-left:12px;font-size:14px;">
+          ${d.telefono ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Teléfono:</div>
+          <div style="font-size:13px;font-weight:600;color:#334155;">${d.telefono}</div>` : ''}
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="table-wrap">
-    <table>
-      <thead><tr>
-        <th style="width:80px">Cant.</th><th>Descripción del Producto</th>
-        <th style="width:120px;text-align:right;">Valor Unit.</th><th style="width:130px;text-align:right;">Total</th>
-      </tr></thead>
+  <!-- TABLA ITEMS (single table, sin nesting, bg blanco - probado OK) -->
+  <div style="padding:0 38px 18px 38px;">
+    <table style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;">
+      <thead>
+        <tr>
+          <th style="width:80px;background:#f1f5f9;padding:11px 10px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;text-align:center;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;border-left:1px solid #e2e8f0;">Cant.</th>
+          <th style="background:#f1f5f9;padding:11px 10px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;text-align:left;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">Descripción del Producto</th>
+          <th style="width:120px;background:#f1f5f9;padding:11px 10px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;text-align:right;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">Valor Unit.</th>
+          <th style="width:130px;background:#f1f5f9;padding:11px 10px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;text-align:right;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">Total</th>
+        </tr>
+      </thead>
       <tbody>
         ${filasItems}${filasVacias}
-        <tr class="totals-row">
-          <td colspan="2" style="border:none;"></td>
-          <td style="text-align:right;font-weight:600;padding:12px 10px;color:#64748b;font-size:12px;">SUBTOTAL:</td>
-          <td style="text-align:right;font-weight:700;padding:12px 10px;font-size:13px;color:#334155;">${fmtPesoNum(d.subtotal)}</td>
+        <tr style="background:#f8fafc;">
+          <td colspan="2" style="border:none;background:#f8fafc;">&nbsp;</td>
+          <td style="text-align:right;font-weight:600;padding:12px 10px;color:#64748b;font-size:12px;background:#f8fafc;">SUBTOTAL:</td>
+          <td style="text-align:right;font-weight:700;padding:12px 10px;font-size:13px;color:#334155;background:#f8fafc;">${fmtPesoNum(d.subtotal)}</td>
         </tr>
         ${abonoFila}
-        <tr class="totals-row final">
-          <td colspan="2" style="border:none;"></td>
-          <td style="text-align:right;font-weight:800;font-size:14px;padding:16px 10px;color:#0f172a;">TOTAL A PAGAR:</td>
-          <td style="text-align:right;padding:12px 0 12px 10px;"><span class="total-val">${fmtPesoNum(d.total)}</span></td>
+        <tr>
+          <td colspan="2" style="border:none;background:#ffffff;">&nbsp;</td>
+          <td style="text-align:right;font-weight:800;font-size:14px;padding:16px 10px;color:#0f172a;background:#ffffff;">TOTAL A PAGAR:</td>
+          <td style="text-align:right;padding:12px 0 12px 10px;background:#ffffff;">
+            <span style="font-size:18px;font-weight:800;color:#0f172a;background:#e0f2fe;padding:6px 12px;border-radius:8px;display:inline-block;">${fmtPesoNum(d.total)}</span>
+          </td>
         </tr>
       </tbody>
     </table>
   </div>
-  
-  <div class="footer">
+
+  <!-- FOOTER -->
+  <div style="padding:0 38px 20px 38px;">
     ${notaCot}
-    
-    <div class="footer-alert">
+    <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:10px;text-align:center;font-size:10px;font-weight:700;color:#be123c;margin-bottom:16px;line-height:1.5;">
       RECUERDE: EL UNIFORME DE NIÑO VALE $5.000 MENOS QUE EL UNIFORME DE ADULTO.<br>
       PARA INICIAR PRODUCCIÓN SE REQUIERE UN ANTICIPO INICIAL DEL 50% DEL TOTAL DEL PEDIDO.
     </div>
-
-    <div class="banks-title">Cuentas Bancarias Autorizadas</div>
-    <div class="cuentas" style="grid-template-columns:repeat(2, 1fr);">
-      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta1.num}<br>${cta1.nombre}<br>${cta1.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta1.tipo}</span></div>
-      <div class="cuenta"><strong>BANCOLOMBIA</strong>${cta2.num}<br>${cta2.nombre}<br>${cta2.cc}<br><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta2.tipo}</span></div>
+    <div style="text-align:center;font-weight:800;font-size:13px;color:#334155;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">Cuentas Bancarias Autorizadas</div>
+    <div style="font-size:0;margin-bottom:12px;">
+      <div class="col" style="width:50%;padding-right:6px;font-size:14px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center;font-size:11px;color:#475569;line-height:1.6;">
+          <div style="font-size:12px;color:#0f172a;font-weight:700;margin-bottom:4px;">BANCOLOMBIA</div>
+          ${cta1.num}<br>${cta1.nombre}<br>${cta1.cc}<br>
+          <span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta1.tipo}</span>
+        </div>
+      </div>
+      <div class="col" style="width:50%;padding-left:6px;font-size:14px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center;font-size:11px;color:#475569;line-height:1.6;">
+          <div style="font-size:12px;color:#0f172a;font-weight:700;margin-bottom:4px;">BANCOLOMBIA</div>
+          ${cta2.num}<br>${cta2.nombre}<br>${cta2.cc}<br>
+          <span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px;display:inline-block;">${cta2.tipo}</span>
+        </div>
+      </div>
     </div>
-    <div class="cuentas" style="grid-template-columns:1fr;margin-top:14px;">
-      <div class="cuenta"><strong>LLAVE BRE-B</strong>350 697 47 11<br>301 663 94 30<br>322 976 13 81</div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center;font-size:11px;color:#475569;line-height:1.6;">
+      <div style="font-size:12px;color:#0f172a;font-weight:700;margin-bottom:4px;">LLAVE BRE-B</div>
+      350 697 47 11<br>301 663 94 30<br>322 976 13 81
     </div>
   </div>
 
@@ -5387,41 +5369,40 @@ async function _generarPdfBlobDesdeRegistro(registro) {
 
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  // Visible en el layout (para que browser aplique fuentes/estilos), pero
-  // transparente + pointer-events off + z negativo = invisible al usuario.
+  // FIX 2026-07-13: usar srcdoc (aisla document root completo del parent)
+  // en vez de contentDocument.write que puede filtrar CSS del parent.
+  iframe.setAttribute('srcdoc', htmlDoc);
   iframe.style.cssText = 'position:fixed;top:0;left:0;width:800px;height:1200px;border:0;background:#ffffff;z-index:-1;opacity:0;pointer-events:none;';
   document.body.appendChild(iframe);
 
-  // Escribir el HTML COMPLETO adentro. El iframe no hereda CSS externo:
-  // solo se aplica lo definido en el <style> del template.
-  iframe.contentDocument.open();
-  iframe.contentDocument.write(htmlDoc);
-  iframe.contentDocument.close();
-
-  // Esperar layout + fuentes (2 rAF + 1.2s para custom fonts en mobile)
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  await new Promise(r => setTimeout(r, 1200));
+  // Esperar load del srcdoc + layout + fuentes
+  await new Promise(r => { iframe.onload = r; setTimeout(r, 2500); });
+  await new Promise(r => setTimeout(r, 800));
 
   const bodyIframe = iframe.contentDocument.body;
-  const alturaReal = Math.max(bodyIframe.scrollHeight, 1050);
+  const pageEl = iframe.contentDocument.querySelector('.page') || bodyIframe;
+  const alturaReal = Math.max(pageEl.scrollHeight, pageEl.offsetHeight, bodyIframe.scrollHeight, 1050);
 
   // Ajustar iframe a la altura real del contenido para evitar recortes
-  iframe.style.height = alturaReal + 'px';
-  await new Promise(r => setTimeout(r, 150));
+  iframe.style.height = (alturaReal + 40) + 'px';
+  await new Promise(r => setTimeout(r, 200));
 
   const opt = {
-    margin: [6, 6, 6, 6],
+    margin: [0, 0, 0, 0],
     image: { type: 'jpeg', quality: 0.97 },
     html2canvas: {
       scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff',
-      logging: false, windowWidth: 800, windowHeight: alturaReal,
-      width: 800, height: alturaReal,
+      logging: false, windowWidth: 800, windowHeight: alturaReal + 40,
+      width: 800, height: alturaReal + 40,
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['avoid-all'] },
   };
   try {
-    const pdfBlob = await html2pdf().set(opt).from(bodyIframe).outputPdf('blob');
+    // FIX 2026-07-13: capturar .page directamente (no bodyIframe) — pageEl
+    // tiene width fijo 800px con background blanco. Evita que backgrounds
+    // del body-iframe (o del document-parent) contaminen el screenshot.
+    const pdfBlob = await html2pdf().set(opt).from(pageEl).outputPdf('blob');
     return pdfBlob;
   } finally {
     if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
