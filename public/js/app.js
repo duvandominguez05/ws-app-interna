@@ -5659,23 +5659,9 @@ async function compartirDocWA(id, blobYaGenerado, facturaServer) {
     let pdfBlob = blobYaGenerado;
     if (!pdfBlob) {
       toast('Generando PDF...', 'info');
-      const htmlDoc = buildDocHTML(d);
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:none;background:white;';
-      document.body.appendChild(iframe);
-      iframe.contentDocument.open();
-      iframe.contentDocument.write(htmlDoc);
-      iframe.contentDocument.close();
-      await new Promise(r => setTimeout(r, 1000));
-      const opt = {
-        margin:      [8, 8, 8, 8],
-        filename:    nombre,
-        image:       { type: 'jpeg', quality: 0.97 },
-        html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', logging: false },
-        jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
-      pdfBlob = await html2pdf().set(opt).from(iframe.contentDocument.body).outputPdf('blob');
-      document.body.removeChild(iframe);
+      // Reusar la funcion oficial que ya tiene fix con iframe srcdoc
+      // (isla CSS del parent, evita heredar colores/fuentes del index.html)
+      pdfBlob = await _generarPdfBlobDesdeRegistro(d);
     }
 
     // Intento 1: Web Share API con archivo PDF (mejor opción en Android/iOS modernos)
