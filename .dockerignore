@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+data
+logs
+backups
+.git
+.claude
+wa_auth_local
+wa_auth_puppeteer
+.wwebjs_cache
+vigilante/dist
+vigilante/node_modules
+vigilante/*.log
+*.bat
+*.ps1

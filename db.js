@@ -489,10 +489,13 @@ function guardarDocsNums(obj) {
 function leerDocsHistorial() {
   return S.getDocsHist.all().map(r => JSON.parse(r.data));
 }
+// Guarda el historial completo de facturas/cotizaciones. NO recortar:
+// antes se guardaban solo los 100 mas recientes y cada documento nuevo
+// borraba el mas viejo, perdiendo la facturacion historica.
 function guardarDocsHistorial(arr) {
   const tx = db.transaction((items) => {
     S.deleteAllDocsHist.run();
-    for (const item of items.slice(0, 100)) S.upsertDocsHist.run(item.id, JSON.stringify(item));
+    for (const item of items) S.upsertDocsHist.run(item.id, JSON.stringify(item));
   });
   tx(arr);
 }

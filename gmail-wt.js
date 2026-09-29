@@ -7,7 +7,7 @@
 // Requiere env vars:
 //   GOOGLE_CLIENT_ID         (de Google Cloud Console)
 //   GOOGLE_CLIENT_SECRET     (de Google Cloud Console)
-//   GOOGLE_REDIRECT_URI      (ej: https://ws-app-interna-production.up.railway.app/api/gmail/callback)
+//   GOOGLE_REDIRECT_URI      (ej: https://app.tu-dominio.com/api/gmail/callback)
 //
 // Tokens persistidos en data/gmail_tokens.json (refresh_token vive ahí).
 // ═══════════════════════════════════════════════════════════════════
@@ -20,7 +20,8 @@ const STATE_FILE  = path.join(__dirname, 'data', 'gmail_wt_state.json');
 
 const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI || 'https://ws-app-interna-production.up.railway.app/api/gmail/callback';
+const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI || `${PUBLIC_URL}/api/gmail/callback`;
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',

@@ -1,7 +1,11 @@
 node_modules/
 data/
-package-lock.json
+logs/
+backups/
+.env
+.env.*
+!.env.example
 bot-log.txt
 wa_auth_puppeteer/session/
 _tmp/
-.claude/scheduled_tasks.lock
+.claude/

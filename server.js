@@ -18,9 +18,53 @@ const disenos = require('./disenos');
 disenos.init(db);
 
 // ── Configuración de Seguridad ───────────────────────────────────
-const API_KEY = process.env.API_KEY || 'ws-textil-2026';
+const API_KEY = process.env.API_KEY || 'dev-local-only';
+const RESET_KEY = process.env.RESET_KEY || API_KEY;
 
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
+const EVOLUTION_API_URL = (process.env.EVOLUTION_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+const WA_NOTIF_APIKEY = process.env.WA_NOTIF_APIKEY || EVOLUTION_API_KEY;
+const EVOLUTION_WEBHOOK_TOKEN = process.env.EVOLUTION_WEBHOOK_TOKEN || process.env.WEBHOOK_TOKEN || 'dev-local-webhook-token';
+const CRONS_ENABLED = process.env.CRONS_ENABLED !== '0';
+const NOTIFICATIONS_ENABLED = process.env.NOTIFICATIONS_ENABLED !== '0';
+
+function valorRealConfigurado(valor) {
+  const v = String(valor || '').trim();
+  if (!v) return false;
+  if (v === 'dev-local-webhook-token') return false;
+  if (/^(cambiar-por|change-me-before-use)/i.test(v)) return false;
+  return true;
+}
+
+function appUrl(pathname = '') {
+  const pathStr = String(pathname || '');
+  return `${PUBLIC_URL}${pathStr.startsWith('/') ? pathStr : `/${pathStr}`}`;
+}
+
+function notificacionesPermitidas(canal) {
+  if (NOTIFICATIONS_ENABLED) return true;
+  console.log(`[notif:${canal}] omitida por NOTIFICATIONS_ENABLED=0`);
+  return false;
+}
+
+function programarCron(nombre, tick, cadaMs, primerMs = null) {
+  if (!CRONS_ENABLED) {
+    console.log(`[${nombre}] desactivado por CRONS_ENABLED=0`);
+    return;
+  }
+  setInterval(tick, cadaMs);
+  if (typeof primerMs === 'number' && primerMs >= 0) setTimeout(tick, primerMs);
+}
+
+function programarArranque(nombre, tick, delayMs) {
+  if (!CRONS_ENABLED) {
+    console.log(`[${nombre}] arranque omitido por CRONS_ENABLED=0`);
+    return;
+  }
+  setTimeout(tick, delayMs);
+}
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -154,15 +198,17 @@ function guardarPendingApprovals(arr) {
 // Manda mensaje a Telegram. No bloquea — si falla, solo loguea.
 async function notificarTelegram(texto) {
   try {
+    if (!notificacionesPermitidas('telegram')) return false;
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) return;
+    if (!token || !chatId) return false;
     const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: texto, parse_mode: 'Markdown' }),
     });
     if (!r.ok) console.error('[telegram] respuesta:', r.status);
+    return r.ok;
   } catch (e) { console.error('[telegram error]', e.message); }
 }
 
@@ -170,15 +216,17 @@ async function notificarTelegram(texto) {
 // Usa TELEGRAM_CHAT_ID_DUVAN si existe; fallback al grupo Producción.
 async function notificarTelegramDuvan(texto) {
   try {
+    if (!notificacionesPermitidas('telegram-duvan')) return false;
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID_DUVAN || process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) return;
+    if (!token || !chatId) return false;
     const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: texto, parse_mode: 'Markdown' }),
     });
     if (!r.ok) console.error('[telegram-duvan] respuesta:', r.status);
+    return r.ok;
   } catch (e) { console.error('[telegram-duvan error]', e.message); }
 }
 
@@ -186,11 +234,12 @@ async function notificarTelegramDuvan(texto) {
 // Usa TELEGRAM_CHAT_ID_ADMIN si existe; fallback a Duvan personal.
 async function notificarTelegramAdmin(texto) {
   try {
+    if (!notificacionesPermitidas('telegram-admin')) return false;
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID_ADMIN
       || process.env.TELEGRAM_CHAT_ID_DUVAN
       || process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) return;
+    if (!token || !chatId) return false;
     const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -200,6 +249,7 @@ async function notificarTelegramAdmin(texto) {
       const errBody = await r.text().catch(() => '');
       console.error('[telegram-admin] respuesta:', r.status, errBody.slice(0, 200));
     }
+    return r.ok;
   } catch (e) { console.error('[telegram-admin error]', e.message); }
 }
 
@@ -218,6 +268,7 @@ function _guardarDedupeWA(d) {
 // key: tipo:pedidoId | tipo:custom — dia: YYYY-MM-DD (Bogota)
 // Devuelve true si NO se ha enviado hoy (puede enviar), false si ya se envio.
 function waPuedeEnviar(key) {
+  if (!NOTIFICATIONS_ENABLED) return false;
   if (!key) return true;
   const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); // YYYY-MM-DD
   const d = _leerDedupeWA();
@@ -240,9 +291,10 @@ function waPuedeEnviar(key) {
 // Usa ws-duvan por default (la de Betty/ws-ventas esta en revision).
 async function notificarWhatsappTrabajoFamilia(texto) {
   try {
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    if (!notificacionesPermitidas('wa-grupo')) return false;
+    const url = EVOLUTION_API_URL;
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
-    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const apiKey = WA_NOTIF_APIKEY;
     const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
@@ -253,6 +305,7 @@ async function notificarWhatsappTrabajoFamilia(texto) {
       const body = await r.text().catch(()=>'');
       console.error('[wa-grupo] respuesta:', r.status, body.slice(0,200));
     }
+    return r.ok;
   } catch (e) { console.error('[wa-grupo error]', e.message); }
 }
 
@@ -261,26 +314,29 @@ async function notificarWhatsappTrabajoFamilia(texto) {
 // para evitar repetir el mismo aviso (key:pedidoId:dia).
 async function notificarJefes(texto, opciones = {}) {
   const { dedupeKey = null, soloJefe = false, forzar = false } = opciones;
+  if (!notificacionesPermitidas('jefes')) return false;
   // CAMILO 2026-06-29: env var JEFE_SILENCIO=1 silencia TODOS los notificarJefes
   // (spam de crones). El resumen semanal usa responderJefe que sigue activo.
   // Para emergencias forzar:true bypasea el silencio.
   if (process.env.JEFE_SILENCIO === '1' && !forzar) {
     console.log('[notif-jefes] silenciado por JEFE_SILENCIO=1 (texto:', String(texto).slice(0,60), ')');
-    return;
+    return false;
   }
   if (dedupeKey && typeof waPuedeEnviar === 'function' && !waPuedeEnviar(dedupeKey)) {
-    return; // ya se envio hoy
+    return false; // ya se envio hoy
   }
   try { await notificarWAPersona('camilo', texto); } catch (e) { console.error('[notif-jefes camilo]', e.message); }
   if (!soloJefe) {
     try { await notificarWAPersona('graciela', texto); } catch (e) { console.error('[notif-jefes graciela]', e.message); }
   }
+  return true;
 }
 
 // Manda mensaje al WA personal de una vendedora vía la instancia de ventas.
 // vendedora: 'Betty' | 'Ney' | 'Wendy' | 'Paola' (case-insensitive)
 async function notificarWAVendedora(vendedora, texto) {
   try {
+    if (!notificacionesPermitidas('wa-vendedora')) return false;
     const numerosWA = {
       // Cada vendedora recibe el resumen en su propio WA personal.
       // Si el número no está mapeado, no se manda nada.
@@ -290,20 +346,21 @@ async function notificarWAVendedora(vendedora, texto) {
       'paola': process.env.WA_PAOLA || '573026027865',
     };
     const numero = numerosWA[String(vendedora).toLowerCase()];
-    if (!numero) { console.log(`[wa-vendedora] sin número para ${vendedora}`); return; }
+    if (!numero) { console.log(`[wa-vendedora] sin número para ${vendedora}`); return false; }
 
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const url = EVOLUTION_API_URL;
     // Las notificaciones administrativas salen desde el WA de Camilo (ws-duvan) — el jefe.
     // Si esa instancia no está configurada, fallback a ws-ventas (Betty).
     // CRITICO para Betty: si remitente == destinatario, WA se manda a sí mismo y no se ve.
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-ventas';
-    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const apiKey = WA_NOTIF_APIKEY;
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
       body: JSON.stringify({ number: numero, text: texto }),
     });
     if (!r.ok) console.error(`[wa-vendedora ${vendedora}] respuesta:`, r.status);
+    return r.ok;
   } catch (e) { console.error('[wa-vendedora error]', e.message); }
 }
 
@@ -375,12 +432,13 @@ function _buildOnboardingMsg(persona, link, rolesTxt) {
 
 async function notificarWAPersona(slugOrNombre, texto) {
   try {
+    if (!notificacionesPermitidas('wa-persona')) return false;
     const numero = _numeroPersona(slugOrNombre);
     if (!numero) { console.log(`[wa-persona] sin número para ${slugOrNombre}`); return false; }
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    const url = EVOLUTION_API_URL;
     // Camilo notifica desde su WA (ws-duvan). Token propio de ws-duvan via WA_NOTIF_APIKEY.
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
-    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const apiKey = WA_NOTIF_APIKEY;
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
@@ -399,11 +457,12 @@ async function notificarWAPersona(slugOrNombre, texto) {
 // instance: instancia Evolution a usar (default ws-duvan)
 async function enviarWADocumento({ telefono, mediaUrl, fileName, caption, instance, mimetype }) {
   try {
+    if (!notificacionesPermitidas('wa-documento')) throw new Error('NOTIFICATIONS_ENABLED=0');
     const tel = String(telefono || '').replace(/\D/g, '');
     if (!tel) throw new Error('telefono inválido');
     const numero = tel.startsWith('57') ? tel : '57' + tel;
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const url = EVOLUTION_API_URL;
+    const apiKey = EVOLUTION_API_KEY;
     const inst = instance || process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
     const r = await fetch(`${url}/message/sendMedia/${inst}`, {
       method: 'POST',
@@ -469,32 +528,32 @@ function resumenRolesOperativos() {
   return {
     total: activos.length,
     ventas: {
-      link: 'https://ws-app-interna-production.up.railway.app/#/ventas',
+      link: appUrl('/#/ventas'),
       cotizaciones: pedidos.filter(p => p.tipoBandeja === 'cotizar' && p.estado === 'bandeja').length,
       pedidosActivos: pedidos.filter(p => p.tipoBandeja === 'pedido' && p.estado !== 'enviado-final').length,
     },
     diseno: {
-      link: 'https://ws-app-interna-production.up.railway.app/#/diseno',
+      link: appUrl('/#/diseno'),
       sinAsignar: pedidos.filter(p => p.estado === 'hacer-diseno' && !p.disenadorAsignado).length,
       enDiseno: pedidos.filter(p => p.estado === 'hacer-diseno' && p.disenadorAsignado).length,
       paraCalandra: pedidos.filter(p => p.estado === 'confirmado').length,
     },
     produccion: {
-      link: 'https://ws-app-interna-production.up.railway.app/produccion.html',
+      link: appUrl('/produccion.html'),
       trabajo: pedidos.filter(p => ['enviado-calandra','llego-impresion','corte','costura','en-satelite','calidad','listo'].includes(p.estado)).length,
       vencidos: vencidos.length,
       hoy: hoyEntrega.length,
       sinMovimiento: sinMovimiento.length,
     },
     costura: {
-      link: 'https://ws-app-interna-production.up.railway.app/#/satelites',
+      link: appUrl('/#/satelites'),
       paraCostura: pedidos.filter(p => (p.estado === 'corte' || p.estado === 'costura') && !p.satelite).length,
       trabajando: pedidos.filter(p => p.estado === 'en-satelite' || (p.estado === 'costura' && p.satelite)).length,
       revision: pedidos.filter(p => p.estado === 'calidad').length,
       satelites: db.leerSatelites().length,
     },
     admin: {
-      link: 'https://ws-app-interna-production.up.railway.app',
+      link: appUrl('/'),
       vencidos: vencidos.length,
       hoy: hoyEntrega.length,
       sinDisenador: sinDisenador.length,
@@ -1422,8 +1481,8 @@ async function extraerTextoDeDisenoConGemini(imgBase64, imgMime) {
 
 async function descargarImagenEvolution(instance, messageKey) {
   try {
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const url = EVOLUTION_API_URL;
+    const apiKey = EVOLUTION_API_KEY;
     const r = await fetch(`${url}/chat/getBase64FromMediaMessage/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
@@ -2279,7 +2338,7 @@ async function construirMensajeSnapshot(snapshot) {
     return `✅ *W&S — Sin ventas por confirmar*\n\nNo hay candidatos para revisar.\n\nMañana 7 PM te aviso de nuevo.`;
   }
   const fechaCorta = new Date().toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' });
-  const baseUrl = process.env.PUBLIC_URL || 'https://ws-app-interna-production.up.railway.app';
+  const baseUrl = PUBLIC_URL;
   let txt = `🔔 *W&S — Ventas por confirmar* (${fechaCorta})\n\n`;
   txt += `${snapshot.candidatos.length} candidato${snapshot.candidatos.length > 1 ? 's' : ''} de las últimas 48h.\n`;
   txt += `Toca los botones para confirmar/descartar:\n\n`;
@@ -2312,11 +2371,12 @@ async function construirMensajeSnapshot(snapshot) {
 }
 
 async function enviarSnapshotWA(snapshot) {
-  const texto = await construirMensajeSnapshot(snapshot);
   try {
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    if (!notificacionesPermitidas('snapshot-wa')) return false;
+    const texto = await construirMensajeSnapshot(snapshot);
+    const url = EVOLUTION_API_URL;
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
-    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '3506974711';
+    const apiKey = WA_NOTIF_APIKEY;
     const r = await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
@@ -2329,9 +2389,10 @@ async function enviarSnapshotWA(snapshot) {
 
 async function responderJefe(texto) {
   try {
-    const url = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+    if (!notificacionesPermitidas('responder-jefe')) return false;
+    const url = EVOLUTION_API_URL;
     const instance = process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
-    const apiKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '3506974711';
+    const apiKey = WA_NOTIF_APIKEY;
     await fetch(`${url}/message/sendText/${instance}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
@@ -2572,8 +2633,8 @@ function _htmlError(res, mensaje) {
 // Devuelve el nombre limpio o null si no encuentra.
 async function obtenerNombreContactoEvolution(remoteJid) {
   try {
-    const url = (process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app');
-    const apiKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+    const url = (EVOLUTION_API_URL);
+    const apiKey = EVOLUTION_API_KEY;
     const instance = process.env.EVOLUTION_INSTANCE || 'ws-ventas';
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
@@ -3131,6 +3192,20 @@ http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/api/health') {
+    return json(res, 200, {
+      ok: true,
+      servicio: 'ws-app-interna',
+      crons_enabled: CRONS_ENABLED,
+      notifications_enabled: NOTIFICATIONS_ENABLED,
+      public_url: PUBLIC_URL,
+      evolution_url: EVOLUTION_API_URL,
+      evolution_api_key_configured: valorRealConfigurado(process.env.EVOLUTION_API_KEY),
+      webhook_token_configured: valorRealConfigurado(process.env.EVOLUTION_WEBHOOK_TOKEN),
+      ts: new Date().toISOString(),
+    });
+  }
+
   // ── v2 (ERP paralelo — modulo aislado en v2-server.js) ──
   if (req.url && req.url.startsWith('/api/v2/')) {
     cors(res);
@@ -3351,10 +3426,9 @@ http.createServer(async (req, res) => {
   // re-hacer POST /webhook/set suele destrabar sin necesidad de restart.
   if (req.method === 'POST' && req.url === '/api/admin/reintentar-webhooks') {
     try {
-      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const KEY = process.env.EVOLUTION_API_KEY || '';
-      const host = req.headers.host || 'ws-app-interna-production.up.railway.app';
-      const webhookUrl = `https://${host}/api/evolution-webhook?token=ws_secret_2026`;
+      const EVO = EVOLUTION_API_URL;
+      const KEY = EVOLUTION_API_KEY;
+      const webhookUrl = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
       const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
       const eventos = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','CHATS_UPDATE','CHATS_UPSERT','LABELS_ASSOCIATION','LABELS_EDIT','MESSAGES_DELETE','CONTACTS_UPSERT'];
       const out = [];
@@ -3379,8 +3453,8 @@ http.createServer(async (req, res) => {
   // ── GET /api/admin/estado-webhooks — verifica que webhook este seteado por instancia ──
   if (req.method === 'GET' && req.url === '/api/admin/estado-webhooks') {
     try {
-      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const EVO = EVOLUTION_API_URL;
+      const KEY = EVOLUTION_API_KEY;
       const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
       const out = [];
       for (const name of nombres) {
@@ -3399,8 +3473,8 @@ http.createServer(async (req, res) => {
   // ── GET /api/admin/estado-instancias — chequeo rapido conexion Evolution ──
   if (req.method === 'GET' && req.url === '/api/admin/estado-instancias') {
     try {
-      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const EVO = EVOLUTION_API_URL;
+      const KEY = EVOLUTION_API_KEY;
       const r = await fetch(`${EVO}/instance/fetchInstances`, { headers: { apikey: KEY } });
       const arr = await r.json();
       const resumen = (Array.isArray(arr) ? arr : []).map(i => ({
@@ -3807,13 +3881,12 @@ http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const key = u.searchParams.get('key');
-      if (key !== (process.env.RESET_KEY || 'ws-textil-2026')) {
+      if (key !== (RESET_KEY)) {
         return json(res, 401, { error: 'key invalida' });
       }
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
-      const serverUrl = process.env.PUBLIC_URL || 'https://ws-app-interna-production.up.railway.app';
-      const webhookUrl = `${serverUrl}/api/evolution-webhook?token=ws_secret_2026`;
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
+      const webhookUrl = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
       const instancias = ['ws-paola', 'ws-ney', 'ws-duvan', 'ws wendy', 'ws-ventas'];
       const eventos = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'CHATS_UPDATE'];
       const resultados = [];
@@ -3848,7 +3921,7 @@ http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const key = u.searchParams.get('key');
-      if (key !== (process.env.RESET_KEY || 'ws-textil-2026')) {
+      if (key !== (RESET_KEY)) {
         return json(res, 401, { error: 'key invalida' });
       }
       const pedidosAntes = leerPedidos();
@@ -3992,11 +4065,12 @@ http.createServer(async (req, res) => {
               '*Comprobantes sin sticker:*\n' + lista + extras + '\n\n' +
               '💰 Mañana temprano por favor envía el sticker *VENTA CONFIRMADA* al chat de cada uno.\n\n' +
               '⚠️ Si no usas el sticker, la venta NO aparece en la app y el diseñador no se entera.';
+            if (!notificacionesPermitidas('reporte-stickers-wa')) continue;
             try {
-              const url = `${process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app'}/message/sendText/ws-duvan`;
+              const url = `${EVOLUTION_API_URL}/message/sendText/ws-duvan`;
               await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
+                headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
                 body: JSON.stringify({ number: v.telefono, text: msg }),
               });
             } catch (e) {
@@ -4148,7 +4222,7 @@ http.createServer(async (req, res) => {
             `Vendedora: ${p.vendedora || '—'}\n` +
             (p.fechaEntrega ? `Entrega: ${p.fechaEntrega}\n` : '') +
             (p.notas ? `Nota: ${p.notas}\n` : '') +
-            `\nAbre tu Mi Día para verlo: https://ws-app-interna-production.up.railway.app/#/mi-dia`;
+            `\nAbre tu Mi Día para verlo: ${appUrl('/#/mi-dia')}`;
           notificarWAPersona(c.disenador, msg).catch(()=>{});
         }
         for (const c of cambiosListo) {
@@ -4357,7 +4431,7 @@ http.createServer(async (req, res) => {
       const log = [];
       try {
         log.push(`instance=${instance}, jid=${remoteJid}, id=${id}`);
-        log.push(`EVOLUTION_API_KEY presente: ${!!process.env.EVOLUTION_API_KEY}, preview: ${(process.env.EVOLUTION_API_KEY||'').slice(0,6)}`);
+        log.push(`EVOLUTION_API_KEY presente: ${!!process.env.EVOLUTION_API_KEY}`);
         log.push(`GEMINI_API_KEY presente: ${!!process.env.GEMINI_API_KEY}`);
         const img = await descargarImagenEvolution(instance, { remoteJid, fromMe: false, id });
         if (!img || !img.base64) {
@@ -5191,11 +5265,10 @@ http.createServer(async (req, res) => {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const name = u.searchParams.get('name');
       if (!name) return json(res, 400, { error: 'falta ?name=ws-ney' });
-      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const EVO = EVOLUTION_API_URL;
+      const KEY = EVOLUTION_API_KEY;
       const headers = { 'Content-Type': 'application/json', apikey: KEY };
-      const host = req.headers.host || 'ws-app-interna-production.up.railway.app';
-      const webhookUrl = `https://${host}/api/evolution-webhook?token=ws_secret_2026`;
+      const webhookUrl = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
       const pasos = [];
 
       // 1) Backup config
@@ -5275,8 +5348,8 @@ http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url.startsWith('/api/admin/qr/')) {
     try {
       const name = req.url.split('/').pop().split('?')[0];
-      const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const KEY = process.env.EVOLUTION_API_KEY || '';
+      const EVO = EVOLUTION_API_URL;
+      const KEY = EVOLUTION_API_KEY;
       let data = {};
       try {
         const r = await fetch(`${EVO}/instance/connect/${encodeURIComponent(name)}`, { headers: { apikey: KEY } });
@@ -5309,137 +5382,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Error: ' + e.message);
     }
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  // VIGILANTE W&S — endpoint /api/agente-actividad
-  // Recibe snapshots cada 30s con:
-  //   - programasActivos (corel, photoshop, illustrator, chrome, whatsapp)
-  //   - archivosAbiertos (qué .cdr/.psd/.ai está editando)
-  //   - chatsWhatsApp (qué cliente está conversando)
-  //   - weTransfer.minutosAbierto (cuánto lleva en wetransfer.com)
-  //   - corelActivo.tiempoActivoMin (tiempo en el mismo archivo)
-  //
-  // Genera AVANCES auto:
-  //   - archivo Corel abierto + chat WhatsApp con teléfono → auto-vincula
-  //   - WeTransfer abierto +2min → marca "WT en proceso" en pedido activo
-  //   - Corel abierto +1h en mismo archivo → marca "en edición intensa"
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'POST' && req.url === '/api/agente-actividad') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', async () => {
-      try {
-        const snap = JSON.parse(body || '{}');
-        const { pc, programasActivos = [], archivosAbiertos = [], chatsWhatsApp = [], weTransfer = {}, corelActivo = null, ts } = snap;
-        if (!pc) return json(res, 400, { error: 'falta pc' });
-
-        const peds = leerPedidos();
-        const ESTADOS_FINALES = new Set(['enviado-final','archivado','cancelado']);
-        let cambios = 0;
-
-        // ── 1. AUTO-MATCH POR CONTEXTO (archivo Corel + chat WhatsApp) ──
-        if (corelActivo && corelActivo.archivo && chatsWhatsApp.length > 0) {
-          const archivoSinExt = corelActivo.archivo.replace(/\.[^.]+$/, '').trim();
-          for (const chat of chatsWhatsApp) {
-            if (!chat.telefono) continue;
-            // Pedido del cliente con ese teléfono?
-            const telLimpio = chat.telefono.replace(/\D/g, '');
-            const pedidoCliente = peds.find(p => {
-              if (ESTADOS_FINALES.has(p.estado)) return false;
-              const pTel = String(p.telefono || '').replace(/\D/g, '');
-              return pTel === telLimpio || pTel.endsWith(telLimpio) || telLimpio.endsWith(pTel);
-            });
-            if (!pedidoCliente) continue;
-            // Aprende el alias archivo→pedido
-            if (!Array.isArray(pedidoCliente.archivosAlias)) pedidoCliente.archivosAlias = [];
-            const aliasLimpio = nombreLimpio(archivoSinExt);
-            if (aliasLimpio && !pedidoCliente.archivosAlias.includes(aliasLimpio)) {
-              pedidoCliente.archivosAlias.push(aliasLimpio);
-              cambios++;
-            }
-            // Marca disenador real + iniciado
-            if (!pedidoCliente.disenoIniciado) {
-              pedidoCliente.disenoIniciado = true;
-              pedidoCliente.fechaDisenoIniciado = ts || new Date().toISOString();
-              cambios++;
-            }
-            if (!pedidoCliente.disenadorReal) {
-              pedidoCliente.disenadorReal = pc;
-              cambios++;
-            }
-            // Marca activamente en edicion
-            pedidoCliente.enEdicionActiva = {
-              pc,
-              archivo: corelActivo.archivo,
-              chatActivo: chat.chat,
-              tiempoActivoMin: corelActivo.tiempoActivoMin || 0,
-              actualizado: new Date().toISOString(),
-            };
-            cambios++;
-            console.log(`[actividad] auto-match #${pedidoCliente.id} (${chat.nombre||chat.telefono}) <- ${corelActivo.archivo} en PC ${pc}`);
-          }
-        }
-
-        // ── 2. WeTransfer +2min abierto → marcar WT en proceso en pedidos activos del PC ──
-        if (weTransfer.abierto && (weTransfer.minutosAbierto || 0) >= 2) {
-          // Pedidos en hacer-diseno/confirmado del disenador (PC) que no tengan wtListo
-          const pedidosWTEnProceso = peds.filter(p => {
-            if (ESTADOS_FINALES.has(p.estado)) return false;
-            if (p.wtListo) return false;
-            if (p.disenadorReal !== pc) return false;
-            return p.estado === 'hacer-diseno' || p.estado === 'confirmado';
-          });
-          if (pedidosWTEnProceso.length === 1) {
-            const p = pedidosWTEnProceso[0];
-            if (!p.wtEnProceso) {
-              p.wtEnProceso = { pc, desde: ts || new Date().toISOString() };
-              cambios++;
-              console.log(`[actividad] WT en proceso #${p.id} (PC ${pc})`);
-            }
-          }
-        }
-
-        // ── 3. Persistir snapshot por PC (para dashboard "que pasa AHORA") ──
-        try {
-          const snapsPath = path.join(__dirname, 'data', 'pcs-vivos.json');
-          let snaps = {};
-          try { snaps = JSON.parse(fs.readFileSync(snapsPath, 'utf8')); } catch {}
-          snaps[pc] = {
-            ts: ts || new Date().toISOString(),
-            recibidoEn: new Date().toISOString(),
-            programasActivos,
-            archivosAbiertos,
-            chatsWhatsApp,
-            weTransfer,
-            corelActivo,
-            foco: snap.foco || null,
-            idleSeg: snap.idleSeg ?? null,
-            enUso: snap.enUso ?? null,
-            uptimeMin: snap.uptimeMin ?? null,
-            usbs: snap.usbs || null,
-            programasNoLaborales: snap.programasNoLaborales || [],
-            tiempoHoyMin: snap.tiempoHoyMin || null,
-            dia: snap.dia || null,
-            hostname: snap.hostname || null,
-            vigilanteVersion: snap.vigilanteVersion || null,
-          };
-          fs.writeFileSync(snapsPath, JSON.stringify(snaps, null, 2));
-        } catch (e) {
-          console.error('[actividad] no guardo pcs-vivos:', e.message);
-        }
-
-        if (cambios > 0) {
-          guardarPedidos(peds, leerNextId());
-        }
-
-        return json(res, 200, { ok: true, cambios, pc });
-      } catch (e) {
-        console.error('[agente-actividad]', e.message);
-        return json(res, 500, { error: e.message });
-      }
-    });
     return;
   }
 
@@ -6237,56 +6179,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     return json(res, 200, { polls: global._ultimosPolls || [] });
   }
 
-  // ── POST /api/admin/drive-subir-vigilante ──
-  // Recibe { nombreCarpeta? | parentId?, archivos: [{titulo, mimeType, contentBase64, publico?}] }
-  // Crea/encuentra la carpeta y sube los archivos. Devuelve los links.
-  if (req.method === 'POST' && req.url === '/api/admin/drive-subir-vigilante') {
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', d => body += d);
-    req.on('end', () => {
-      (async () => {
-        try {
-          const { nombreCarpeta, parentId: parentIdProvided, archivos } = JSON.parse(body || '{}');
-          if (!Array.isArray(archivos) || archivos.length === 0) {
-            return json(res, 400, { error: 'falta archivos[]' });
-          }
-          let parentId = parentIdProvided;
-          let carpetaInfo = null;
-          if (!parentId && nombreCarpeta) {
-            carpetaInfo = await driveSync.crearOBuscarCarpeta(nombreCarpeta);
-            parentId = carpetaInfo.id;
-          }
-          const subidos = [];
-          for (const a of archivos) {
-            try {
-              const sub = await driveSync.subirArchivo({
-                titulo: a.titulo,
-                mimeType: a.mimeType,
-                contentBase64: a.contentBase64,
-                parentId,
-              });
-              if (a.publico) {
-                try { await driveSync.hacerArchivoPublico(sub.id); } catch (e) { /* ignorar */ }
-              }
-              subidos.push({ titulo: a.titulo, id: sub.id, viewLink: sub.viewLink, downloadLink: sub.downloadLink });
-            } catch (e) {
-              subidos.push({ titulo: a.titulo, error: e.message });
-            }
-          }
-          return json(res, 200, {
-            ok: true,
-            carpeta: carpetaInfo ? { id: parentId, nombre: nombreCarpeta, creada: carpetaInfo.creada } : { id: parentId },
-            subidos,
-          });
-        } catch (e) {
-          return json(res, 500, { error: e.message });
-        }
-      })();
-    });
-    return;
-  }
-
   // ── POST /api/admin/sincronizar-chatwoot ──
   // Para cada pedido activo:
   //  1. Si NO tiene contactoChatwoot, busca por telefono en Chatwoot y lo vincula
@@ -6463,8 +6355,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const instance = u.searchParams.get('instance') || 'ws-ventas';
       const search = u.searchParams.get('search') || '';
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
       const r = await fetch(`${evoUrl}/chat/findChats/${instance}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
@@ -6495,8 +6387,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     try {
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const instance = u.searchParams.get('instance') || 'ws-ney';
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
       const intentos = {};
       const endpoints = [
         `/chatwoot/find/${instance}`,
@@ -6548,8 +6440,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const instance = u.searchParams.get('instance') || 'ws-ney';
       const search = u.searchParams.get('search') || '';
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
       const r = await fetch(`${evoUrl}/chat/findChats/${instance}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
         body: JSON.stringify({}),
@@ -6573,8 +6465,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const instance = u.searchParams.get('instance') || 'ws-ney';
       const chatId = u.searchParams.get('chatId') || '';
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
       // Probar varios donde
       const intentos = [
         { where: { chatId } },
@@ -6632,12 +6524,12 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       }
 
       const INSTANCIAS = [
-        { slug: 'ws-ventas', urlPath: 'ws-ventas',  vendedora: 'Betty', token: process.env.EVO_KEY_VENTAS || '5DC08B336216-404C-BE94-A95B4A9A0528', labelsConfirmado: ['En Proceso','PAGO EN CASA'],         labelsEntregado: ['entregado'] },
-        { slug: 'ws-wendy',  urlPath: 'ws%20wendy', vendedora: 'Wendy', token: process.env.EVO_KEY_WENDY  || 'D26BB7CE0FF8-4BAC-877D-B874BCF86890', labelsConfirmado: ['CONSIGNADO'],                       labelsEntregado: ['Pedido finalizado'] },
-        { slug: 'ws-ney',    urlPath: 'ws-ney',     vendedora: 'Ney',   token: process.env.EVO_KEY_NEY    || '81851853FF36-444A-A76E-6C167CF14073', labelsConfirmado: ['Pagado'],                            labelsEntregado: ['Venta'] },
-        { slug: 'ws-paola',  urlPath: 'ws-paola',   vendedora: 'Paola', token: process.env.EVO_KEY_PAOLA  || 'A297362F7EC2-4BD2-8DE9-35A8ECCCF6B1', labelsConfirmado: ['Pendiente abono','Pendiente abono '], labelsEntregado: ['Entregado'] },
+        { slug: 'ws-ventas', urlPath: 'ws-ventas',  vendedora: 'Betty', token: process.env.EVO_KEY_VENTAS || EVOLUTION_API_KEY, labelsConfirmado: ['En Proceso','PAGO EN CASA'],         labelsEntregado: ['entregado'] },
+        { slug: 'ws-wendy',  urlPath: 'ws%20wendy', vendedora: 'Wendy', token: process.env.EVO_KEY_WENDY || EVOLUTION_API_KEY, labelsConfirmado: ['CONSIGNADO'],                       labelsEntregado: ['Pedido finalizado'] },
+        { slug: 'ws-ney',    urlPath: 'ws-ney',     vendedora: 'Ney',   token: process.env.EVO_KEY_NEY || EVOLUTION_API_KEY, labelsConfirmado: ['Pagado'],                            labelsEntregado: ['Venta'] },
+        { slug: 'ws-paola',  urlPath: 'ws-paola',   vendedora: 'Paola', token: process.env.EVO_KEY_PAOLA || EVOLUTION_API_KEY, labelsConfirmado: ['Pendiente abono','Pendiente abono '], labelsEntregado: ['Entregado'] },
       ];
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
+      const evoUrl = EVOLUTION_API_URL;
       const limiteMs = Date.now() - dias * 24 * 60 * 60 * 1000;
       const normTel = (t) => {
         const d = String(t || '').replace(/\D/g, '');
@@ -6873,8 +6765,8 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
       // Si no se pasa instancia, intentar todas
       const instancias = instance ? [instance] : ['ws-ventas', 'ws-ney', 'ws-wendy', 'ws-paola', 'ws-duvan'];
       const resultados = {};
-      const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-      const evoKey = process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
+      const evoUrl = EVOLUTION_API_URL;
+      const evoKey = EVOLUTION_API_KEY;
       const remoteJid = tel + '@s.whatsapp.net';
 
       for (const inst of instancias) {
@@ -7239,321 +7131,6 @@ ${pc ? `<div class="code">${pc}</div><p>Pairing code (escribe este código en Wh
     } catch (e) {
       return json(res, 500, { error: e.message, stack: e.stack });
     }
-  }
-
-
-
-
-  // ═══════════════════════════════════════════════════════════════════
-  // VIGILANTE W&S — GET para que Camilo vea que pasa AHORA en cada PC
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'GET' && req.url === '/api/admin/que-pasa-ahora') {
-    try {
-      const snapsPath = path.join(__dirname, 'data', 'pcs-vivos.json');
-      let snaps = {};
-      try { snaps = JSON.parse(fs.readFileSync(snapsPath, 'utf8')); } catch {}
-      const ahora = Date.now();
-      // Anotar cada PC con "online" si snapshot < 3min
-      const pcs = Object.entries(snaps).map(([pc, s]) => {
-        const ageSec = Math.floor((ahora - new Date(s.recibidoEn || s.ts).getTime()) / 1000);
-        return { pc, ageSec, online: ageSec < 180, ...s };
-      });
-      pcs.sort((a, b) => a.pc.localeCompare(b.pc));
-      return json(res, 200, { pcs, generado: new Date().toISOString() });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
-  }
-
-  // Dashboard HTML "QUE PASA AHORA"
-  if (req.method === 'GET' && req.url === '/admin/que-pasa-ahora') {
-    const html = `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"><title>Que pasa AHORA - W&S</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body { font-family: 'Segoe UI', sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:20px; }
-h1 { color:#a78bfa; margin:0 0 20px; font-size:24px; }
-.subtitle { color:#94a3b8; font-size:13px; margin-bottom:30px; }
-.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:20px; }
-.card { background:#1e293b; border-radius:12px; padding:20px; border-left:4px solid #475569; }
-.card.online { border-left-color:#22c55e; }
-.card.offline { border-left-color:#ef4444; opacity:0.6; }
-.card.warn { border-left-color:#f59e0b; }
-.pc-name { font-size:20px; font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
-.status { font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600; }
-.status.online { background:#22c55e22; color:#22c55e; }
-.status.offline { background:#ef444422; color:#ef4444; }
-.host { font-size:11px; color:#64748b; margin-bottom:14px; }
-.row { display:flex; justify-content:space-between; margin:6px 0; font-size:13px; }
-.label { color:#94a3b8; }
-.val { color:#e2e8f0; font-weight:500; max-width:60%; text-align:right; word-break:break-word; }
-.foco { background:#312e81; border-radius:6px; padding:8px 10px; margin:10px 0; font-size:13px; }
-.foco.diseno { background:#14532d; }
-.foco.no_laboral { background:#7f1d1d; }
-.tag { display:inline-block; background:#374151; border-radius:6px; padding:2px 8px; font-size:11px; margin:2px 4px 2px 0; }
-.tag.bad { background:#7f1d1d; color:#fca5a5; }
-.tag.good { background:#14532d; color:#86efac; }
-.divider { border-top:1px solid #334155; margin:14px 0 10px; }
-.section-label { color:#a78bfa; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:10px 0 6px; }
-.empty { color:#64748b; font-size:12px; font-style:italic; }
-.bar { display:flex; height:8px; border-radius:4px; overflow:hidden; background:#0f172a; margin:6px 0; }
-.bar-fill.diseno { background:#22c55e; }
-.bar-fill.comunicacion { background:#3b82f6; }
-.bar-fill.no_laboral { background:#ef4444; }
-.bar-fill.idle { background:#475569; }
-.bar-fill.otros { background:#a78bfa; }
-.bar-text { font-size:10px; color:#94a3b8; margin-top:4px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-.refresh-btn { background:#7c3aed; color:#fff; border:0; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer; }
-.refresh-btn:hover { background:#6d28d9; }
-.empty-state { text-align:center; color:#64748b; padding:60px 20px; }
-.archivo { color:#fde047; font-weight:600; }
-</style></head><body>
-<h1>QUE PASA AHORA en cada PC</h1>
-<div class="subtitle">Actualizado automaticamente cada 15 segundos. <button class="refresh-btn" onclick="cargar()">Refrescar</button> <span id="ultima"></span></div>
-<div id="contenido" class="grid"></div>
-<script>
-function fmtTiempo(seg) {
-  if (seg < 60) return seg + 's';
-  if (seg < 3600) return Math.floor(seg/60) + 'm';
-  return Math.floor(seg/3600) + 'h ' + Math.floor((seg%3600)/60) + 'm';
-}
-function fmtMin(min) {
-  if (!min) return '0m';
-  if (min < 60) return min + 'm';
-  return Math.floor(min/60) + 'h ' + (min%60) + 'm';
-}
-async function cargar() {
-  const r = await fetch('/api/admin/que-pasa-ahora');
-  const data = await r.json();
-  document.getElementById('ultima').textContent = ' Ultimo refresh: ' + new Date().toLocaleTimeString();
-  const cont = document.getElementById('contenido');
-  if (!data.pcs || data.pcs.length === 0) {
-    cont.innerHTML = '<div class="empty-state">Ninguna PC reportando todavia. Cuando el vigilante envie su primer snapshot, aparecera aqui.</div>';
-    return;
-  }
-  cont.innerHTML = data.pcs.map(p => renderPc(p)).join('');
-}
-function renderPc(p) {
-  const cls = !p.online ? 'offline' : (p.programasNoLaborales && p.programasNoLaborales.length > 0 ? 'warn' : 'online');
-  const t = p.tiempoHoyMin || {};
-  const total = (t.diseno||0) + (t.comunicacion||0) + (t.no_laboral||0) + (t.idle||0) + (t.otros||0);
-  const pct = (n) => total > 0 ? (n/total*100).toFixed(0) : 0;
-  const focoCat = p.foco?.categoria || 'desconocido';
-  const focoNombre = p.foco?.programa || p.foco?.proceso || 'nada';
-  const archivoStr = p.corelActivo?.archivo ? '<span class="archivo">' + p.corelActivo.archivo + '</span>' : '<span class="empty">ninguno</span>';
-  const chatsHtml = (p.chatsWhatsApp && p.chatsWhatsApp.length > 0)
-    ? p.chatsWhatsApp.slice(0,3).map(c => '<span class="tag good">' + (c.nombre || c.chat) + (c.telefono ? ' (' + c.telefono + ')' : '') + ' <small>['+c.fuente+']</small></span>').join('')
-    : '<span class="empty">ninguno</span>';
-  const noLabHtml = (p.programasNoLaborales && p.programasNoLaborales.length > 0)
-    ? p.programasNoLaborales.map(n => '<span class="tag bad">'+n.tipo+'</span>').join('')
-    : '<span class="empty">ninguno</span>';
-  const usbHtml = (p.usbs?.conectados?.length > 0)
-    ? p.usbs.conectados.map(u => '<span class="tag">'+u+'</span>').join('')
-    : '<span class="empty">ninguno</span>';
-  return '<div class="card '+cls+'">' +
-    '<div class="pc-name">' + p.pc + '<span class="status '+(p.online?'online':'offline')+'">'+(p.online?'EN VIVO':'OFFLINE')+'</span></div>' +
-    '<div class="host">' + (p.hostname||'') + ' · v' + (p.vigilanteVersion||'?') + ' · hace ' + fmtTiempo(p.ageSec) + '</div>' +
-    '<div class="foco '+focoCat+'">FOCO AHORA: <b>' + focoNombre + '</b> <small>('+focoCat+')</small></div>' +
-    '<div class="row"><span class="label">Archivo en Corel</span><span class="val">'+archivoStr+'</span></div>' +
-    '<div class="row"><span class="label">Programas abiertos</span><span class="val">'+(p.programasActivos||[]).join(', ')+'</span></div>' +
-    '<div class="row"><span class="label">Idle</span><span class="val">'+(p.idleSeg ?? '?')+'s</span></div>' +
-    '<div class="row"><span class="label">Uptime PC</span><span class="val">'+fmtMin(p.uptimeMin)+'</span></div>' +
-    '<div class="divider"></div>' +
-    '<div class="section-label">Tiempo HOY (' + fmtMin(total) + ' total)</div>' +
-    '<div class="bar">' +
-      '<div class="bar-fill diseno" style="width:'+pct(t.diseno||0)+'%"></div>' +
-      '<div class="bar-fill comunicacion" style="width:'+pct(t.comunicacion||0)+'%"></div>' +
-      '<div class="bar-fill otros" style="width:'+pct(t.otros||0)+'%"></div>' +
-      '<div class="bar-fill no_laboral" style="width:'+pct(t.no_laboral||0)+'%"></div>' +
-      '<div class="bar-fill idle" style="width:'+pct(t.idle||0)+'%"></div>' +
-    '</div>' +
-    '<div class="bar-text">' +
-      '<span style="color:#22c55e">Diseno '+fmtMin(t.diseno)+'</span>' +
-      '<span style="color:#3b82f6">Comunic '+fmtMin(t.comunicacion)+'</span>' +
-      '<span style="color:#a78bfa">Otros '+fmtMin(t.otros)+'</span>' +
-      '<span style="color:#ef4444">NoLab '+fmtMin(t.no_laboral)+'</span>' +
-      '<span style="color:#64748b">Idle '+fmtMin(t.idle)+'</span>' +
-    '</div>' +
-    '<div class="section-label">Chats activos</div>' + chatsHtml +
-    '<div class="section-label">Programas NO laborales</div>' + noLabHtml +
-    '<div class="section-label">USBs conectados</div>' + usbHtml +
-  '</div>';
-}
-cargar();
-setInterval(cargar, 15000);
-</script></body></html>`;
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  // VIGILANTE W&S — endpoint que reciben los agentes locales en cada PC
-  // de los disenadores. Cuando aparece archivo en corel/PDF RIP/CATALOGO,
-  // el vigilante reporta aca:
-  //   { pc, carpeta, archivo, evento, ts }
-  // Matchea por nombre del equipo y avanza el estado del pedido.
-  // ═══════════════════════════════════════════════════════════════════
-  if (req.method === 'POST' && req.url === '/api/agente-evento') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', async () => {
-      try {
-        const data = JSON.parse(body || '{}');
-        const { pc, carpeta, archivo, evento, ts } = data;
-        if (!pc || !evento) return json(res, 400, { error: 'falta pc o evento' });
-
-        // Heartbeat: solo log, no procesa archivo
-        if (evento === 'heartbeat') {
-          console.log(`[agente] heartbeat de ${pc}`);
-          return json(res, 200, { ok: true, heartbeat: true });
-        }
-
-        if (!carpeta || !archivo) return json(res, 400, { error: 'falta carpeta o archivo' });
-
-        console.log(`[agente] ${pc} ${evento} ${carpeta}/${archivo}`);
-
-        // Matchear con pedido por nombre del archivo (sin extension)
-        const nombreSinExt = archivo.replace(/\.[^.]+$/, '').trim();
-        const peds = leerPedidos();
-        const ESTADOS_FINALES = new Set(['enviado-final','archivado','cancelado']);
-        const candidatos = peds.filter(p => {
-          if (ESTADOS_FINALES.has(p.estado)) return false;
-          return nombresCoinciden(p.equipo, nombreSinExt) ||
-                 (p.pushNameCliente && nombresCoinciden(p.pushNameCliente, nombreSinExt)) ||
-                 (Array.isArray(p.archivosAlias) && p.archivosAlias.some(a => nombresCoinciden(a, nombreSinExt)));
-        });
-
-        const carpetaNorm = String(carpeta).toLowerCase();
-        const accion = { pc, archivo, carpeta: carpetaNorm, ts, candidatos: candidatos.length };
-
-        // Detectar tipo de archivo por extension
-        const extArchivo = (archivo.match(/\.([^.]+)$/i)?.[1] || '').toLowerCase();
-        const esCDR = extArchivo === 'cdr';
-        const esEXPORT_VISUAL = ['jpg', 'jpeg', 'png', 'pdf'].includes(extArchivo);
-
-        // Caso 1: 1 candidato claro → vincular y avanzar
-        if (candidatos.length === 1) {
-          const p = candidatos[0];
-          let cambio = null;
-          if (carpetaNorm === 'corel') {
-            // (a) Si es .cdr → arranco diseño
-            if (esCDR && !p.disenoIniciado) {
-              p.disenoIniciado = true;
-              p.fechaDisenoIniciado = ts || new Date().toISOString();
-              p.disenadorReal = pc;
-              cambio = 'diseno-iniciado';
-            }
-            // (b) Si es JPG/PNG/PDF y YA hay disenoIniciado → es EXPORT para mostrar al cliente
-            //     Marcar pedido como "diseno listo para aprobacion del cliente"
-            else if (esEXPORT_VISUAL && p.disenoIniciado && !p.disenoListoParaAprobacion) {
-              p.disenoListoParaAprobacion = true;
-              p.fechaDisenoListo = ts || new Date().toISOString();
-              p.archivoVisualExportado = archivo;
-              cambio = 'diseno-listo-para-aprobacion';
-              // WA a vendedora: "ya hiciste el JPG, vas a mandar al cliente?"
-              try {
-                const msgV = `🎨 *Diseño listo para mostrar al cliente*\n\n` +
-                  `Pedido: *${p.equipo}* (#${p.id})\n` +
-                  `Exportaste: ${archivo}\n\n` +
-                  `📤 ¿Ya se lo mandaste al cliente para que apruebe?\n` +
-                  `Cuando responda en Chatwoot, yo detecto la aprobacion y avanzo el pedido solo.`;
-                notificarWAVendedora(p.vendedora, msgV).catch(()=>{});
-              } catch {}
-            }
-            // (c) Si es JPG/PNG/PDF SIN .cdr previo → tambien marcar diseno-iniciado
-            else if (esEXPORT_VISUAL && !p.disenoIniciado) {
-              p.disenoIniciado = true;
-              p.fechaDisenoIniciado = ts || new Date().toISOString();
-              p.disenadorReal = pc;
-              p.archivoVisualExportado = archivo;
-              cambio = 'diseno-iniciado-via-export';
-            }
-          } else if (carpetaNorm === 'pdf-rip' || carpetaNorm === 'pdfrip') {
-            if (!p.pdfDriveListo) {
-              p.pdfDriveListo = true;
-              p.fechaPdfDrive = ts || new Date().toISOString();
-              cambio = 'pdf-rip-listo';
-            }
-            // Avanzar a confirmado si seguia en hacer-diseno
-            if (p.estado === 'hacer-diseno') {
-              p.estado = 'confirmado';
-              p.disenadorReal = p.disenadorReal || pc;
-              cambio = (cambio ? cambio + '+' : '') + 'avance-a-confirmado';
-            }
-          } else if (carpetaNorm === 'catalogo') {
-            if (!p.enCatalogo) {
-              p.enCatalogo = true;
-              p.fechaCatalogo = ts || new Date().toISOString();
-              cambio = 'catalogado';
-            }
-          }
-          if (cambio) {
-            p.ultimoMovimiento = new Date().toISOString();
-            // Guardar alias para futuras vinculaciones por el mismo nombre
-            if (!Array.isArray(p.archivosAlias)) p.archivosAlias = [];
-            const aliasLimpio = nombreLimpio(nombreSinExt);
-            if (aliasLimpio && !p.archivosAlias.includes(aliasLimpio)) p.archivosAlias.push(aliasLimpio);
-            guardarPedidos(peds, leerNextId());
-            console.log(`[agente] #${p.id} ${p.equipo} -> ${cambio} (PC ${pc})`);
-            // Avanzar a enviado-calandra si ambas senales (PDF + WT) estan
-            try {
-              if (typeof evaluarPasoCalandra === 'function') evaluarPasoCalandra(p);
-              guardarPedidos(peds, leerNextId());
-            } catch {}
-            // Notif al jefe (dedupe por pedido+cambio+dia)
-            const dedupeKey = `agente:${p.id}:${cambio}:${new Date().toISOString().slice(0,10)}`;
-            if (waPuedeEnviar(dedupeKey)) {
-              const eq = p.equipo || `#${p.id}`;
-              const iconos = { 'diseno-iniciado': '✏️', 'pdf-rip-listo': '📄', 'catalogado': '📸' };
-              const ico = iconos[cambio.split('+')[0]] || '🎨';
-              const msg = `${ico} *Avance auto #${p.id} ${eq}*\n` +
-                `PC: ${pc}\nArchivo: ${archivo}\nEstado: ${cambio}`;
-              notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
-            }
-            accion.matcheado = true;
-            accion.pedidoId = p.id;
-            accion.cambio = cambio;
-          } else {
-            accion.matcheado = true;
-            accion.pedidoId = p.id;
-            accion.cambio = 'ya-marcado';
-          }
-        }
-        // Caso 2: 0 candidatos → archivo huerfano, alerta al jefe
-        else if (candidatos.length === 0) {
-          const dedupeKey = `agente-huerfano:${archivo}:${pc}:${new Date().toISOString().slice(0,10)}`;
-          if (waPuedeEnviar(dedupeKey)) {
-            const msg = `🟡 *Archivo huerfano detectado*\n\n` +
-              `PC: ${pc}\nCarpeta: ${carpeta}\nArchivo: ${archivo}\n\n` +
-              `No encontre pedido con nombre parecido. ¿Renombrarlo o crear pedido?`;
-            notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
-          }
-          accion.matcheado = false;
-          accion.razon = 'sin-candidatos';
-        }
-        // Caso 3: multiples candidatos → preguntar al jefe
-        else {
-          const dedupeKey = `agente-ambiguo:${archivo}:${pc}:${new Date().toISOString().slice(0,10)}`;
-          if (waPuedeEnviar(dedupeKey)) {
-            const lista = candidatos.slice(0, 5).map(c => `• #${c.id} ${c.equipo} (${c.vendedora})`).join('\n');
-            const msg = `🟠 *Archivo ambiguo*\n\nPC: ${pc}\nArchivo: ${archivo}\n\n` +
-              `Match con ${candidatos.length} pedidos:\n${lista}\n\n` +
-              `Responde: *vincular N ${candidatos[0].id}* (donde N es el pedido correcto).`;
-            notificarJefes(msg, { dedupeKey, soloJefe: true }).catch(()=>{});
-          }
-          accion.matcheado = false;
-          accion.razon = 'ambiguo';
-          accion.candidatosIds = candidatos.map(c => c.id);
-        }
-
-        return json(res, 200, { ok: true, accion });
-      } catch (e) {
-        console.error('[agente-evento]', e.message);
-        return json(res, 500, { error: e.message });
-      }
-    });
-    return;
   }
 
   // ── POST /api/admin/disparar-cron?cron=cazar-dis|arreglos|calandra|aprobacion|zombi ──
@@ -9046,7 +8623,7 @@ setInterval(cargar, 15000);
         // 2. Seguridad Básica: Validar Token (por query ?token=... o header apikey)
         const urlParams = new URL(req.url, `http://${req.headers.host || 'localhost'}`).searchParams;
         const token = urlParams.get('token') || req.headers['apikey'];
-        const SECRETO = 'ws_secret_2026'; // ¡Cámbialo si prefieres otro!
+        const SECRETO = EVOLUTION_WEBHOOK_TOKEN;
         
         // Si no coincide el secreto, solo logueamos pero rechazamos la acción
         if (token !== SECRETO) {
@@ -9656,8 +9233,8 @@ setInterval(cargar, 15000);
                   let telCliente = '';
                   if (remoteJid.endsWith('@lid')) {
                     try {
-                      const evoUrlR = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-                      const evoKeyR = process.env.EVOLUTION_API_KEY || '3506974711';
+                      const evoUrlR = EVOLUTION_API_URL;
+                      const evoKeyR = EVOLUTION_API_KEY;
                       const rChats = await fetch(`${evoUrlR}/chat/findChats/${encodeURIComponent(payload.instance)}`, {
                         method: 'POST',
                         headers: { apikey: evoKeyR, 'Content-Type': 'application/json' },
@@ -10081,19 +9658,21 @@ setInterval(cargar, 15000);
                           // 3 WAs (cliente + vendedora + jefe&graciela individuales) + grupo Trabajo en familia
 
                           // 1. WA al CLIENTE (gracias) — usa instancia ws-ventas
-                          try {
-                            const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-                            const evoKey = process.env.WA_NOTIF_APIKEY || process.env.EVOLUTION_API_KEY || '5DC08B336216-404C-BE94-A95B4A9A0528';
-                            const evoInst = process.env.WA_INSTANCE_CLIENTE || 'ws-ventas';
-                            const msgCli = `¡Gracias por completar tu pago! ✅\n\n` +
-                              `Tu pedido sigue en producción y te avisamos en cuanto esté listo para entrega.\n\n` +
-                              `_W&S Uniformes Deportivos_`;
-                            await fetch(`${evoUrl}/message/sendText/${evoInst}`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
-                              body: JSON.stringify({ number: telefonoCliente, text: msgCli }),
-                            });
-                          } catch (eC) { console.error('[pago wa-cliente]', eC.message); }
+                          if (notificacionesPermitidas('wa-cliente-pago-completo')) {
+                            try {
+                              const evoUrl = EVOLUTION_API_URL;
+                              const evoKey = WA_NOTIF_APIKEY;
+                              const evoInst = process.env.WA_INSTANCE_CLIENTE || 'ws-ventas';
+                              const msgCli = `¡Gracias por completar tu pago! ✅\n\n` +
+                                `Tu pedido sigue en producción y te avisamos en cuanto esté listo para entrega.\n\n` +
+                                `_W&S Uniformes Deportivos_`;
+                              await fetch(`${evoUrl}/message/sendText/${evoInst}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+                                body: JSON.stringify({ number: telefonoCliente, text: msgCli }),
+                              });
+                            } catch (eC) { console.error('[pago wa-cliente]', eC.message); }
+                          }
 
                           // 2. WA a la vendedora — DEDUPE por pedidoId
                           if (waPuedeEnviar(`pago-completo-vend:${resVinc.pedidoId}`)) {
@@ -10392,12 +9971,15 @@ setInterval(cargar, 15000);
   if (req.method === 'GET' && req.url.startsWith('/api/test-wa-grupo')) {
     (async () => {
       try {
+        if (!notificacionesPermitidas('test-wa-grupo')) {
+          return json(res, 409, { ok: false, error: 'NOTIFICATIONS_ENABLED=0' });
+        }
         const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
         const instance = urlObj.searchParams.get('instance') || process.env.WA_NOTIF_INSTANCE || 'ws-duvan';
         const text = urlObj.searchParams.get('text') || '🧪 Prueba desde la app W&S';
         const groupJid = process.env.WA_GRUPO_TRABAJO || '573506974711-1612841042@g.us';
-        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-        const KEY = process.env.EVOLUTION_API_KEY || '';
+        const EVO = EVOLUTION_API_URL;
+        const KEY = EVOLUTION_API_KEY;
         const r = await fetch(`${EVO}/message/sendText/${encodeURIComponent(instance)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: KEY },
@@ -10415,9 +9997,9 @@ setInterval(cargar, 15000);
     (async () => {
       try {
         const INSTANCIAS = ['ws-ventas', 'ws-ney', 'ws-wendy', 'ws wendy', 'ws-paola', 'ws-duvan'];
-        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app';
-        const KEY = process.env.EVOLUTION_API_KEY || '';
-        const WEBHOOK_ESPERADO = `${req.headers.host ? 'https://' + req.headers.host : 'https://ws-app-interna-production.up.railway.app'}/api/evolution-webhook?token=ws_secret_2026`;
+        const EVO = EVOLUTION_API_URL;
+        const KEY = EVOLUTION_API_KEY;
+        const WEBHOOK_ESPERADO = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
         const out = [];
         for (const inst of INSTANCIAS) {
           try {
@@ -10442,9 +10024,9 @@ setInterval(cargar, 15000);
     (async () => {
       try {
         const inst = decodeURIComponent(req.url.split('/').pop());
-        const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-19cd.up.railway.app';
-        const KEY = process.env.EVOLUTION_API_KEY || '';
-        const WEBHOOK_URL = `${req.headers.host ? 'https://' + req.headers.host : 'https://ws-app-interna-production.up.railway.app'}/api/evolution-webhook?token=ws_secret_2026`;
+        const EVO = EVOLUTION_API_URL;
+        const KEY = EVOLUTION_API_KEY;
+        const WEBHOOK_URL = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
         const body = {
           webhook: {
             url: WEBHOOK_URL,
@@ -11247,7 +10829,7 @@ setInterval(cargar, 15000);
           const vistos = new Set();
           const merged = todos.filter(x => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
           merged.sort((a, b) => b.id - a.id);
-          db.guardarDocsHistorial(merged.slice(0, 100));
+          db.guardarDocsHistorial(merged);
         }
         return json(res, 200, { ok: true });
       } catch (e) {
@@ -11324,8 +10906,8 @@ setInterval(cargar, 15000);
         // ─── NOTIF WA al diseñador asignado ───
         if (nuevo.disenador && nuevo.disenador !== 'Sin asignar') {
           const link = pedidoId
-            ? `https://ws-app-interna-production.up.railway.app/#/mi-dia`
-            : `https://ws-app-interna-production.up.railway.app/`;
+            ? appUrl('/#/mi-dia')
+            : appUrl('/');
           const msgWA = `🔧 *Nuevo arreglo asignado a ti*\n\n` +
             `👕 Equipo: ${nuevo.equipo}\n` +
             `📝 Falta: ${nuevo.faltante}\n` +
@@ -11368,7 +10950,7 @@ setInterval(cargar, 15000);
                   (n.pedidoId ? `\n📦 *Pedido:* #${n.pedidoId}` : '');
                 notificarTelegramDuvan(tel).catch(()=>{});
                 if (n.disenador && n.disenador !== 'Sin asignar') {
-                  const link = 'https://ws-app-interna-production.up.railway.app/#/mi-dia';
+                  const link = appUrl('/#/mi-dia');
                   const msgWA = `🔧 *Nuevo arreglo asignado a ti*\n\n` +
                     `👕 Equipo: ${n.equipo || 'Sin equipo'}\n` +
                     `📝 Falta: ${n.faltante || 'Sin detalle'}\n` +
@@ -13689,7 +13271,7 @@ setInterval(cargar, 15000);
       conectado: gmailWT.estaConectado(),
       clientIdConfigurado: !!process.env.GOOGLE_CLIENT_ID,
       clientSecretConfigurado: !!process.env.GOOGLE_CLIENT_SECRET,
-      redirectUri: process.env.GOOGLE_REDIRECT_URI || 'https://ws-app-interna-production.up.railway.app/api/gmail/callback',
+      redirectUri: process.env.GOOGLE_REDIRECT_URI || appUrl('/api/gmail/callback'),
     });
   }
 
@@ -14047,7 +13629,7 @@ setInterval(cargar, 15000);
         const { slug, mensaje } = JSON.parse(body);
         const persona = getPersona(slug);
         if (!persona) return json(res, 404, { error: 'persona no encontrada' });
-        const link = `https://ws-app-interna-production.up.railway.app/app/${persona.slug}`;
+        const link = appUrl(`/app/${persona.slug}`);
         const rolesTxt = (persona.roles || []).join(', ');
         const txt = mensaje || _buildOnboardingMsg(persona, link, rolesTxt);
         const sent = await notificarWAPersona(persona.slug, txt);
@@ -14067,7 +13649,7 @@ setInterval(cargar, 15000);
         const enviados = [];
         const sinNumero = [];
         for (const persona of PERSONAS) {
-          const link = `https://ws-app-interna-production.up.railway.app/app/${persona.slug}`;
+          const link = appUrl(`/app/${persona.slug}`);
           const rolesTxt = (persona.roles || []).join(', ');
           const txt = _buildOnboardingMsg(persona, link, rolesTxt);
           const sent = await notificarWAPersona(persona.slug, txt);
@@ -14317,8 +13899,10 @@ setInterval(cargar, 15000);
 
 }).listen(PORT, () => {
   console.log(`W&S App corriendo en puerto ${PORT}`);
-  console.log(`[startup] API_KEY env var: ${process.env.API_KEY ? 'OK (set)' : 'MISSING (using default)'}`);
-  console.log(`[startup] API_KEY first 8 chars: ${(process.env.API_KEY || 'ws-textil-2026').slice(0, 8)}...`);
+  console.log(`[startup] PUBLIC_URL: ${PUBLIC_URL}`);
+  console.log(`[startup] CRONS_ENABLED: ${CRONS_ENABLED ? '1' : '0'}`);
+  console.log(`[startup] NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED ? '1' : '0'}`);
+  console.log(`[startup] API_KEY env var: ${process.env.API_KEY ? 'OK (set)' : 'MISSING (using local dev default)'}`);
   limpiezaAutomatica(); // al arrancar
 });
 
@@ -14378,7 +13962,7 @@ function limpiezaAutomatica() {
 }
 
 // Repetir cada 24 horas mientras el servidor esté corriendo
-setInterval(limpiezaAutomatica, 24 * 60 * 60 * 1000);
+programarCron('limpieza', limpiezaAutomatica, 24 * 60 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────
 // CRON RESUMEN DE COMPROBANTES — 8 PM hora Bogotá
@@ -14554,7 +14138,7 @@ async function cron8pmTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cron8pmTick, 60 * 1000);
 // setTimeout(cron8pmTick, 30 * 1000);
-console.log('[cron-8pm] activado — disparará a las 8 PM Bogotá');
+console.log('[cron-8pm] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON ALERTAS JEFE — cada 30 min en horario laboral (8 AM - 8 PM Bogotá)
@@ -14923,8 +14507,8 @@ async function cronSilenciosoTick() {
   }
 }
 // Tick cada minuto buscando la hora 10 PM
-setInterval(cronSilenciosoTick, 60 * 1000);
-console.log('[cron-silencioso] tick instalado — disparara a las 22 (10 PM) Bogota si esta activado');
+programarCron('cron-silencioso', cronSilenciosoTick, 60 * 1000);
+console.log(`[cron-silencioso] ${CRONS_ENABLED ? 'tick instalado' : 'tick omitido'} — disparara a las 22 (10 PM) Bogota si esta activado`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CHECK SALDO CLAUDE — Anthropic NO da saldo via API, pero podemos:
@@ -15085,7 +14669,7 @@ async function cron7pmTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cron7pmTick, 60 * 1000);
 // setTimeout(cron7pmTick, 45 * 1000);
-console.log('[cron-7pm] activado — snapshot ventas-por-confirmar 7 PM Bogotá');
+console.log('[cron-7pm] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON DOMINGO 7 PM — Resumen semanal para el dueño (Camilo)
@@ -15318,7 +14902,7 @@ ${lineasCartera}
 
 📥 *DOCUMENTOS WA SIN REVISAR* (${r.docsWAPendientes.count} total)
 ${lineasDocs}
-${r.docsWAPendientes.count > 0 ? '\n👉 Revisá: https://ws-app-interna-production.up.railway.app/api/admin/docs-wa?solo=pendientes' : ''}
+${r.docsWAPendientes.count > 0 ? `\n👉 Revisá: ${appUrl('/api/admin/docs-wa?solo=pendientes')}` : ''}
 
 ⚠️ *COMPROBANTES SIN STICKER esta semana*: ${r.comprobantesSinSticker}
 ${r.comprobantesSinSticker > 0 ? '_(vendedoras olvidaron poner sticker → revisar)_' : '_(todas las vendedoras marcaron sus ventas ✓)_'}
@@ -15349,9 +14933,8 @@ async function cronDomingoTick() {
     console.log('[cron-dom] enviado WA+TG-Admin');
   } catch (e) { console.error('[cron-dom error]', e.message); }
 }
-setInterval(cronDomingoTick, 60 * 1000);
-setTimeout(cronDomingoTick, 60 * 1000);
-console.log('[cron-dom] activado — resumen semanal admin domingo 7 PM Bogotá');
+programarCron('cron-dom', cronDomingoTick, 60 * 1000, 60 * 1000);
+console.log(`[cron-dom] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — resumen semanal admin domingo 7 PM Bogotá`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON STICKER REPROCESADOR — red de seguridad diaria
@@ -15438,9 +15021,8 @@ async function cronStickerReprocesar() {
     _marcarStickerCronHoy();
   } catch (e) { console.error('[cron-stk error]', e.message); }
 }
-setInterval(cronStickerReprocesar, 60 * 1000);
-setTimeout(cronStickerReprocesar, 90 * 1000);
-console.log('[cron-stk] activado — reprocesador sticker diario 10 PM Bogotá');
+programarCron('cron-stk', cronStickerReprocesar, 60 * 1000, 90 * 1000);
+console.log(`[cron-stk] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — reprocesador sticker diario 10 PM Bogotá`);
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERTAS CALANDRA +24h SIN DESCARGAR
@@ -15565,7 +15147,7 @@ async function cronAlertasCalandraTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronAlertasCalandraTick, 60 * 60 * 1000);
 // setTimeout(cronAlertasCalandraTick, 90 * 1000);
-console.log('[cron-alertas-cal] activado — chequea calandra +24h cada hora 8AM-7PM');
+console.log('[cron-alertas-cal] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON GRUPO VENTAS N/W/P — cada 2 minutos
@@ -15599,17 +15181,18 @@ async function cronGrupoVentasTick() {
   }
 }
 // Inicializar state.ultimoTs al arranque para NO procesar historico
-try {
-  const s = grupoVentasWatcher.leerState();
-  if (!s.ultimoTs) {
-    s.ultimoTs = Date.now();
-    grupoVentasWatcher.guardarState(s);
-    console.log('[cron-ventas] state.ultimoTs inicializado a ahora — no procesa historico');
-  }
-} catch (e) { console.error('[cron-ventas state init]', e.message); }
-setInterval(cronGrupoVentasTick, 2 * 60 * 1000); // cada 2 min
-setTimeout(cronGrupoVentasTick, 60 * 1000); // primer tick 60s tras arrancar
-console.log('[cron-ventas] activado — lee grupo Ventas N/W/P cada 2 min');
+if (CRONS_ENABLED) {
+  try {
+    const s = grupoVentasWatcher.leerState();
+    if (!s.ultimoTs) {
+      s.ultimoTs = Date.now();
+      grupoVentasWatcher.guardarState(s);
+      console.log('[cron-ventas] state.ultimoTs inicializado a ahora — no procesa historico');
+    }
+  } catch (e) { console.error('[cron-ventas state init]', e.message); }
+}
+programarCron('cron-ventas', cronGrupoVentasTick, 2 * 60 * 1000, 60 * 1000);
+console.log(`[cron-ventas] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — lee grupo Ventas N/W/P cada 2 min`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON CATALOGO — cada 10 minutos
@@ -15637,9 +15220,8 @@ async function cronCatalogoTick() {
     _cronCatalogoEjecutando = false;
   }
 }
-setInterval(cronCatalogoTick, 10 * 60 * 1000); // cada 10 min
-setTimeout(cronCatalogoTick, 120 * 1000); // primer tick 120s tras arrancar
-console.log('[cron-catalogo] activado — lee Drive CATALOGO cada 10 min (cutoff al arranque)');
+programarCron('cron-catalogo-wa', cronCatalogoTick, 10 * 60 * 1000, 120 * 1000);
+console.log(`[cron-catalogo] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — lee Drive CATALOGO cada 10 min (cutoff al arranque)`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON VERIFICAR APROBACIONES PENDIENTES — cada 1 min
@@ -15843,8 +15425,8 @@ async function cronVerificarAprobacionesPendientesTick() {
           p.estado = 'cancelado'; p.motivo = `Gemini: tipo=${clasif?.tipo} conf=${clasif?.confianza}`; cambios = true; continue;
         }
         // ─── MANDAR ENCUESTA ───
-        const evoUrl = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-        const evoKey = process.env.EVOLUTION_API_KEY || '3506974711';
+        const evoUrl = EVOLUTION_API_URL;
+        const evoKey = EVOLUTION_API_KEY;
         const nombre = pedido.nombreDiseno || pedido.equipo || 'tu uniforme';
         const pollBody = JSON.stringify({
           number: p.telCliente,
@@ -15900,9 +15482,8 @@ async function cronVerificarAprobacionesPendientesTick() {
     _cronVerifAprobEjecutando = false;
   }
 }
-setInterval(cronVerificarAprobacionesPendientesTick, 20 * 1000); // cada 20 seg (encuesta rapida)
-setTimeout(cronVerificarAprobacionesPendientesTick, 15 * 1000); // primer tick a los 15s
-console.log('[verif-aprob] activado — verifica aprobaciones pendientes cada 20 seg con filtros anti-falso-positivo');
+programarCron('verif-aprob', cronVerificarAprobacionesPendientesTick, 20 * 1000, 15 * 1000);
+console.log(`[verif-aprob] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — verifica aprobaciones pendientes cada 20 seg con filtros anti-falso-positivo`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON LECTOR DE CHATS — cada 15 min
@@ -15929,9 +15510,8 @@ async function cronChatsTick() {
     _cronChatsEjecutando = false;
   }
 }
-setInterval(cronChatsTick, 15 * 60 * 1000); // cada 15 min
-setTimeout(cronChatsTick, 180 * 1000); // primer tick 180s tras arrancar
-console.log('[cron-chats] activado — lee chats vendedora-cliente cada 15 min (Gemini + audios)');
+programarCron('cron-chats', cronChatsTick, 15 * 60 * 1000, 180 * 1000);
+console.log(`[cron-chats] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — lee chats vendedora-cliente cada 15 min (Gemini + audios)`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON GRUPO TRABAJO EN FAMILIA — cada 5 minutos
@@ -15961,17 +15541,18 @@ async function cronGrupoTrabajoTick() {
   }
 }
 // Inicializar state.ultimoTs al arranque para NO procesar historico
-try {
-  const s = grupoTrabajoFamiliaWatcher.leerState();
-  if (!s.ultimoTs) {
-    s.ultimoTs = Date.now();
-    grupoTrabajoFamiliaWatcher.guardarState(s);
-    console.log('[cron-trabajo] state.ultimoTs inicializado a ahora — no procesa historico');
-  }
-} catch (e) { console.error('[cron-trabajo state init]', e.message); }
-setInterval(cronGrupoTrabajoTick, 5 * 60 * 1000); // cada 5 min
-setTimeout(cronGrupoTrabajoTick, 240 * 1000); // primer tick 240s tras arrancar
-console.log('[cron-trabajo] activado — lee grupo Trabajo en familia cada 5 min');
+if (CRONS_ENABLED) {
+  try {
+    const s = grupoTrabajoFamiliaWatcher.leerState();
+    if (!s.ultimoTs) {
+      s.ultimoTs = Date.now();
+      grupoTrabajoFamiliaWatcher.guardarState(s);
+      console.log('[cron-trabajo] state.ultimoTs inicializado a ahora — no procesa historico');
+    }
+  } catch (e) { console.error('[cron-trabajo state init]', e.message); }
+}
+programarCron('cron-trabajo', cronGrupoTrabajoTick, 5 * 60 * 1000, 240 * 1000);
+console.log(`[cron-trabajo] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — lee grupo Trabajo en familia cada 5 min`);
 
 // ═══════════════════════════════════════════════════════════════════
 // ALERTAS COSTURA — costurera marcó "entregué" +48h y Lidermeyer no recibió
@@ -16214,7 +15795,7 @@ async function cronAlertaAbandonadosTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronAlertaAbandonadosTick, 60 * 60 * 1000);
 // setTimeout(cronAlertaAbandonadosTick, 2 * 60 * 1000);
-console.log('[cron-abandonados] activado — corre 1 vez al dia (8 AM Bogota)');
+console.log('[cron-abandonados] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON RESOLVEDOR AUTOMATICO DE ATASCOS — corre cada 30 min
@@ -16428,10 +16009,8 @@ async function cronWeTransferTick() {
   }
 }
 // Cada 5 minutos
-setInterval(cronWeTransferTick, 5 * 60 * 1000);
-// Tick inicial 60s después de arrancar
-setTimeout(cronWeTransferTick, 60 * 1000);
-console.log('[cron-wt] activado — sincronizará WeTransfer cada 5 minutos');
+programarCron('cron-wt', cronWeTransferTick, 5 * 60 * 1000, 60 * 1000);
+console.log(`[cron-wt] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — sincronizará WeTransfer cada 5 minutos`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Drive — cada 10 min lee carpetas corel + PDF RIP y vincula a pedidos
@@ -16491,10 +16070,8 @@ async function cronDriveTick() {
   }
 }
 // Cada 10 minutos
-setInterval(cronDriveTick, 10 * 60 * 1000);
-// Tick inicial 90s después de arrancar (después del WT)
-setTimeout(cronDriveTick, 90 * 1000);
-console.log('[cron-drive] activado — sincronizará Drive cada 10 minutos');
+programarCron('cron-drive', cronDriveTick, 10 * 60 * 1000, 90 * 1000);
+console.log(`[cron-drive] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — sincronizará Drive cada 10 minutos`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Recordatorio sticker — cada 15 min revisa comprobantes >90min sin sticker
@@ -16582,7 +16159,7 @@ function migrarMarcarRecordatorioFacturaPedidosExistentes() {
   }
 }
 // Ejecutar al arrancar (después de 3s para no chocar con otros inits)
-setTimeout(migrarMarcarRecordatorioFacturaPedidosExistentes, 3000);
+programarArranque('migrar-recordatorio-factura', migrarMarcarRecordatorioFacturaPedidosExistentes, 3000);
 
 async function cronRecordatorioFacturaTick() {
   try {
@@ -16650,7 +16227,7 @@ async function cronRecordatorioFacturaTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronRecordatorioFacturaTick, 60 * 60 * 1000);
 // setTimeout(cronRecordatorioFacturaTick, 5 * 60 * 1000);
-console.log('[cron-fact] activado — recordatorios factura cada 1h');
+console.log('[cron-fact] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Resumen ATASCOS diario 10 AM Bogota
@@ -16736,7 +16313,7 @@ async function cronResumenAtascosTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronResumenAtascosTick, 60 * 60 * 1000);
 // setTimeout(cronResumenAtascosTick, 10 * 60 * 1000);
-console.log('[cron-atascos] activado — resumen 10 AM Bogota');
+console.log('[cron-atascos] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Detector de instancias ZOMBI cada 30 min
@@ -16773,10 +16350,10 @@ function _ultimoEventoInstancia(instanceName) {
 
 async function cronInstanciasZombiTick() {
   try {
-    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const KEY = process.env.EVOLUTION_API_KEY || '';
+    const EVO = EVOLUTION_API_URL;
+    const KEY = EVOLUTION_API_KEY;
     if (!KEY) return;
-    const host = process.env.RAILWAY_PUBLIC_DOMAIN || 'ws-app-interna-production.up.railway.app';
+    const host = new URL(PUBLIC_URL).host;
     const hoyISO = new Date().toISOString().slice(0, 10);
     const SEIS_HORAS = 6 * 60 * 60 * 1000;
     const ahora = Date.now();
@@ -16954,7 +16531,7 @@ async function cronCazarDisenadoresTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronCazarDisenadoresTick, 6 * 60 * 60 * 1000);
 // setTimeout(cronCazarDisenadoresTick, 8 * 60 * 1000);
-console.log('[cazar-dis] activado — empuja disenadores atrasados cada 6h');
+console.log('[cazar-dis] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON #2 — AUDITOR DE ARREGLOS (cada 12h)
@@ -17072,8 +16649,8 @@ const KW_RECHAZO = [
 
 async function _ultimosMsjClienteEvolution(telefonoCliente, instance, limit = 15) {
   try {
-    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const KEY = process.env.EVOLUTION_API_KEY || '';
+    const EVO = EVOLUTION_API_URL;
+    const KEY = EVOLUTION_API_KEY;
     if (!KEY) return [];
     const r = await fetch(`${EVO}/chat/findMessages/${encodeURIComponent(instance)}`, {
       method: 'POST',
@@ -17240,9 +16817,8 @@ async function cronAutoArchivarTick() {
     console.error('[cron-archive error]', e.message);
   }
 }
-setInterval(cronAutoArchivarTick, 60 * 60 * 1000);
-setTimeout(cronAutoArchivarTick, 15 * 60 * 1000);
-console.log('[cron-archive] activado — auto-archivar abandonados 11 AM Bogota');
+programarCron('cron-archive', cronAutoArchivarTick, 60 * 60 * 1000, 15 * 60 * 1000);
+console.log(`[cron-archive] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — auto-archivar abandonados 11 AM Bogota`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Backup nocturno a Drive — cada noche 2 AM Bogotá sube BD a Drive
@@ -17293,10 +16869,8 @@ async function cronBackupTick() {
   }
 }
 // Tick cada 30 min (chequea si es hora 2 AM y aún no se hizo hoy)
-setInterval(cronBackupTick, 30 * 60 * 1000);
-// Tick inicial 5 min después de arrancar
-setTimeout(cronBackupTick, 5 * 60 * 1000);
-console.log('[backup] activado — backup diario 2 AM Bogotá a Drive');
+programarCron('backup', cronBackupTick, 30 * 60 * 1000, 5 * 60 * 1000);
+console.log(`[backup] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — backup diario 2 AM Bogotá a Drive`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Costureras — cada 6 horas avisa lotes con +7 dias sin recepcion
@@ -17330,7 +16904,7 @@ async function cronCostureras7DiasTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronCostureras7DiasTick, 6 * 60 * 60 * 1000);
 // setTimeout(cronCostureras7DiasTick, 3 * 60 * 1000);
-console.log('[cron-cost-7d] activado — avisa lotes +7d cada 6 horas (horario laboral)');
+console.log('[cron-cost-7d] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Cuadre Costureras — domingo 8 PM Bogota → WA a Duvan
@@ -17410,7 +16984,7 @@ async function cronCuadreCostuTick() {
 // [APAGADO 2026-06-29: spam crones eliminado por pedido de Camilo]
 // setInterval(cronCuadreCostuTick, 30 * 60 * 1000);
 // setTimeout(cronCuadreCostuTick, 60 * 1000);
-console.log('[cuadre-cost] activado — cuadre semanal domingo 8 PM Bogota');
+console.log('[cuadre-cost] apagado legacy — usar CRONS_ENABLED para reactivar de forma controlada');
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Vigilancia Chatwoot — pinga cada 5 min, alerta Telegram admin
@@ -17486,9 +17060,8 @@ async function cronVigilarChatwootTick() {
     console.error('[cron-vig-chatwoot error]', e.message);
   }
 }
-setInterval(cronVigilarChatwootTick, 5 * 60 * 1000);
-setTimeout(cronVigilarChatwootTick, 30 * 1000);
-console.log('[cron-vig-chatwoot] activado — pinga Chatwoot cada 5 min, alertas Telegram admin');
+programarCron('cron-vig-chatwoot', cronVigilarChatwootTick, 5 * 60 * 1000, 30 * 1000);
+console.log(`[cron-vig-chatwoot] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — pinga Chatwoot cada 5 min, alertas Telegram admin`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Vigilancia Evolution — deteccion "roto en silencio"
@@ -17506,9 +17079,9 @@ function _leerVigilanciaEvolution() {
 // destraba Evolution sin necesidad de restart en Railway.
 async function _autoHealEvolutionWebhooks() {
   try {
-    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const KEY = process.env.EVOLUTION_API_KEY || '';
-    const webhookUrl = `https://ws-app-interna-production.up.railway.app/api/evolution-webhook?token=ws_secret_2026`;
+    const EVO = EVOLUTION_API_URL;
+    const KEY = EVOLUTION_API_KEY;
+    const webhookUrl = appUrl(`/api/evolution-webhook?token=${EVOLUTION_WEBHOOK_TOKEN}`);
     const nombres = ['ws-ventas', 'ws wendy', 'ws-ney', 'ws-paola', 'ws-duvan'];
     const eventos = ['MESSAGES_UPSERT','MESSAGES_UPDATE','CONNECTION_UPDATE','CHATS_UPDATE','CHATS_UPSERT','LABELS_ASSOCIATION','LABELS_EDIT','MESSAGES_DELETE','CONTACTS_UPSERT'];
     let ok = 0;
@@ -17533,8 +17106,8 @@ function _guardarVigilanciaEvolution(s) {
 
 async function cronVigilarEvolutionTick() {
   try {
-    const EVO = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-0be7c.up.railway.app';
-    const KEY = process.env.EVOLUTION_API_KEY || '';
+    const EVO = EVOLUTION_API_URL;
+    const KEY = EVOLUTION_API_KEY;
     if (!EVO) return;
 
     const state = _leerVigilanciaEvolution();
@@ -17618,9 +17191,8 @@ async function cronVigilarEvolutionTick() {
     console.error('[cron-vig-evolution error]', e.message);
   }
 }
-setInterval(cronVigilarEvolutionTick, 5 * 60 * 1000);
-setTimeout(cronVigilarEvolutionTick, 45 * 1000);
-console.log('[cron-vig-evolution] activado — pinga Evolution + revisa pulso webhooks cada 5 min');
+programarCron('cron-vig-evolution', cronVigilarEvolutionTick, 5 * 60 * 1000, 45 * 1000);
+console.log(`[cron-vig-evolution] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — pinga Evolution + revisa pulso webhooks cada 5 min`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Catalogo Drive — cada 5 min explora CATALOGO recursivo, descarga
@@ -17679,9 +17251,8 @@ async function cronCatalogoDriveTick() {
     console.error('[cron-catalogo error]', e.message);
   }
 }
-setInterval(cronCatalogoDriveTick, 5 * 60 * 1000);
-setTimeout(cronCatalogoDriveTick, 60 * 1000);
-console.log('[cron-catalogo] activado — explora CATALOGO recursivo cada 5 min');
+programarCron('cron-catalogo-drive', cronCatalogoDriveTick, 5 * 60 * 1000, 60 * 1000);
+console.log(`[cron-catalogo] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — explora CATALOGO recursivo cada 5 min`);
 
 // ═══════════════════════════════════════════════════════════════════
 // CRON Vigilancia Google OAuth — cada 30 min chequea que Drive/Gmail
@@ -17740,7 +17311,7 @@ async function cronVigilarGoogleTick() {
         : `Drive API error: ${errorMsg}`;
       msg = `🚨 *Google Drive/Gmail no responde*\n\n${razon}\n\nCaido hace ~${min} min.\n\n` +
             `Accion: abrir en el navegador\n` +
-            `https://ws-app-interna-production.up.railway.app/api/gmail/auth\n\n` +
+            `${appUrl('/api/gmail/auth')}\n\n` +
             `y aceptar los permisos con la cuenta duvandominguez05@gmail.com.\n\n` +
             `Mientras: cron CATALOGO, PDF RIP y Gmail WeTransfer estan detenidos.`;
     }
@@ -17752,9 +17323,8 @@ async function cronVigilarGoogleTick() {
     console.error('[cron-vig-google error]', e.message);
   }
 }
-setInterval(cronVigilarGoogleTick, 30 * 60 * 1000);
-setTimeout(cronVigilarGoogleTick, 90 * 1000);
-console.log('[cron-vig-google] activado — chequea Drive/Gmail OAuth cada 30 min');
+programarCron('cron-vig-google', cronVigilarGoogleTick, 30 * 60 * 1000, 90 * 1000);
+console.log(`[cron-vig-google] ${CRONS_ENABLED ? 'activado' : 'desactivado'} — chequea Drive/Gmail OAuth cada 30 min`);
 
 // ═══════════════════════════════════════════════════════════════════
 // _correrBackfillDisenos — funcion async del backfill que corre en background.

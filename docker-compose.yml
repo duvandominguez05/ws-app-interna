@@ -1,0 +1,122 @@
+name: ws-app-interna-local
+
+services:
+  app:
+    build:
+      context: .
+    image: ws-app-interna:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      CRONS_ENABLED: ${CRONS_ENABLED:-0}
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-0}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api:8080}
+      EVOLUTION_DB_URL: ${EVOLUTION_DB_URL:-postgresql://${EVOLUTION_POSTGRES_USER:-evolution}:${EVOLUTION_POSTGRES_PASSWORD:-change-me-before-use}@evolution-postgres:5432/${EVOLUTION_POSTGRES_DB:-evolution}}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      WA_NOTIF_APIKEY: ${WA_NOTIF_APIKEY:-}
+      EVOLUTION_WEBHOOK_TOKEN: ${EVOLUTION_WEBHOOK_TOKEN:-dev-local-webhook-token}
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    mem_limit: ${APP_MEM_LIMIT:-1536m}
+    cpus: ${APP_CPUS:-1.0}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles:
+      - proxy
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    cpus: ${CADDY_CPUS:-0.25}
+
+  evolution-api:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api:v2.1.1}
+    restart: unless-stopped
+    profiles:
+      - evolution
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_AUTHENTICATION_API_KEY:-change-me-before-use}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_POSTGRES_USER:-evolution}:${EVOLUTION_POSTGRES_PASSWORD:-change-me-before-use}@evolution-postgres:5432/${EVOLUTION_POSTGRES_DB:-evolution}
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/0
+      CACHE_REDIS_PREFIX_KEY: evolution-api
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+    ports:
+      - "${EVOLUTION_BIND:-127.0.0.1}:${EVOLUTION_PORT:-8080}:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_started
+    mem_limit: ${EVOLUTION_MEM_LIMIT:-1024m}
+    cpus: ${EVOLUTION_CPUS:-1.0}
+
+  evolution-postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    profiles:
+      - evolution
+    environment:
+      POSTGRES_DB: ${EVOLUTION_POSTGRES_DB:-evolution}
+      POSTGRES_USER: ${EVOLUTION_POSTGRES_USER:-evolution}
+      POSTGRES_PASSWORD: ${EVOLUTION_POSTGRES_PASSWORD:-change-me-before-use}
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EVOLUTION_POSTGRES_USER:-evolution} -d ${EVOLUTION_POSTGRES_DB:-evolution}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: ${EVOLUTION_POSTGRES_MEM_LIMIT:-768m}
+    cpus: ${EVOLUTION_POSTGRES_CPUS:-0.5}
+
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    profiles:
+      - evolution
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis:/data
+    mem_limit: ${EVOLUTION_REDIS_MEM_LIMIT:-256m}
+    cpus: ${EVOLUTION_REDIS_CPUS:-0.25}
+
+volumes:
+  caddy_data:
+  caddy_config:
+  evolution_instances:
+  evolution_postgres:
+  evolution_redis:
