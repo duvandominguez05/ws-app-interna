@@ -10,10 +10,18 @@ RUN apt-get update \
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-COPY --chown=node:node . .
+COPY . .
 RUN mkdir -p /app/data /app/logs
 
-USER node
-EXPOSE 3000
+# OJO: no poner USER node.
+# Railway monta el volumen en /app/data con dueno root. Al correr como 'node',
+# SQLite abre la base para lectura pero falla toda escritura con
+# SQLITE_READONLY, y la app pierde en silencio cada evento de WhatsApp, cada
+# comprobante y cada factura. El proceso corre como root, igual que hacia el
+# builder anterior (RAILPACK) durante meses.
+#
+# Railway usa este Dockerfile aunque el servicio diga builder: RAILPACK: si hay
+# Dockerfile en la raiz del repo, gana el Dockerfile.
+EXPOSE 8080
 
 CMD ["node", "server.js"]
