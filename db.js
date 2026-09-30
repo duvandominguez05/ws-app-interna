@@ -219,6 +219,10 @@ function _addColumnSafe(table, columnDef) {
 _addColumnSafe('documentos_salientes_wa', 'file_hash TEXT');
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_docwa_hash ON documentos_salientes_wa(file_hash)'); } catch {}
 
+// Sin este indice, cada lectura de eventos barria la tabla entera (medio millon
+// de filas, 1.3 GB) y eso disparaba la memoria del proceso a ~1.9 GB en Railway.
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_evolution_fecha ON evolution_events(fecha)'); } catch {}
+
 // ── Prepared statements ──────────────────────────────────────────
 const S = {
   getPedidos:       db.prepare('SELECT data FROM pedidos ORDER BY id'),
@@ -508,6 +512,16 @@ function insertEvolutionEvent(fecha, data) {
 }
 function leerEvolutionEvents(fecha) {
   return S.getEvolutionFecha.all(fecha).map(r => JSON.parse(r.data));
+}
+
+// Borra los eventos crudos de Evolution mas viejos que `dias`. Ninguna consulta
+// del server mira mas de 10 dias atras (todas usan LIMIT 2..10 sobre las fechas
+// distintas), asi que guardar meses solo engorda la base y la memoria.
+// Devuelve cuantas filas borro.
+function purgarEvolutionEvents(dias = 30) {
+  const corte = new Date(Date.now() - dias * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  const info = db.prepare('DELETE FROM evolution_events WHERE fecha < ?').run(corte);
+  return { borrados: info.changes, corte };
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -1091,7 +1105,7 @@ module.exports = {
   leerNotifs, guardarNotifs,
   leerConfig, guardarConfig,
   leerDocsNums, guardarDocsNums, leerDocsHistorial, guardarDocsHistorial,
-  insertEvolutionEvent, leerEvolutionEvents,
+  insertEvolutionEvent, leerEvolutionEvents, purgarEvolutionEvents,
   leerIgnorados, insertIgnorado,
   leerPendientesWt, guardarPendientesWt,
   // Facturas

@@ -13964,6 +13964,21 @@ function limpiezaAutomatica() {
 // Repetir cada 24 horas mientras el servidor esté corriendo
 programarCron('limpieza', limpiezaAutomatica, 24 * 60 * 60 * 1000);
 
+// Purga del log crudo de Evolution. OJO: esto NO toca el historial del negocio
+// (pedidos, facturas, calandra) — solo los webhooks de WhatsApp, que son un log
+// de depuracion. Ninguna consulta mira mas de 10 dias atras, pero se guardan 30.
+// Sin esto la tabla llego a 516.000 filas / 1.3 GB y disparo la memoria a 1.9 GB.
+const DIAS_EVENTOS_WA = parseInt(process.env.DIAS_EVENTOS_WA || '30', 10);
+function purgarEventosWa() {
+  try {
+    const r = db.purgarEvolutionEvents(DIAS_EVENTOS_WA);
+    if (r.borrados > 0) console.log(`[purga-wa] ${r.borrados} eventos anteriores a ${r.corte} borrados`);
+  } catch (e) {
+    console.error('[purga-wa]', e.message);
+  }
+}
+programarCron('purga-wa', purgarEventosWa, 24 * 60 * 60 * 1000, 60 * 1000);
+
 // ─────────────────────────────────────────────────────────────
 // CRON RESUMEN DE COMPROBANTES — 8 PM hora Bogotá
 // Lee comprobantes detectados en las últimas 18h, agrupa por vendedora,
