@@ -114,6 +114,25 @@ services:
     mem_limit: ${EVOLUTION_REDIS_MEM_LIMIT:-256m}
     cpus: ${EVOLUTION_REDIS_CPUS:-0.25}
 
+  # Tunel de Cloudflare: publica la app en el dominio sin abrir puertos en el
+  # router y sin IP fija (sirve para un servidor en casa). El servidor se
+  # conecta hacia afuera y Cloudflare recibe el trafico. La ruta
+  # app.dominio -> http://app:3000 se configura en el panel de Cloudflare
+  # (Zero Trust -> Networks -> Tunnels). Reemplaza a Caddy en ese caso.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: ${CLOUDFLARED_MEM_LIMIT:-128m}
+    cpus: ${CLOUDFLARED_CPUS:-0.25}
+
 volumes:
   caddy_data:
   caddy_config:
